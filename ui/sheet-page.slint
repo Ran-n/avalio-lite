@@ -1,0 +1,384 @@
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { ColumnType, Gradebook, RowItem } from "gradebook.slint";
+import { ActionButton, ButtonKind, IconActionButton, IconButton, IconKind, MenuOption, MenuSurface, MessageBanner, NavItem, TextField } from "components.slint";
+import { ColumnHeader } from "column-header.slint";
+import { ColumnPanel } from "column-panel.slint";
+import { GridCell } from "grid-cell.slint";
+
+component NameCell inherits Rectangle {
+    in property <RowItem> pupil;
+
+    height: Theme.row-height;
+    background: Theme.surface;
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 10px;
+        spacing: 4px;
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                glyph: "×";
+                tooltip: @tr("Remove from this class");
+                destructive: true;
+                clicked => { Gradebook.remove-pupil(root.pupil.pupil-id); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            TextField {
+                boxed: false;
+                text: root.pupil.name;
+                spoken-label: @tr("Pupil");
+                edited(text) => { Gradebook.rename-pupil(root.pupil.pupil-id, text); }
+            }
+        }
+    }
+}
+
+// "5 pupils   Class average 7.4   4 passing   1 failing", plus weight warnings.
+component Summary inherits VerticalLayout {
+    spacing: 4px;
+    HorizontalLayout {
+        spacing: 22px;
+        alignment: start;
+        Text {
+            text: @tr("{n} pupil" | "{n} pupils" % Gradebook.rows.length);
+            color: Theme.muted;
+        }
+        if Gradebook.has-summary: Text {
+            text: @tr("Class average {}", Gradebook.class-average);
+            color: Theme.muted;
+        }
+        if Gradebook.has-summary: Text {
+            text: @tr("{n} passing" | "{n} passing" % Gradebook.passing);
+            color: Theme.pass;
+            font-weight: 600;
+        }
+        if Gradebook.has-summary && Gradebook.failing > 0: Text {
+            text: @tr("{n} failing" | "{n} failing" % Gradebook.failing);
+            color: Theme.fail;
+            font-weight: 600;
+        }
+    }
+    if !Gradebook.weights-complete: Text {
+        text: @tr("Test weights add up to {}%, not 100%", Gradebook.weight-total);
+        color: Theme.warn;
+    }
+}
+
+// The class name with the sheet's actions beside it, and the summary line underneath. The summary
+// gets its own full-width line so the buttons always fit, even in Galician at the minimum width.
+component SheetTitle inherits VerticalLayout {
+    callback add-pupil();
+    callback add-column();
+    callback more();
+    out property <length> add-column-right: add-column-button.absolute-position.x + add-column-button.width;
+    out property <length> more-right: more-button.absolute-position.x + more-button.width;
+    out property <length> actions-bottom: add-column-button.absolute-position.y + add-column-button.height;
+
+    spacing: 4px;
+    HorizontalLayout {
+        spacing: 16px;
+        TextField {
+            horizontal-stretch: 1;
+            boxed: false;
+            text: Gradebook.class-name;
+            spoken-label: @tr("Class name");
+            font-size: Theme.text-xl;
+            font-weight: 600;
+            edited(text) => { Gradebook.rename-class(text); }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            HorizontalLayout {
+                spacing: 8px;
+                ActionButton {
+                    text: @tr("+ Add pupil");
+                    clicked => { root.add-pupil(); }
+                }
+                add-column-button := ActionButton {
+                    text: @tr("+ Add column");
+                    kind: ButtonKind.primary;
+                    clicked => { root.add-column(); }
+                }
+                more-button := IconActionButton {
+                    icon: IconKind.more;
+                    label: @tr("More actions");
+                    clicked => { root.more(); }
+                }
+            }
+        }
+    }
+    Summary { }
+}
+
+export component SheetPage inherits Rectangle {
+    property <length> name-width: 210px;
+    property <length> cell-width: 128px;
+    property <length> wide-cell-width: 176px;
+
+    VerticalLayout {
+        padding: 32px;
+        padding-top: 26px;
+        spacing: 20px;
+        alignment: start;
+        title := SheetTitle {
+            add-pupil => { new-pupil.focus-input(); }
+            add-column => { column-menu.show(); }
+            more => { more-menu.show(); }
+        }
+        MessageBanner {
+            message: Gradebook.error-message;
+            is-error: true;
+        }
+        HorizontalLayout {
+            alignment: start;
+            vertical-stretch: 1;
+            // the sheet hugs its rows and columns, and scrolls when it outgrows the window
+            Rectangle {
+                // its natural size is the whole grid; it shrinks (and scrolls) when the window is smaller
+                preferred-width: grid-lines.width + 2px;
+                preferred-height: grid-lines.height + 2px;
+                min-width: min(grid-lines.width + 2px, 320px);
+                min-height: min(grid-lines.height + 2px, 180px);
+                max-width: grid-lines.width + 2px;
+                max-height: grid-lines.height + 2px;
+                background: Theme.surface;
+                border-radius: Theme.radius-m;
+                border-width: 1px;
+                border-color: Theme.line;
+                drop-shadow-blur: 16px;
+                drop-shadow-offset-y: 4px;
+                drop-shadow-color: Theme.shadow;
+                clip: true;
+                ScrollView {
+                    x: 1px;
+                    y: 1px;
+                    width: parent.width - 2px;
+                    height: parent.height - 2px;
+                    content-width: grid-lines.width;
+                    content-height: grid-lines.height;
+                    grid-lines := Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: grid.preferred-width;
+                        height: grid.preferred-height;
+                        background: Theme.line;
+                        grid := VerticalLayout {
+                            spacing: 1px;
+                            HorizontalLayout {
+                                spacing: 1px;
+                                Rectangle {
+                                    width: root.name-width;
+                                    background: Theme.raised;
+                                    Text {
+                                        x: 16px;
+                                        y: 12px;
+                                        text: @tr("Pupil");
+                                        font-weight: 600;
+                                        font-size: 14px;
+                                        color: Theme.muted;
+                                    }
+                                }
+                                for column[c] in Gradebook.columns: ColumnHeader {
+                                    width: column.kind == ColumnType.info ? root.wide-cell-width : root.cell-width;
+                                    column: column;
+                                    index: c;
+                                }
+                            }
+                            for row[r] in Gradebook.rows: HorizontalLayout {
+                                spacing: 1px;
+                                NameCell {
+                                    width: root.name-width;
+                                    pupil: row;
+                                }
+                                for cell[c] in row.cells: GridCell {
+                                    width: Gradebook.columns[c].kind == ColumnType.info ? root.wide-cell-width : root.cell-width;
+                                    text: cell.text;
+                                    spoken-label: row.name + ", " + Gradebook.columns[c].title;
+                                    invalid: cell.invalid;
+                                    tone: cell.tone;
+                                    provisional: cell.provisional;
+                                    computed: Gradebook.columns[c].kind != ColumnType.info && Gradebook.columns[c].kind != ColumnType.test;
+                                    numeric: Gradebook.columns[c].kind != ColumnType.info;
+                                    edited(text) => { Gradebook.cell-edited(r, c, text); }
+                                }
+                            }
+                            HorizontalLayout {
+                                Rectangle {
+                                    width: root.name-width;
+                                    height: Theme.row-height;
+                                    background: Theme.surface;
+                                    Text {
+                                        x: 16px;
+                                        height: parent.height;
+                                        vertical-alignment: center;
+                                        text: "+";
+                                        font-size: Theme.text-l;
+                                        color: new-pupil.has-focus ? Theme.accent : Theme.faint;
+                                    }
+                                    new-pupil := TextField {
+                                        x: 36px;
+                                        y: (parent.height - self.height) / 2;
+                                        width: parent.width - 46px;
+                                        boxed: false;
+                                        placeholder: @tr("Add pupil…");
+                                        accepted(text) => {
+                                            Gradebook.add-new-pupil(text);
+                                            self.clear();
+                                        }
+                                    }
+                                }
+                                // fills the rest of the last row so no grid lines show through
+                                Rectangle {
+                                    horizontal-stretch: 1;
+                                    background: Theme.surface;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if Gradebook.columns.length == 0: Text {
+            text: @tr("Next, add a column: a test to mark, or an info column for notes.");
+            color: Theme.muted;
+        }
+    }
+
+    for column in Gradebook.panel-column: ColumnPanel {
+        x: root.width - self.width;
+        y: 0px;
+        height: root.height;
+        column: column;
+        index: Gradebook.panel-index;
+    }
+
+    column-menu := PopupWindow {
+        x: title.add-column-right - root.absolute-position.x - 340px;
+        y: title.actions-bottom - root.absolute-position.y + 6px;
+        width: 340px;
+        MenuSurface {
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                MenuOption {
+                    title: @tr("Test");
+                    hint: @tr("A mark out of a maximum that counts towards the final grade");
+                    clicked => { Gradebook.add-column(ColumnType.test); }
+                }
+                MenuOption {
+                    title: @tr("Info");
+                    hint: @tr("Free text, such as notes");
+                    clicked => { Gradebook.add-column(ColumnType.info); }
+                }
+                MenuOption {
+                    title: @tr("Final grade");
+                    hint: @tr("Adds up the tests by their weights");
+                    clicked => { Gradebook.add-column(ColumnType.weighted); }
+                }
+                MenuOption {
+                    title: @tr("Average");
+                    hint: @tr("Mean of the marked tests");
+                    clicked => { Gradebook.add-column(ColumnType.average); }
+                }
+                MenuOption {
+                    title: @tr("Rounded");
+                    hint: @tr("Another column rounded to whole marks or decimals");
+                    clicked => { Gradebook.add-column(ColumnType.round); }
+                }
+            }
+        }
+    }
+
+    more-menu := PopupWindow {
+        x: title.more-right - root.absolute-position.x - 280px;
+        y: title.actions-bottom - root.absolute-position.y + 6px;
+        width: 280px;
+        MenuSurface {
+            VerticalLayout {
+                padding: 6px;
+                spacing: 2px;
+                if Gradebook.addable-pupils.length > 0: MenuOption {
+                    title: @tr("Add from another class…");
+                    clicked => { pupil-menu.show(); }
+                }
+                MenuOption {
+                    title: Gradebook.show-column-settings ? @tr("Hide weights & scales") : @tr("Show weights & scales");
+                    clicked => { Gradebook.toggle-column-settings(); }
+                }
+                MenuOption {
+                    title: @tr("Delete class");
+                    destructive: true;
+                    clicked => { Gradebook.delete-class(); }
+                }
+            }
+        }
+    }
+
+    pupil-menu := PopupWindow {
+        x: title.more-right - root.absolute-position.x - 280px;
+        y: title.actions-bottom - root.absolute-position.y + 6px;
+        width: 280px;
+        height: min(Gradebook.addable-pupils.length * 40px + 14px, 340px);
+        close-policy: PopupClosePolicy.close-on-click-outside;
+        MenuSurface {
+            ListView {
+                x: 6px;
+                y: 6px;
+                width: parent.width - 12px;
+                height: parent.height - 12px;
+                for name[index] in Gradebook.addable-pupils: NavItem {
+                    label: name;
+                    clicked => {
+                        pupil-menu.close();
+                        Gradebook.add-existing-pupil(index);
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component NoClassPage inherits Rectangle {
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                width: 440px;
+                spacing: 14px;
+                Text {
+                    text: @tr("Start with a class");
+                    font-size: Theme.text-xl;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+                Text {
+                    text: @tr("Each class gets its own sheet: pupils down the side, tests and notes across the top.");
+                    wrap: word-wrap;
+                    color: Theme.muted;
+                }
+                MessageBanner {
+                    message: Gradebook.error-message;
+                    is-error: true;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    name := TextField {
+                        horizontal-stretch: 1;
+                        placeholder: @tr("Class name, e.g. 2º ESO A");
+                        accepted(text) => { Gradebook.create-class(text); }
+                    }
+                    ActionButton {
+                        text: @tr("Create class");
+                        kind: ButtonKind.primary;
+                        clicked => { Gradebook.create-class(name.text); }
+                    }
+                }
+            }
+        }
+    }
+}

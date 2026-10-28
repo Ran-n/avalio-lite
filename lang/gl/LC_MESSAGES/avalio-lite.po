@@ -1,0 +1,296 @@
+# Galician translation of the avalio-lite interface.
+# Every @tr() string in ui/*.slint must have an entry here (checked by tests/i18n.rs).
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: gl\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Weight"
+msgstr "Peso"
+
+msgid "Out of"
+msgstr "Sobre"
+
+msgid "Decimals"
+msgstr "Decimais"
+
+msgid "Browse…"
+msgstr "Examinar…"
+
+msgid "Settings"
+msgstr "Axustes"
+
+msgid "Database"
+msgstr "Base de datos"
+
+msgid "Every class, pupil and mark is in this file. Copy it while the app is closed to make a backup."
+msgstr "Todas as clases, alumnos e notas están neste ficheiro. Cópiao coa aplicación pechada para facer unha copia de seguridade."
+
+msgid "Move…"
+msgstr "Mover…"
+
+msgid "Open another database…"
+msgstr "Abrir outra base de datos…"
+
+msgid "Logs"
+msgstr "Rexistros"
+
+msgid "A record of what the app did, useful when something goes wrong."
+msgstr "Un rexistro do que fixo a aplicación, útil cando algo falla."
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "The language of the app. Names and marks you type stay as they are."
+msgstr "O idioma da aplicación. Os nomes e as notas que escribas quedan como están."
+
+msgid "Where should your marks be kept?"
+msgstr "Onde queres gardar as notas?"
+
+msgid "Find your data"
+msgstr "Localiza os teus datos"
+
+msgid "Everything goes in one database file in the folder you choose. You can move it later in Settings."
+msgstr "Todo vai nun único ficheiro de base de datos no cartafol que escollas. Podes movelo máis adiante en Axustes."
+
+msgid "The database isn't at {} any more. Open it from where it is now, or start a new one."
+msgstr "A base de datos xa non está en {}. Ábrea desde onde estea agora ou crea unha nova."
+
+msgid "The settings file couldn't be read ({}). Choose your folders again."
+msgstr "Non se puido ler o ficheiro de axustes ({}). Escolle de novo os cartafoles."
+
+msgid "The database couldn't be opened ({}). Open another one, or start a new one."
+msgstr "Non se puido abrir a base de datos ({}). Abre outra ou crea unha nova."
+
+msgid "Database folder"
+msgstr "Cartafol da base de datos"
+
+msgid "Log folder"
+msgstr "Cartafol dos rexistros"
+
+msgid "Open an existing database…"
+msgstr "Abrir unha base de datos existente…"
+
+msgid "Create database"
+msgstr "Crear base de datos"
+
+msgid "Remove from this class"
+msgstr "Quitar desta clase"
+
+msgid "{n} pupil"
+msgid_plural "{n} pupils"
+msgstr[0] "{n} alumno"
+msgstr[1] "{n} alumnos"
+
+msgid "Test weights add up to {}%, not 100%"
+msgstr "Os pesos das probas suman {} %, non 100 %"
+
+msgid "Bonus test"
+msgstr "Proba extra"
+
+msgid "Hide weights & scales"
+msgstr "Ocultar pesos e escalas"
+
+msgid "Show weights & scales"
+msgstr "Amosar pesos e escalas"
+
+msgid "Delete class"
+msgstr "Eliminar clase"
+
+msgid "Pupil"
+msgstr "Alumno"
+
+msgid "Add pupil…"
+msgstr "Engadir alumno…"
+
+msgid "Next, add a column: a test to mark, or an info column for notes."
+msgstr "Agora engade unha columna: unha proba para cualificar ou unha columna de información para anotacións."
+
+msgid "Test"
+msgstr "Proba"
+
+msgid "A mark out of a maximum that counts towards the final grade"
+msgstr "Unha nota sobre un máximo que conta para a nota final"
+
+msgid "Info"
+msgstr "Información"
+
+msgid "Free text, such as notes"
+msgstr "Texto libre, como anotacións"
+
+msgid "Final grade"
+msgstr "Nota final"
+
+msgid "Adds up the tests by their weights"
+msgstr "Suma as probas segundo o seu peso"
+
+msgid "Average"
+msgstr "Media"
+
+msgid "Mean of the marked tests"
+msgstr "Media das probas cualificadas"
+
+msgid "Rounded"
+msgstr "Redondeo"
+
+msgid "Another column rounded to whole marks or decimals"
+msgstr "Outra columna redondeada a enteiros ou a decimais"
+
+msgid "Start with a class"
+msgstr "Comeza cunha clase"
+
+msgid "Each class gets its own sheet: pupils down the side, tests and notes across the top."
+msgstr "Cada clase ten a súa propia folla: os alumnos nas filas e as probas e anotacións nas columnas."
+
+msgid "Class name, e.g. 2º ESO A"
+msgstr "Nome da clase, p. ex. 2º ESO A"
+
+msgid "Create class"
+msgstr "Crear clase"
+
+msgid "Classes"
+msgstr "Clases"
+
+msgid "New class"
+msgstr "Nova clase"
+
+msgid "+ Add column"
+msgstr "+ Engadir columna"
+
+msgid "+ Add pupil"
+msgstr "+ Engadir alumno"
+
+msgid "+{}% bonus"
+msgstr "+{} % extra"
+
+msgid "Add from another class…"
+msgstr "Engadir doutra clase…"
+
+msgid "Appearance"
+msgstr "Aparencia"
+
+msgid "Average: the mean of the marked tests"
+msgstr "Media: a media das probas cualificadas"
+
+msgid "Change PIN"
+msgstr "Cambiar o PIN"
+
+msgid "Class average {}"
+msgstr "Media da clase {}"
+
+msgid "Close"
+msgstr "Pechar"
+
+msgid "Counts on top of the 100%"
+msgstr "Conta ademais do 100 %"
+
+msgid "Current PIN"
+msgstr "PIN actual"
+
+msgid "Dark"
+msgstr "Escuro"
+
+msgid "Dark mode"
+msgstr "Modo escuro"
+
+msgid "Decimals: {}"
+msgstr "Decimais: {}"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Final grade: adds up the tests by their weights"
+msgstr "Nota final: suma as probas segundo o seu peso"
+
+msgid "Info: free text, such as notes"
+msgstr "Información: texto libre, como anotacións"
+
+msgid "Light"
+msgstr "Claro"
+
+msgid "Light mode"
+msgstr "Modo claro"
+
+msgid "Lock (Ctrl+L)"
+msgstr "Bloquear (Ctrl+L)"
+
+msgid "More actions"
+msgstr "Máis accións"
+
+msgid "Move right ›"
+msgstr "Á dereita ›"
+
+msgid "New PIN"
+msgstr "PIN novo"
+
+msgid "PIN"
+msgstr "PIN"
+
+msgid "Repeat PIN"
+msgstr "Repite o PIN"
+
+msgid "Rounded: another column rounded to whole marks or decimals"
+msgstr "Redondeo: outra columna redondeada a enteiros ou a decimais"
+
+msgid "Rounds"
+msgstr "Redondea"
+
+msgid "Test: a mark out of a maximum that counts towards the final grade"
+msgstr "Proba: unha nota sobre un máximo que conta para a nota final"
+
+msgid "Text"
+msgstr "Texto"
+
+msgid "The normal tests add up to {}%."
+msgstr "As probas normais suman {} %."
+
+msgid "The normal tests add up to {}%. Bonus tests add {}% on top, up to the maximum grade."
+msgstr "As probas normais suman {} %. As probas extra suman un {} % adicional, ata a nota máxima."
+
+msgid "Title"
+msgstr "Título"
+
+msgid "Type"
+msgstr "Tipo"
+
+msgid "avalio lite is locked"
+msgstr "avalio lite está bloqueado"
+
+msgid "‹ Move left"
+msgstr "‹ Á esquerda"
+
+msgid "{n} passing"
+msgid_plural "{n} passing"
+msgstr[0] "{n} aprobado"
+msgstr[1] "{n} aprobados"
+
+msgid "{n} failing"
+msgid_plural "{n} failing"
+msgstr[0] "{n} suspenso"
+msgstr[1] "{n} suspensos"
+
+
+msgid "PIN and encryption"
+msgstr "PIN e cifrado"
+
+msgid "The database file is encrypted with your PIN. The app asks for it when it opens; lock it any time with Ctrl+L or the Lock button."
+msgstr "O ficheiro da base de datos está cifrado co teu PIN. A aplicación pídeo ao abrirse; bloquéaa cando queiras con Ctrl+L ou co botón Bloquear."
+
+msgid "Encrypt the database file with a PIN of 4 or more characters, digits or letters. Someone with a copy of the file can try guesses without limit: a short PIN only stops a quick look, a long password with letters stops everyone. If you forget it, nobody can recover the data, so keep it somewhere safe."
+msgstr "Cifra o ficheiro da base de datos cun PIN de 4 ou máis caracteres, números ou letras. Quen teña unha copia do ficheiro pode probar sen límite: un PIN curto só frea unha ollada rápida, un contrasinal longo con letras frea a calquera. Se o esqueces, ninguén pode recuperar os datos, así que gárdao nun lugar seguro."
+
+msgid "Encrypt with this PIN"
+msgstr "Cifrar con este PIN"
+
+msgid "Remove PIN and encryption"
+msgstr "Quitar o PIN e o cifrado"
+
+msgid "Erase"
+msgstr "Borrar"
+
+msgid "Unlock"
+msgstr "Desbloquear"
+
+msgid "Class name"
+msgstr "Nome da clase"

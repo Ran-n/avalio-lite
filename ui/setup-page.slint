@@ -1,0 +1,82 @@
+import { Theme } from "theme.slint";
+import { ActionButton, BrandMark, ButtonKind, FolderField, MessageBanner } from "components.slint";
+
+export enum SetupNotice { first-run, database-missing, config-unreadable, database-unusable }
+
+export component SetupPage inherits Rectangle {
+    in property <SetupNotice> notice;
+    in property <string> notice-detail;
+    in property <string> error-message;
+    in-out property <string> database-folder;
+    in-out property <string> log-folder;
+    callback browse-database-folder();
+    callback browse-log-folder();
+    callback create-database();
+    callback open-existing-database();
+
+    background: Theme.canvas;
+    HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 560px;
+                background: Theme.surface;
+                border-radius: Theme.radius-l;
+                border-width: 1px;
+                border-color: Theme.line;
+                drop-shadow-blur: 40px;
+                drop-shadow-offset-y: 16px;
+                drop-shadow-color: #00000066;
+                VerticalLayout {
+                    padding: 32px;
+                    spacing: 18px;
+                    BrandMark { }
+                    Text {
+                        text: root.notice == SetupNotice.first-run ? @tr("Where should your marks be kept?") : @tr("Find your data");
+                        font-size: Theme.text-xl;
+                        font-weight: 600;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: root.notice == SetupNotice.first-run ? @tr("Everything goes in one database file in the folder you choose. You can move it later in Settings.")
+                            : root.notice == SetupNotice.database-missing ? @tr("The database isn't at {} any more. Open it from where it is now, or start a new one.", root.notice-detail)
+                            : root.notice == SetupNotice.config-unreadable ? @tr("The settings file couldn't be read ({}). Choose your folders again.", root.notice-detail)
+                            : @tr("The database couldn't be opened ({}). Open another one, or start a new one.", root.notice-detail);
+                        wrap: word-wrap;
+                        color: Theme.muted;
+                    }
+                    MessageBanner {
+                        message: root.error-message;
+                        is-error: true;
+                    }
+                    FolderField {
+                        label: @tr("Database folder");
+                        value <=> root.database-folder;
+                        browse => { root.browse-database-folder(); }
+                    }
+                    FolderField {
+                        label: @tr("Log folder");
+                        value <=> root.log-folder;
+                        browse => { root.browse-log-folder(); }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        padding-top: 6px;
+                        ActionButton {
+                            text: @tr("Open an existing database…");
+                            kind: ButtonKind.ghost;
+                            clicked => { root.open-existing-database(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        ActionButton {
+                            text: @tr("Create database");
+                            kind: ButtonKind.primary;
+                            clicked => { root.create-database(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

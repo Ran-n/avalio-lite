@@ -1,0 +1,485 @@
+import { Theme } from "theme.slint";
+
+export enum ButtonKind { primary, secondary, ghost, danger }
+
+// Makes a custom control reachable with Tab and pressable with Enter or Space, like a standard
+// button. It takes no space and ignores clicks, so the mouse keeps going to the control's TouchArea.
+export component KeyboardPress inherits FocusScope {
+    callback pressed();
+
+    x: 0px;
+    width: 0px;
+    focus-on-click: false;
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.pressed();
+            return accept;
+        }
+        return reject;
+    }
+}
+
+// Outline shown around a control while it has keyboard focus.
+export component FocusRing inherits Rectangle {
+    border-width: 2px;
+    border-color: Theme.accent;
+}
+
+export component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <ButtonKind> kind: ButtonKind.secondary;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    // buttons keep their natural width instead of stretching to fill a row
+    horizontal-stretch: 0;
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    border-width: root.kind == ButtonKind.secondary ? 1px : 0px;
+    border-color: Theme.line-strong;
+    background: !root.enabled ? (root.kind == ButtonKind.primary ? Theme.accent.with-alpha(0.25) : transparent)
+        : root.kind == ButtonKind.primary ? (touch.pressed ? Theme.accent.darker(0.1) : touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : root.kind == ButtonKind.danger ? (touch.has-hover ? Theme.fail-soft : transparent)
+        : root.kind == ButtonKind.ghost ? (touch.has-hover ? Theme.raised : transparent)
+        : (touch.has-hover ? Theme.raised : Theme.surface);
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            font-size: Theme.text-m;
+            font-weight: root.kind == ButtonKind.primary ? 600 : 500;
+            color: !root.enabled ? Theme.faint
+                : root.kind == ButtonKind.primary ? Theme.on-accent
+                : root.kind == ButtonKind.danger ? Theme.fail
+                : Theme.text;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress {
+        enabled: root.enabled;
+        pressed => { root.clicked(); }
+    }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// Single-line text field. `boxed: false` makes it blend into the page until focused,
+// for titles and names that are edited in place.
+export component TextField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    // what a screen reader calls the field; the placeholder unless the field has a visible label
+    in property <string> spoken-label: root.placeholder;
+    in property <bool> boxed: true;
+    in property <length> font-size: Theme.text-m;
+    in property <int> font-weight: 400;
+    in property <TextHorizontalAlignment> alignment: TextHorizontalAlignment.left;
+    in property <InputType> input-type: InputType.text;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+
+    height: max(Theme.control-height, root.font-size * 1.9);
+    border-radius: Theme.radius-s;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : root.boxed ? Theme.line-strong : transparent;
+    background: root.boxed || input.has-focus ? Theme.surface : transparent;
+    clip: true;
+    Text {
+        x: input.x;
+        width: input.width;
+        height: parent.height;
+        visible: root.text == "";
+        text: root.placeholder;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        horizontal-alignment: root.alignment;
+        vertical-alignment: center;
+        color: Theme.faint;
+    }
+    input := TextInput {
+        x: root.boxed || self.has-focus ? 10px : 0px;
+        width: parent.width - 2 * self.x;
+        height: parent.height;
+        text <=> root.text;
+        single-line: true;
+        input-type: root.input-type;
+        accessible-label: root.spoken-label;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        horizontal-alignment: root.alignment;
+        vertical-alignment: center;
+        color: Theme.text;
+        selection-background-color: Theme.accent-soft;
+        selection-foreground-color: Theme.text;
+        edited => { root.edited(self.text); }
+        accepted => { root.accepted(self.text); }
+    }
+
+    public function clear() {
+        input.text = "";
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+}
+
+// Small glyph button for in-sheet actions; dims clearly when disabled.
+export component IconButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> tooltip;
+    in property <bool> enabled: true;
+    in property <bool> destructive;
+    callback clicked();
+
+    width: 24px;
+    height: 24px;
+    border-radius: Theme.radius-s;
+    background: !root.enabled ? transparent : touch.has-hover ? (root.destructive ? Theme.fail-soft : Theme.line-strong) : transparent;
+    accessible-role: button;
+    accessible-label: root.tooltip;
+    accessible-enabled: root.enabled;
+    Text {
+        text: root.glyph;
+        font-size: Theme.text-m;
+        color: !root.enabled ? Theme.line-strong
+            : touch.has-hover ? (root.destructive ? Theme.fail : Theme.text)
+            : Theme.faint;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress {
+        enabled: root.enabled;
+        pressed => { root.clicked(); }
+    }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+export component MessageBanner inherits Rectangle {
+    in property <string> message;
+    in property <bool> is-error;
+
+    visible: root.message != "";
+    height: self.visible ? label.preferred-height + 20px : 0px;
+    border-radius: Theme.radius-s;
+    background: root.is-error ? Theme.fail-soft : Theme.pass-soft;
+    Rectangle {
+        x: 0px;
+        width: 3px;
+        background: root.is-error ? Theme.fail : Theme.pass;
+    }
+    label := Text {
+        x: 14px;
+        width: parent.width - 28px;
+        text: root.message;
+        wrap: word-wrap;
+        vertical-alignment: center;
+        color: Theme.text;
+    }
+}
+
+export component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <string> detail;
+    in property <string> glyph;
+    in property <bool> selected;
+    callback clicked();
+
+    height: 38px;
+    border-radius: Theme.radius-s;
+    background: root.selected ? Theme.accent-soft : touch.has-hover ? Theme.raised : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-item-selected: root.selected;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        if root.glyph != "": Text {
+            text: root.glyph;
+            vertical-alignment: center;
+            color: root.selected ? Theme.accent : Theme.muted;
+        }
+        Text {
+            text: root.label;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+            color: root.selected ? Theme.accent : Theme.text;
+            font-weight: root.selected ? 600 : 400;
+        }
+        if root.detail != "": Text {
+            text: root.detail;
+            vertical-alignment: center;
+            font-size: Theme.text-s;
+            color: root.selected ? Theme.accent : Theme.faint;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+export component FolderField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> value;
+    callback browse();
+
+    spacing: 6px;
+    Text {
+        text: root.label;
+        color: Theme.muted;
+        font-size: Theme.text-s;
+        font-weight: 600;
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        TextField {
+            text <=> root.value;
+            spoken-label: root.label;
+            horizontal-stretch: 1;
+        }
+        ActionButton {
+            text: @tr("Browse…");
+            clicked => { root.browse(); }
+        }
+    }
+}
+
+// The app's mark: a rounded accent tile with a lowercase "a".
+export component BrandMark inherits Rectangle {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: Theme.accent;
+    Text {
+        text: "a";
+        font-size: 19px;
+        font-weight: 800;
+        color: Theme.on-accent;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// Small rounded label for column facts such as "50%" or "/10".
+export component Tag inherits Rectangle {
+    in property <string> text;
+    in property <bool> highlighted;
+
+    height: 20px;
+    width: label.preferred-width + 14px;
+    border-radius: 6px;
+    border-width: root.highlighted ? 0px : 1px;
+    border-color: Theme.line;
+    background: root.highlighted ? Theme.accent-soft : Theme.surface;
+    label := Text {
+        text: root.text;
+        font-size: 12px;
+        font-weight: 500;
+        color: root.highlighted ? Theme.accent : Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// On/off switch.
+export component Toggle inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled(bool);
+
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: root.checked ? Theme.accent : Theme.line-strong;
+    accessible-role: checkbox;
+    accessible-checked: root.checked;
+    accessible-label: root.label;
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: 3px;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: #ffffff;
+        animate x { duration: 120ms; easing: ease-out; }
+    }
+    TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.toggled(!root.checked); }
+    }
+    accessible-action-default => { root.toggled(!root.checked); }
+    keys := KeyboardPress { pressed => { root.toggled(!root.checked); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// Floating surface for menus and pickers.
+export component MenuSurface inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: Theme.line;
+    drop-shadow-blur: 28px;
+    drop-shadow-offset-y: 10px;
+    drop-shadow-color: Theme.shadow;
+    @children
+}
+
+export component MenuOption inherits Rectangle {
+    in property <string> title;
+    in property <string> hint;
+    in property <bool> destructive;
+    callback clicked();
+
+    // at least one comfortable row, and as tall as a hint that wraps to more lines needs
+    min-height: root.hint == "" ? 40px : 56px;
+    border-radius: Theme.radius-s;
+    background: touch.has-hover ? (root.destructive ? Theme.fail-soft : Theme.raised) : transparent;
+    accessible-role: button;
+    accessible-label: root.title;
+    accessible-description: root.hint;
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        alignment: center;
+        spacing: 2px;
+        Text { text: root.title; font-weight: 600; color: root.destructive ? Theme.fail : Theme.text; }
+        if root.hint != "": Text { text: root.hint; font-size: Theme.text-s; color: Theme.muted; wrap: word-wrap; }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// A card on the settings page.
+export component Card inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+
+    background: Theme.surface;
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: Theme.line;
+    VerticalLayout {
+        padding: 20px;
+        spacing: 10px;
+        Text { text: root.title; font-size: Theme.text-l; font-weight: 600; color: Theme.text; }
+        if root.description != "": Text { text: root.description; wrap: word-wrap; color: Theme.muted; }
+        @children
+    }
+}
+export enum IconKind { moon, sun, lock, more, gear }
+
+// Line icons drawn as shapes (24 x 24 grid), so they never depend on what the font contains.
+export component Icon inherits Path {
+    in property <IconKind> kind;
+    in property <color> color: Theme.muted;
+
+    width: 18px;
+    height: 18px;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    stroke: root.color;
+    stroke-width: 1.8px;
+    fill: root.kind == IconKind.more ? root.color : transparent;
+    commands: root.kind == IconKind.moon ? "M 20 14.5 A 8 8 0 1 1 9.5 4 A 6.5 6.5 0 0 0 20 14.5 Z"
+        : root.kind == IconKind.sun ? "M 12 8 A 4 4 0 1 1 11.99 8 Z M 12 2 L 12 4.5 M 12 19.5 L 12 22 M 2 12 L 4.5 12 M 19.5 12 L 22 12 M 4.9 4.9 L 6.7 6.7 M 17.3 17.3 L 19.1 19.1 M 4.9 19.1 L 6.7 17.3 M 17.3 6.7 L 19.1 4.9"
+        : root.kind == IconKind.lock ? "M 6 11 L 18 11 L 18 20 L 6 20 Z M 8.5 11 L 8.5 8 A 3.5 3.5 0 0 1 15.5 8 L 15.5 11"
+        : root.kind == IconKind.more ? "M 5 10.5 A 1.5 1.5 0 1 1 4.99 10.5 Z M 12 10.5 A 1.5 1.5 0 1 1 11.99 10.5 Z M 19 10.5 A 1.5 1.5 0 1 1 18.99 10.5 Z"
+        : "M 12 9 A 3 3 0 1 1 11.99 9 Z M 12 2.5 L 13.5 5 L 16.4 4.4 L 17 7.3 L 19.6 8.8 L 18.5 11.5 L 19.6 14.2 L 17 15.7 L 16.4 18.6 L 13.5 18 L 12 20.5 L 10.5 18 L 7.6 18.6 L 7 15.7 L 4.4 14.2 L 5.5 11.5 L 4.4 8.8 L 7 7.3 L 7.6 4.4 L 10.5 5 Z";
+}
+
+// A sidebar entry with a drawn icon.
+export component IconNavItem inherits Rectangle {
+    in property <IconKind> icon;
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+
+    height: 38px;
+    border-radius: Theme.radius-s;
+    background: root.selected ? Theme.accent-soft : touch.has-hover ? Theme.raised : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-item-selected: root.selected;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icon { kind: root.icon; color: root.selected ? Theme.accent : Theme.muted; }
+        }
+        Text {
+            text: root.label;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: root.selected ? Theme.accent : Theme.text;
+            font-weight: root.selected ? 600 : 400;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// Square button with a drawn icon, matching ActionButton's secondary style.
+export component IconActionButton inherits Rectangle {
+    in property <IconKind> icon;
+    in property <string> label;
+    callback clicked();
+
+    width: Theme.control-height;
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    background: touch.has-hover ? Theme.raised : Theme.surface;
+    accessible-role: button;
+    accessible-label: root.label;
+    Icon {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        kind: root.icon;
+        color: Theme.text;
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}

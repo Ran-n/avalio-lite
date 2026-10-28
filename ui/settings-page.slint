@@ -1,0 +1,199 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { ActionButton, ButtonKind, Card, MessageBanner, TextField } from "components.slint";
+
+component PathBox inherits Rectangle {
+    in property <string> path;
+
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    background: Theme.raised;
+    Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: root.path;
+        overflow: elide;
+        vertical-alignment: center;
+        color: Theme.text;
+    }
+}
+
+component PinField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> value;
+
+    spacing: 6px;
+    Text { text: root.label; font-size: Theme.text-s; font-weight: 600; color: Theme.muted; }
+    TextField {
+        width: 180px;
+        input-type: InputType.password;
+        spoken-label: root.label;
+        text <=> root.value;
+    }
+}
+
+component PinCard inherits Card {
+    in property <bool> pin-set;
+    in-out property <string> current;
+    in-out property <string> new-pin;
+    in-out property <string> repeat;
+    callback set-pin();
+    callback change-pin();
+    callback remove-pin();
+
+    title: @tr("PIN and encryption");
+    description: root.pin-set
+        ? @tr("The database file is encrypted with your PIN. The app asks for it when it opens; lock it any time with Ctrl+L or the Lock button.")
+        : @tr("Encrypt the database file with a PIN of 4 or more characters, digits or letters. Someone with a copy of the file can try guesses without limit: a short PIN only stops a quick look, a long password with letters stops everyone. If you forget it, nobody can recover the data, so keep it somewhere safe.");
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: start;
+        if root.pin-set: PinField { label: @tr("Current PIN"); value <=> root.current; }
+        PinField { label: root.pin-set ? @tr("New PIN") : @tr("PIN"); value <=> root.new-pin; }
+        PinField { label: @tr("Repeat PIN"); value <=> root.repeat; }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        if !root.pin-set: ActionButton {
+            text: @tr("Encrypt with this PIN");
+            kind: ButtonKind.primary;
+            clicked => { root.set-pin(); }
+        }
+        if root.pin-set: ActionButton {
+            text: @tr("Change PIN");
+            clicked => { root.change-pin(); }
+        }
+        if root.pin-set: ActionButton {
+            text: @tr("Remove PIN and encryption");
+            kind: ButtonKind.danger;
+            clicked => { root.remove-pin(); }
+        }
+    }
+}
+
+export component SettingsPage inherits Rectangle {
+    in property <string> database-path;
+    in property <string> log-folder;
+    in property <string> error-message;
+    in property <string> status-message;
+    in property <string> language-code;
+    in property <bool> pin-set;
+    in-out property <string> pin-current;
+    in-out property <string> pin-new;
+    in-out property <string> pin-repeat;
+    callback move-database();
+    callback move-logs();
+    callback switch-database();
+    callback choose-language(string);
+    callback choose-theme(bool);
+    callback set-pin();
+    callback change-pin();
+    callback remove-pin();
+
+    ScrollView {
+        VerticalLayout {
+            padding: 32px;
+            padding-top: 26px;
+            spacing: 16px;
+            alignment: start;
+            Text {
+                text: @tr("Settings");
+                font-size: Theme.text-xl;
+                font-weight: 600;
+                color: Theme.text;
+            }
+            HorizontalLayout {
+                alignment: start;
+                VerticalLayout {
+                    width: 640px;
+                    spacing: 16px;
+                    MessageBanner {
+                        message: root.error-message;
+                        is-error: true;
+                    }
+                    MessageBanner {
+                        message: root.status-message;
+                        is-error: false;
+                    }
+                    Card {
+                        title: @tr("Appearance");
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionButton {
+                                text: @tr("Light");
+                                kind: Theme.dark ? ButtonKind.secondary : ButtonKind.primary;
+                                clicked => { root.choose-theme(false); }
+                            }
+                            ActionButton {
+                                text: @tr("Dark");
+                                kind: Theme.dark ? ButtonKind.primary : ButtonKind.secondary;
+                                clicked => { root.choose-theme(true); }
+                            }
+                        }
+                    }
+                    Card {
+                        title: @tr("Language");
+                        description: @tr("The language of the app. Names and marks you type stay as they are.");
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            // language names are written in their own language, so they are not translated
+                            ActionButton {
+                                text: "Galego";
+                                kind: root.language-code == "gl" ? ButtonKind.primary : ButtonKind.secondary;
+                                clicked => { root.choose-language("gl"); }
+                            }
+                            ActionButton {
+                                text: "English";
+                                kind: root.language-code == "en" ? ButtonKind.primary : ButtonKind.secondary;
+                                clicked => { root.choose-language("en"); }
+                            }
+                        }
+                    }
+                    PinCard {
+                        pin-set: root.pin-set;
+                        current <=> root.pin-current;
+                        new-pin <=> root.pin-new;
+                        repeat <=> root.pin-repeat;
+                        set-pin => { root.set-pin(); }
+                        change-pin => { root.change-pin(); }
+                        remove-pin => { root.remove-pin(); }
+                    }
+                    Card {
+                        title: @tr("Database");
+                        description: @tr("Every class, pupil and mark is in this file. Copy it while the app is closed to make a backup.");
+                        PathBox { path: root.database-path; }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionButton {
+                                text: @tr("Move…");
+                                clicked => { root.move-database(); }
+                            }
+                            ActionButton {
+                                text: @tr("Open another database…");
+                                kind: ButtonKind.ghost;
+                                clicked => { root.switch-database(); }
+                            }
+                        }
+                    }
+                    Card {
+                        title: @tr("Logs");
+                        description: @tr("A record of what the app did, useful when something goes wrong.");
+                        PathBox { path: root.log-folder; }
+                        HorizontalLayout {
+                            alignment: start;
+                            ActionButton {
+                                text: @tr("Move…");
+                                clicked => { root.move-logs(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

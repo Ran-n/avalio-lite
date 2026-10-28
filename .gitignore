@@ -1,0 +1,9 @@
+/target
+/dist
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# golden samples of saved formats are checked in
+!tests/golden/*.db

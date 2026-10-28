@@ -1,0 +1,91 @@
+// Data and actions of the classes and their sheets, shared by every screen that needs them.
+
+export enum ColumnType { info, test, weighted, average, round }
+
+export struct ClassItem {
+    id: int,
+    name: string,
+    pupil-count: int,
+}
+
+export struct ColumnItem {
+    id: int,
+    kind: ColumnType,
+    title: string,
+    weight: string,
+    max-score: string,
+    // index into Gradebook.round-sources, -1 when unset
+    source-index: int,
+    decimals: string,
+    bonus: bool,
+}
+
+export enum Tone { neutral, pass, fail }
+
+export struct CellItem {
+    text: string,
+    invalid: bool,
+    tone: Tone,
+    // a final grade (or a rounding of one) while the test weights don't add up to 100 %
+    provisional: bool,
+}
+
+export struct RowItem {
+    pupil-id: int,
+    name: string,
+    cells: [CellItem],
+}
+
+export global Gradebook {
+    in property <[ClassItem]> classes;
+    in-out property <int> current-class-id: -1;
+    in property <string> class-name;
+    in property <[ColumnItem]> columns;
+    in property <[RowItem]> rows;
+    // titles of the columns a rounded column can round, in sheet order
+    in property <[string]> round-sources;
+    in property <string> weight-total;
+    in property <string> bonus-total;
+    in property <bool> weights-complete: true;
+    in property <[string]> addable-pupils;
+    in property <string> error-message;
+    // when false, column headers show only titles (no weight / scale tags)
+    in property <bool> show-column-settings: true;
+
+    // the class at a glance, from its final grade column
+    in property <bool> has-summary;
+    in property <string> class-average;
+    in property <int> passing;
+    in property <int> failing;
+
+    // the column whose settings panel is open: zero or one item, replaced (not edited) on each
+    // selection so the panel's fields start fresh for every column
+    in property <[ColumnItem]> panel-column;
+    in property <int> panel-index: -1;
+
+    callback toggle-column-settings();
+    callback open-column-panel(int);
+    callback close-column-panel();
+    callback select-class(int);
+    callback create-class(string);
+    callback rename-class(string);
+    callback delete-class();
+
+    callback add-column(ColumnType);
+    callback rename-column(int, string);
+    callback set-weight(int, string);
+    callback set-bonus(int, bool);
+    callback set-max-score(int, string);
+    callback set-round-source(int, int);
+    callback set-decimals(int, string);
+    callback move-column(int, int);
+    callback delete-column(int);
+
+    callback add-new-pupil(string);
+    callback add-existing-pupil(int);
+    callback rename-pupil(int, string);
+    callback remove-pupil(int);
+
+    // row index, column index, typed text
+    callback cell-edited(int, int, string);
+}

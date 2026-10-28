@@ -1,0 +1,41 @@
+// Design tokens for both themes. A clean "printed mark book" light theme and a slate dark one,
+// each with one blue accent for focus and selection; green and red are only for pass / fail.
+export global Theme {
+    in-out property <bool> dark: false;
+
+    out property <color> canvas: dark ? #13161c : #eef0f4;
+    out property <color> surface: dark ? #1b1f27 : #ffffff;
+    out property <color> raised: dark ? #232833 : #f6f7fa;
+    out property <color> computed: dark ? #1f2431 : #f3f5fb;
+    out property <color> line: dark ? #2b313d : #e2e5eb;
+    out property <color> line-strong: dark ? #3a4150 : #cfd4dd;
+
+    out property <color> text: dark ? #eceef3 : #1a2130;
+    out property <color> muted: dark ? #a2aaba : #5d6578;
+    out property <color> faint: dark ? #747d90 : #8a91a1;
+
+    out property <color> accent: dark ? #8ea6ff : #2f54d6;
+    out property <color> accent-hover: dark ? #a3b6ff : #2647be;
+    out property <color> accent-soft: dark ? #283357 : #e6ecfd;
+    out property <color> on-accent: dark ? #0f1530 : #ffffff;
+
+    out property <color> pass: dark ? #6fd0a2 : #1d7f55;
+    out property <color> pass-soft: dark ? #1d3a2f : #dff3e9;
+    out property <color> fail: dark ? #f39a9f : #c2362c;
+    out property <color> fail-soft: dark ? #43252a : #fce5e3;
+    out property <color> warn: dark ? #e9c06e : #a86a12;
+    out property <color> warn-soft: dark ? #3a3222 : #fbf0dc;
+    out property <color> shadow: dark ? #00000066 : #141c3020;
+
+    out property <length> radius-s: 8px;
+    out property <length> radius-m: 12px;
+    out property <length> radius-l: 16px;
+
+    out property <length> text-s: 13px;
+    out property <length> text-m: 15px;
+    out property <length> text-l: 20px;
+    out property <length> text-xl: 28px;
+
+    out property <length> control-height: 36px;
+    out property <length> row-height: 44px;
+}

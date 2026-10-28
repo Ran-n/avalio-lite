@@ -1,0 +1,122 @@
+import { Theme } from "theme.slint";
+import { ActionButton, BrandMark, ButtonKind, TextField } from "components.slint";
+
+component Key inherits Rectangle {
+    in property <string> label;
+    in property <string> spoken-label: root.label;
+    in property <bool> emphasized;
+    callback pressed();
+
+    width: 72px;
+    height: 56px;
+    border-radius: Theme.radius-m;
+    background: root.emphasized ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : touch.pressed ? Theme.line-strong : touch.has-hover ? Theme.line : Theme.raised;
+    accessible-role: button;
+    accessible-label: root.spoken-label;
+    Text {
+        text: root.label;
+        font-size: 22px;
+        font-weight: root.emphasized ? 700 : 500;
+        color: root.emphasized ? Theme.on-accent : Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.pressed(); }
+    }
+}
+
+// Covers the whole app until the right PIN is typed (keyboard or on-screen keys).
+export component LockPage inherits Rectangle {
+    in-out property <string> pin;
+    in property <string> error-message;
+    callback unlock(string);
+    callback erase();
+
+    background: Theme.canvas;
+    // keep clicks from reaching the app underneath
+    TouchArea { }
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 340px;
+                background: Theme.surface;
+                border-radius: Theme.radius-l;
+                border-width: 1px;
+                border-color: Theme.line;
+                drop-shadow-blur: 40px;
+                drop-shadow-offset-y: 16px;
+                drop-shadow-color: Theme.shadow;
+                VerticalLayout {
+                    padding: 32px;
+                    spacing: 18px;
+                    HorizontalLayout {
+                        alignment: center;
+                        BrandMark { }
+                    }
+                    Text {
+                        text: @tr("avalio lite is locked");
+                        font-size: Theme.text-l;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        color: Theme.text;
+                    }
+                    field := TextField {
+                        input-type: InputType.password;
+                        alignment: TextHorizontalAlignment.center;
+                        font-size: 22px;
+                        placeholder: @tr("PIN");
+                        text <=> root.pin;
+                        accepted(text) => { root.unlock(text); }
+                        init => { self.focus-input(); }
+                    }
+                    if root.error-message != "": Text {
+                        text: root.error-message;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        color: Theme.fail;
+                    }
+                    HorizontalLayout {
+                    alignment: center;
+                    GridLayout {
+                        spacing: 10px;
+                        Row {
+                            Key { label: "1"; pressed => { root.pin += self.label; } }
+                            Key { label: "2"; pressed => { root.pin += self.label; } }
+                            Key { label: "3"; pressed => { root.pin += self.label; } }
+                        }
+                        Row {
+                            Key { label: "4"; pressed => { root.pin += self.label; } }
+                            Key { label: "5"; pressed => { root.pin += self.label; } }
+                            Key { label: "6"; pressed => { root.pin += self.label; } }
+                        }
+                        Row {
+                            Key { label: "7"; pressed => { root.pin += self.label; } }
+                            Key { label: "8"; pressed => { root.pin += self.label; } }
+                            Key { label: "9"; pressed => { root.pin += self.label; } }
+                        }
+                        Row {
+                            Key {
+                                label: "←";
+                                spoken-label: @tr("Erase");
+                                pressed => { root.erase(); field.focus-input(); }
+                            }
+                            Key { label: "0"; pressed => { root.pin += self.label; } }
+                            Key {
+                                label: "✓";
+                                spoken-label: @tr("Unlock");
+                                emphasized: true;
+                                pressed => { root.unlock(root.pin); }
+                            }
+                        }
+                    }
+                    }
+                }
+            }
+        }
+    }
+}

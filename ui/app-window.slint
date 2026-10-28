@@ -1,0 +1,132 @@
+import { Palette } from "std-widgets.slint";
+import { SetupNotice, SetupPage } from "setup-page.slint";
+import { Section, Shell } from "shell.slint";
+import { LockPage } from "lock-page.slint";
+import { CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone } from "gradebook.slint";
+import { Theme } from "theme.slint";
+
+export { SetupNotice, Section, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone, Theme }
+
+export component AppWindow inherits Window {
+    in property <bool> setup-required: true;
+    in property <SetupNotice> setup-notice;
+    in property <string> setup-notice-detail;
+    in-out property <string> setup-database-folder;
+    in-out property <string> setup-log-folder;
+    in property <string> database-path;
+    in property <string> log-folder;
+    in property <string> error-message;
+    in property <string> status-message;
+    in property <string> language-code: "en";
+
+    in property <bool> locked;
+    in property <bool> pin-set;
+    in-out property <string> unlock-pin;
+    in property <string> unlock-error;
+    in-out property <string> pin-current;
+    in-out property <string> pin-new;
+    in-out property <string> pin-repeat;
+
+    callback browse-setup-database-folder();
+    callback browse-setup-log-folder();
+    callback create-database();
+    callback open-existing-database();
+    callback move-database();
+    callback move-logs();
+    callback switch-database();
+    callback choose-language(string);
+    callback choose-theme(bool);
+    callback lock-now();
+    callback unlock(string);
+    callback set-pin();
+    callback change-pin();
+    callback remove-pin();
+
+    /// Whether Windows is set to dark mode; used until the user picks a theme.
+    public pure function system-prefers-dark() -> bool {
+        return Palette.color-scheme == ColorScheme.dark;
+    }
+
+    /// Switches every colour, the standard widgets included.
+    public function apply-theme(dark: bool) {
+        Theme.dark = dark;
+        Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    title: "avalio-lite";
+    background: Theme.canvas;
+    default-font-family: "Segoe UI";
+    default-font-size: 15px;
+    min-width: 1000px;
+    min-height: 600px;
+    preferred-width: 1280px;
+    preferred-height: 800px;
+
+    // Ctrl+L locks from anywhere, even while typing in a cell: the key is caught before the
+    // focused field sees it. Keys only arrive while something inside has focus, so the scope takes
+    // it back whenever the focused field goes away (unlocking, finishing setup, changing page);
+    // the lock screen's PIN field keeps the focus it takes when it appears.
+    changed locked => {
+        if (!root.locked) {
+            shortcuts.focus();
+        }
+    }
+    changed setup-required => {
+        if (!root.setup-required && !root.locked) {
+            shortcuts.focus();
+        }
+    }
+
+    shortcuts := FocusScope {
+        capture-key-pressed(event) => {
+            if (event.modifiers.control && !event.modifiers.alt && (event.text == "l" || event.text == "L")) {
+                if (!root.setup-required && !root.locked) {
+                    root.lock-now();
+                }
+                return accept;
+            }
+            return reject;
+        }
+
+        if root.setup-required: SetupPage {
+            notice: root.setup-notice;
+            notice-detail: root.setup-notice-detail;
+            error-message: root.error-message;
+            database-folder <=> root.setup-database-folder;
+            log-folder <=> root.setup-log-folder;
+            browse-database-folder => { root.browse-setup-database-folder(); }
+            browse-log-folder => { root.browse-setup-log-folder(); }
+            create-database => { root.create-database(); }
+            open-existing-database => { root.open-existing-database(); }
+        }
+        if !root.setup-required && !root.locked: Shell {
+            database-path: root.database-path;
+            log-folder: root.log-folder;
+            error-message: root.error-message;
+            status-message: root.status-message;
+            language-code: root.language-code;
+            pin-set: root.pin-set;
+            pin-current <=> root.pin-current;
+            pin-new <=> root.pin-new;
+            pin-repeat <=> root.pin-repeat;
+            move-database => { root.move-database(); }
+            move-logs => { root.move-logs(); }
+            switch-database => { root.switch-database(); }
+            choose-language(code) => { root.choose-language(code); }
+            choose-theme(dark) => { root.choose-theme(dark); }
+            lock-now => { root.lock-now(); }
+            navigated => { shortcuts.focus(); }
+            set-pin => { root.set-pin(); }
+            change-pin => { root.change-pin(); }
+            remove-pin => { root.remove-pin(); }
+        }
+        if !root.setup-required && root.locked: LockPage {
+            pin <=> root.unlock-pin;
+            error-message: root.unlock-error;
+            unlock(pin) => { root.unlock(pin); }
+            erase => { root.unlock-pin = root.unlock-pin == "" ? "" : root.erase-last(root.unlock-pin); }
+        }
+    }
+
+    callback erase-last(string) -> string;
+}

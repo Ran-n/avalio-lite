@@ -1,0 +1,63 @@
+import { Theme } from "theme.slint";
+import { ColumnItem, ColumnType, Gradebook } from "gradebook.slint";
+import { FocusRing, KeyboardPress, Tag } from "components.slint";
+
+component Faint inherits Text {
+    color: Theme.faint;
+    font-size: 12px;
+    vertical-alignment: center;
+}
+
+// Header of one sheet column: its title and a few tags. Clicking it opens the column's settings panel.
+export component ColumnHeader inherits Rectangle {
+    in property <ColumnItem> column;
+    in property <int> index;
+    property <bool> selected: Gradebook.panel-index == root.index;
+    property <bool> calculated: root.column.kind != ColumnType.info && root.column.kind != ColumnType.test;
+
+    background: root.selected ? Theme.accent-soft : touch.has-hover ? Theme.line : (root.calculated ? Theme.computed : Theme.raised);
+    accessible-role: button;
+    accessible-label: root.column.title;
+    accessible-action-default => { Gradebook.open-column-panel(root.index); }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { Gradebook.open-column-panel(root.index); }
+    }
+    keys := KeyboardPress { pressed => { Gradebook.open-column-panel(root.index); } }
+    if keys.has-focus: FocusRing { }
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 12px;
+        padding-bottom: 11px;
+        spacing: 6px;
+        alignment: start;
+        Text {
+            text: root.column.title;
+            font-weight: 600;
+            font-size: 14px;
+            overflow: elide;
+            color: root.selected ? Theme.accent : Theme.text;
+        }
+        if Gradebook.show-column-settings: HorizontalLayout {
+            spacing: 5px;
+            alignment: start;
+            if root.column.kind == ColumnType.test && !root.column.bonus: Tag { text: root.column.weight + "%"; }
+            if root.column.kind == ColumnType.test && root.column.bonus: Tag {
+                text: @tr("+{}% bonus", root.column.weight);
+                highlighted: true;
+            }
+            if root.column.kind == ColumnType.test: Tag { text: "/" + root.column.max-score; }
+            if root.column.kind == ColumnType.info: Faint { text: @tr("Text"); }
+            if root.column.kind == ColumnType.weighted || root.column.kind == ColumnType.average: Faint {
+                text: "/" + root.column.max-score;
+            }
+            if root.column.kind == ColumnType.round: Faint { text: @tr("Decimals: {}", root.column.decimals); }
+        }
+    }
+    Rectangle {
+        y: parent.height - 2px;
+        height: 2px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+}

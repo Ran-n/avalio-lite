@@ -1,0 +1,166 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Gradebook } from "gradebook.slint";
+import { BrandMark, IconKind, IconNavItem, NavItem, TextField } from "components.slint";
+import { NoClassPage, SheetPage } from "sheet-page.slint";
+import { SettingsPage } from "settings-page.slint";
+
+export enum Section { sheet, settings }
+
+component Sidebar inherits Rectangle {
+    in-out property <Section> section;
+    in property <bool> pin-set;
+    callback lock-now();
+    callback toggle-theme();
+
+    width: 236px;
+    background: Theme.surface;
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.line;
+    }
+    VerticalLayout {
+        padding: 12px;
+        padding-top: 18px;
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: 10px;
+            padding-left: 8px;
+            padding-bottom: 20px;
+            BrandMark { }
+            Text {
+                text: "avalio lite";
+                font-size: 17px;
+                font-weight: 600;
+                vertical-alignment: center;
+                color: Theme.text;
+            }
+        }
+        Text {
+            text: @tr("Classes");
+            font-size: Theme.text-s;
+            font-weight: 600;
+            color: Theme.faint;
+            height: 26px;
+            x: 10px;
+        }
+        ListView {
+            vertical-stretch: 1;
+            for class in Gradebook.classes: NavItem {
+                label: class.name;
+                detail: class.pupil-count;
+                selected: root.section == Section.sheet && Gradebook.current-class-id == class.id;
+                clicked => {
+                    root.section = Section.sheet;
+                    Gradebook.select-class(class.id);
+                }
+            }
+        }
+        Rectangle {
+            height: Theme.control-height;
+            new-class := TextField {
+                x: 28px;
+                width: parent.width - 28px;
+                boxed: false;
+                placeholder: @tr("New class");
+                accepted(text) => {
+                    root.section = Section.sheet;
+                    Gradebook.create-class(text);
+                    self.clear();
+                }
+            }
+            Text {
+                x: 12px;
+                height: parent.height;
+                vertical-alignment: center;
+                text: "+";
+                font-size: Theme.text-l;
+                color: new-class.has-focus ? Theme.accent : Theme.muted;
+            }
+        }
+        Rectangle {
+            height: 17px;
+            Rectangle {
+                y: 8px;
+                height: 1px;
+                background: Theme.line;
+            }
+        }
+        if root.pin-set: IconNavItem {
+            icon: IconKind.lock;
+            label: @tr("Lock (Ctrl+L)");
+            clicked => { root.lock-now(); }
+        }
+        IconNavItem {
+            icon: Theme.dark ? IconKind.sun : IconKind.moon;
+            label: Theme.dark ? @tr("Light mode") : @tr("Dark mode");
+            clicked => { root.toggle-theme(); }
+        }
+        IconNavItem {
+            icon: IconKind.gear;
+            label: @tr("Settings");
+            selected: root.section == Section.settings;
+            clicked => { root.section = Section.settings; }
+        }
+    }
+}
+
+export component Shell inherits Rectangle {
+    in-out property <Section> section: Section.sheet;
+    in property <string> database-path;
+    in property <string> log-folder;
+    in property <string> error-message;
+    in property <string> status-message;
+    in property <string> language-code;
+    in property <bool> pin-set;
+    in-out property <string> pin-current;
+    in-out property <string> pin-new;
+    in-out property <string> pin-repeat;
+    callback move-database();
+    callback move-logs();
+    callback switch-database();
+    callback choose-language(string);
+    callback choose-theme(bool);
+    callback lock-now();
+    callback set-pin();
+    callback change-pin();
+    callback remove-pin();
+    // the page changed, so whatever field had focus is gone
+    callback navigated();
+
+    changed section => { root.navigated(); }
+    background: Theme.canvas;
+    HorizontalLayout {
+        Sidebar {
+            section <=> root.section;
+            pin-set: root.pin-set;
+            lock-now => { root.lock-now(); }
+            toggle-theme => { root.choose-theme(!Theme.dark); }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            if root.section == Section.sheet && Gradebook.current-class-id >= 0: SheetPage { }
+            if root.section == Section.sheet && Gradebook.current-class-id < 0: NoClassPage { }
+            if root.section == Section.settings: SettingsPage {
+                database-path: root.database-path;
+                log-folder: root.log-folder;
+                error-message: root.error-message;
+                status-message: root.status-message;
+                language-code: root.language-code;
+                pin-set: root.pin-set;
+                pin-current <=> root.pin-current;
+                pin-new <=> root.pin-new;
+                pin-repeat <=> root.pin-repeat;
+                move-database => { root.move-database(); }
+                move-logs => { root.move-logs(); }
+                switch-database => { root.switch-database(); }
+                choose-language(code) => { root.choose-language(code); }
+                choose-theme(dark) => { root.choose-theme(dark); }
+                set-pin => { root.set-pin(); }
+                change-pin => { root.change-pin(); }
+                remove-pin => { root.remove-pin(); }
+            }
+        }
+    }
+}

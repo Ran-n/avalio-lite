@@ -1,0 +1,203 @@
+import { ComboBox } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { ColumnItem, ColumnType, Gradebook } from "gradebook.slint";
+import { ActionButton, ButtonKind, IconButton, TextField, Toggle } from "components.slint";
+
+component FieldLabel inherits Text {
+    font-size: Theme.text-s;
+    font-weight: 600;
+    color: Theme.muted;
+}
+
+// A labelled number box with an optional unit after it ("%").
+component NumberField inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> unit;
+    callback edited(string);
+
+    spacing: 6px;
+    FieldLabel { text: root.label; }
+    // the box's height, so the layout leaves room for it under the label
+    Rectangle {
+        height: Theme.control-height;
+        TextField {
+            text: root.value;
+            spoken-label: root.label;
+            edited(text) => { root.edited(text); }
+        }
+        if root.unit != "": Text {
+            x: parent.width - self.width - 12px;
+            height: parent.height;
+            text: root.unit;
+            vertical-alignment: center;
+            color: Theme.faint;
+        }
+    }
+}
+
+// Everything about one column, opened by clicking its header.
+export component ColumnPanel inherits Rectangle {
+    in property <ColumnItem> column;
+    in property <int> index;
+    property <bool> is-first: root.index == 0;
+    property <bool> is-last: root.index == Gradebook.columns.length - 1;
+
+    width: 340px;
+    background: Theme.surface;
+    drop-shadow-blur: 40px;
+    drop-shadow-offset-x: -12px;
+    drop-shadow-color: Theme.shadow;
+    // swallow clicks so they don't reach the sheet underneath
+    TouchArea { }
+    Rectangle {
+        x: 0px;
+        width: 1px;
+        background: Theme.line;
+    }
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        // the settings take only the room they need; the space left goes above the buttons
+        VerticalLayout {
+            vertical-stretch: 0;
+            spacing: 18px;
+            HorizontalLayout {
+                Text {
+                    text: root.column.title;
+                    font-size: Theme.text-l;
+                    font-weight: 600;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                IconButton {
+                    glyph: "×";
+                    tooltip: @tr("Close");
+                    clicked => { Gradebook.close-column-panel(); }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                FieldLabel { text: @tr("Title"); }
+                TextField {
+                    text: root.column.title;
+                    spoken-label: @tr("Title");
+                    edited(text) => { Gradebook.rename-column(root.column.id, text); }
+                }
+            }
+            VerticalLayout {
+                spacing: 4px;
+                FieldLabel { text: @tr("Type"); }
+                Text {
+                    wrap: word-wrap;
+                    color: Theme.muted;
+                    text: root.column.kind == ColumnType.info ? @tr("Info: free text, such as notes")
+                        : root.column.kind == ColumnType.test ? @tr("Test: a mark out of a maximum that counts towards the final grade")
+                        : root.column.kind == ColumnType.weighted ? @tr("Final grade: adds up the tests by their weights")
+                        : root.column.kind == ColumnType.average ? @tr("Average: the mean of the marked tests")
+                        : @tr("Rounded: another column rounded to whole marks or decimals");
+                }
+            }
+            if root.column.kind == ColumnType.test: VerticalLayout {
+                spacing: 18px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    NumberField {
+                        label: @tr("Weight");
+                        unit: "%";
+                        value: root.column.weight;
+                        edited(text) => { Gradebook.set-weight(root.column.id, text); }
+                    }
+                    NumberField {
+                        label: @tr("Out of");
+                        value: root.column.max-score;
+                        edited(text) => { Gradebook.set-max-score(root.column.id, text); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        Text { text: @tr("Bonus test"); font-weight: 600; color: Theme.text; }
+                        Text { text: @tr("Counts on top of the 100%"); font-size: Theme.text-s; color: Theme.muted; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Toggle {
+                            checked: root.column.bonus;
+                            label: @tr("Bonus test");
+                            toggled(on) => { Gradebook.set-bonus(root.column.id, on); }
+                        }
+                    }
+                }
+            }
+            if root.column.kind == ColumnType.weighted || root.column.kind == ColumnType.average: NumberField {
+                label: @tr("Out of");
+                value: root.column.max-score;
+                edited(text) => { Gradebook.set-max-score(root.column.id, text); }
+            }
+            if root.column.kind == ColumnType.round: VerticalLayout {
+                spacing: 18px;
+                VerticalLayout {
+                    spacing: 6px;
+                    FieldLabel { text: @tr("Rounds"); }
+                    ComboBox {
+                        model: Gradebook.round-sources;
+                        current-index: root.column.source-index;
+                        selected => { Gradebook.set-round-source(root.column.id, self.current-index); }
+                    }
+                }
+                NumberField {
+                    label: @tr("Decimals");
+                    value: root.column.decimals;
+                    edited(text) => { Gradebook.set-decimals(root.column.id, text); }
+                }
+            }
+            if root.column.kind == ColumnType.test || root.column.kind == ColumnType.weighted: Rectangle {
+                background: Theme.raised;
+                border-radius: Theme.radius-s;
+                hint := Text {
+                    x: 12px;
+                    y: 10px;
+                    width: parent.width - 24px;
+                    wrap: word-wrap;
+                    font-size: Theme.text-s;
+                    color: Gradebook.weights-complete ? Theme.muted : Theme.warn;
+                    text: Gradebook.bonus-total == "0"
+                        ? @tr("The normal tests add up to {}%.", Gradebook.weight-total)
+                        : @tr("The normal tests add up to {}%. Bonus tests add {}% on top, up to the maximum grade.", Gradebook.weight-total, Gradebook.bonus-total);
+                }
+                height: hint.preferred-height + 20px;
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        // the move buttons share the panel's width; Delete gets a row of its own, so all three
+        // fit even with Galician's longer labels
+        HorizontalLayout {
+            spacing: 8px;
+            ActionButton {
+                horizontal-stretch: 1;
+                text: @tr("‹ Move left");
+                enabled: !root.is-first;
+                clicked => { Gradebook.move-column(root.column.id, -1); }
+            }
+            ActionButton {
+                horizontal-stretch: 1;
+                text: @tr("Move right ›");
+                enabled: !root.is-last;
+                clicked => { Gradebook.move-column(root.column.id, 1); }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            ActionButton {
+                text: @tr("Delete");
+                kind: ButtonKind.danger;
+                clicked => { Gradebook.delete-column(root.column.id); }
+            }
+        }
+    }
+}
