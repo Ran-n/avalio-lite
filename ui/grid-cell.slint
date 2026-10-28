@@ -1,0 +1,78 @@
+import { Theme } from "theme.slint";
+import { Tone } from "gradebook.slint";
+
+// One cell of a sheet. Typed cells are borderless until focused; calculated cells
+// show their value as a pass / fail pill.
+export component GridCell inherits Rectangle {
+    in property <string> text;
+    in property <bool> invalid;
+    in property <bool> computed;
+    in property <Tone> tone;
+    in property <bool> numeric;
+    in property <bool> provisional;
+    // "pupil, column", so a screen reader says which cell this is
+    in property <string> spoken-label;
+    callback edited(string);
+
+    height: Theme.row-height;
+    background: root.computed ? Theme.computed : root.invalid ? Theme.fail-soft : input.has-focus ? Theme.raised : Theme.surface;
+
+    input := TextInput {
+        visible: !root.computed;
+        accessible-label: root.spoken-label;
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: root.text;
+        single-line: true;
+        horizontal-alignment: root.numeric ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        vertical-alignment: center;
+        font-size: Theme.text-m;
+        color: root.invalid ? Theme.fail : root.tone == Tone.fail ? Theme.fail : Theme.text;
+        selection-background-color: Theme.accent-soft;
+        selection-foreground-color: Theme.text;
+        edited => { root.edited(self.text); }
+    }
+    // A provisional grade is shown grey with a warning mark instead of pass / fail colours,
+    // so it can't be mistaken for a final result while the test weights are wrong.
+    if root.computed && root.text != "": Rectangle {
+        x: parent.width - self.width - 10px;
+        y: (parent.height - self.height) / 2;
+        width: pill.preferred-width;
+        height: 26px;
+        border-radius: 13px;
+        border-width: root.provisional ? 1px : 0px;
+        border-color: Theme.warn.with-alpha(0.5);
+        background: root.provisional ? Theme.raised
+            : root.tone == Tone.pass ? Theme.pass-soft
+            : root.tone == Tone.fail ? Theme.fail-soft
+            : Theme.raised;
+        pill := HorizontalLayout {
+            padding-left: 11px;
+            padding-right: 11px;
+            spacing: 5px;
+            if root.provisional: Text {
+                text: "!";
+                font-size: Theme.text-m;
+                font-weight: 800;
+                vertical-alignment: center;
+                color: Theme.warn;
+            }
+            Text {
+                text: root.text;
+                font-size: Theme.text-m;
+                font-weight: 700;
+                vertical-alignment: center;
+                color: root.provisional ? Theme.muted
+                    : root.tone == Tone.pass ? Theme.pass
+                    : root.tone == Tone.fail ? Theme.fail
+                    : Theme.text;
+            }
+        }
+    }
+    Rectangle {
+        border-width: input.has-focus ? 2px : 0px;
+        border-color: Theme.accent;
+        border-radius: 3px;
+    }
+}

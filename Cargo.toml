@@ -1,0 +1,49 @@
+[package]
+name = "avalio-lite"
+version = "0.1.0"
+edition = "2024"
+description = "Lightweight, local edition of Avalio — a teacher-focused student evaluation app"
+authors = ["Ran# <ran.hash@proton.me>"]
+license-file = "LICENSE"
+publish = false
+
+[dependencies]
+chrono = "0.4"
+dirs = "7"
+log = { version = "0.4", features = ["std"] }
+rfd = "0.17"
+# SQLCipher: SQLite with page-level encryption. Building it compiles OpenSSL, which needs a full Perl
+# (Strawberry Perl on Windows) at build time only; nothing of Perl or the build ends up in the exe.
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl"] }
+serde = { version = "1", features = ["derive"] }
+slint = "1.18"
+sys-locale = "0.3"
+thiserror = "2"
+toml = "1"
+zeroize = "1"
+
+[build-dependencies]
+slint-build = "1.18"
+
+[dev-dependencies]
+# Slint's headless backend for the UI tests; pinned to the exact Slint version it belongs to.
+i-slint-backend-testing = "=1.18.1"
+# the desktop test driver reads where an open popup menu sits; internal API, so pinned the same way
+i-slint-core = "=1.18.1"
+png = "0.18"
+proptest = "1"
+serde_json = "1"
+tempfile = "3"
+# Win32 calls the desktop tests use to find, capture and click the real window
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_Xps",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

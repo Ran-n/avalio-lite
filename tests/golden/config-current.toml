@@ -1,0 +1,7 @@
+database_path = 'D:\Marks\avalio-lite.db'
+log_dir = 'D:\Marks\logs'
+
+[preferences]
+show_column_settings = false
+language = "gl"
+theme = "dark"
