@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.516106
-//+ Revised: 	2026/10/28 16:22:40.776296
+//+ Revised: 	2026/10/29 00:32:02.088866
 // -----------------------------------------------------------------------------
 
 use std::path::Path;
@@ -20,6 +20,7 @@ pub fn show_setup(window: &AppWindow, reason: &SetupReason) {
         SetupReason::DatabaseMissing(path) => (SetupNotice::DatabaseMissing, path.display().to_string()),
         SetupReason::ConfigUnreadable(message) => (SetupNotice::ConfigUnreadable, message.clone()),
         SetupReason::DatabaseUnusable(message) => (SetupNotice::DatabaseUnusable, message.clone()),
+        SetupReason::LeftLocked(path) => (SetupNotice::LeftLocked, path.display().to_string()),
     };
     let default_folder = display(&config::default_data_dir());
     window.set_setup_notice(notice);

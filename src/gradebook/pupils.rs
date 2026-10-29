@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.468773
-//+ Revised: 	2026/10/28 16:22:40.462126
+//+ Revised: 	2026/10/29 00:10:41.359937
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, params};
@@ -46,6 +46,10 @@ pub fn add_existing_pupil(connection: &Connection, class_id: i64, pupil_id: i64)
     enroll(connection, class_id, pupil_id)?;
     log::info!("added pupil {pupil_id} to class {class_id}");
     Ok(())
+}
+
+pub fn pupil_name(connection: &Connection, pupil_id: i64) -> Result<String> {
+    Ok(connection.query_row("SELECT name FROM pupils WHERE id = ?1", [pupil_id], |row| row.get(0))?)
 }
 
 /// Renames the pupil everywhere: pupils are shared between classes.

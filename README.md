@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/28 22:47:24.919317 )
+[//]: # (+ Revised: 	2026/10/29 01:00:46.961481 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite
@@ -61,13 +61,13 @@ To back up, copy `avalio-lite.db` while the app is closed.
 
 ### PIN and encryption
 
-In **Settings → PIN and encryption** you can set a PIN of 4 to 128 characters: digits, letters, spaces or symbols. The database file is then encrypted with it ([SQLCipher](https://www.zetetic.net/sqlcipher/): every page of the file is encrypted with AES-256 and checked for tampering), so the file can't be read without the PIN. The app asks for the PIN when it opens; **Ctrl+L** or **Lock** in the sidebar closes the database and shows the lock screen. After five wrong PINs, each further try waits 30 seconds.
+In **Settings → PIN and encryption** you can set a PIN of 4 to 128 characters: digits, letters, spaces or symbols. The database file is then encrypted with it ([SQLCipher](https://www.zetetic.net/sqlcipher/): every page of the file is encrypted with AES-256 and checked for tampering), so the file can't be read without the PIN. The app asks for the PIN when it opens: type it, or click it on the on-screen keys (**ABC** switches them to letters, with ⇧ for capitals and a space bar; **#+=** to two pages of symbols, switched with **1/2**; **123** goes back to numbers); **Ctrl+L** or **Lock** in the sidebar closes the database and shows the lock screen. After five wrong PINs, each further try waits 30 seconds.
 
 How strong the PIN is, is your call. The 30-second wait only applies inside the app: someone with a copy of the file can try guesses as fast as their computer allows (each guess is deliberately slow, but not slow enough for short PINs). A 4-digit PIN can be found in minutes, 8 digits in about a day on a gaming graphics card; a password of 12 or more characters with letters, or four random words, would take far longer than anyone can wait.
 
 While the app is open, the PIN is held in memory only as long as the database is unlocked, and wiped (overwritten with zeros) when it locks, closes or the PIN changes; SQLCipher wipes its own copies too. The PIN is never written to the settings file or the log.
 
-**If you forget the PIN, the data can't be recovered** — by anyone. Keep the PIN somewhere safe. Removing the PIN (it asks for the current one) turns the encryption off again.
+**If you forget the PIN, the data can't be recovered** — by anyone. Keep the PIN somewhere safe. **Forgot the PIN?** on the lock screen leaves it for the first-run screen, where you can open another database or start a new one in a different folder; the locked file stays where it is, untouched, and **Back to the lock screen** returns to it (a running 30-second wait keeps running). Removing the PIN (it asks for the current one) turns the encryption off again.
 
 ## Development
 
@@ -126,7 +126,7 @@ tests/          integration tests, one file per module
 
 Any text added to the UI with `@tr("…")` needs an entry in every `lang/*/…/avalio-lite.po`, and any text built in Rust needs a translation in `src/i18n/`; `tests/i18n.rs` fails until both are complete.
 
-Schema changes go in a new `migrations/NNN_*.sql` file added to the list in `src/db/migrations.rs`; shipped migrations are never edited.
+Schema changes go in a new `migrations/NNN_*.sql` file added to the list in `src/db/migrations.rs`; shipped migrations are never edited. Before rewriting the golden samples for it, copy `tests/golden/db-current.db` to `db-v<previous version>.db` and add an upgrade test for that sample in `tests/golden.rs`, so files users already have stay covered.
 
 ### Release
 

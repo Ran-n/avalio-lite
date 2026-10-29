@@ -38,6 +38,8 @@ export component AppWindow inherits Window {
     callback choose-theme(bool);
     callback lock-now();
     callback unlock(string);
+    callback forgot-pin();
+    callback back-to-lock();
     callback set-pin();
     callback change-pin();
     callback remove-pin();
@@ -98,6 +100,7 @@ export component AppWindow inherits Window {
             browse-log-folder => { root.browse-setup-log-folder(); }
             create-database => { root.create-database(); }
             open-existing-database => { root.open-existing-database(); }
+            back-to-lock => { root.back-to-lock(); }
         }
         if !root.setup-required && !root.locked: Shell {
             database-path: root.database-path;
@@ -125,6 +128,7 @@ export component AppWindow inherits Window {
             error-message: root.unlock-error;
             unlock(pin) => { root.unlock(pin); }
             erase => { root.unlock-pin = root.unlock-pin == "" ? "" : root.erase-last(root.unlock-pin); }
+            forgot-pin => { root.forgot-pin(); }
         }
     }
 

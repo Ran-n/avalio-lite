@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.365284
-//+ Revised: 	2026/10/28 22:23:17.072660
+//+ Revised: 	2026/10/29 00:32:02.028392
 // -----------------------------------------------------------------------------
 
 mod protection;
@@ -25,6 +25,8 @@ pub enum SetupReason {
     DatabaseMissing(PathBuf),
     ConfigUnreadable(String),
     DatabaseUnusable(String),
+    /// The user left the lock screen ("Forgot the PIN?"); the locked database at this path stays.
+    LeftLocked(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

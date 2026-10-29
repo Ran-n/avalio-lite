@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:44.148390
-//+ Revised: 	2026/10/28 22:23:17.137105
+//+ Revised: 	2026/10/29 00:10:41.232064
 // -----------------------------------------------------------------------------
 
 //! Locking, unlocking and changing the PIN that encrypts the open database.
@@ -106,16 +106,20 @@ impl AppState {
             return Err(error);
         }
         self.reopen(&path, new_key);
+        // the new file is in place, so the old one is only a leftover now; failing to delete it is
+        // still reported, since it may be an unencrypted copy of the data
+        let leftover = db::remove_files(&with_suffix(&path, BACKUP_SUFFIX));
         if self.connection.is_none() {
             return Err(AppError::NoDatabaseOpen);
         }
-        Ok(())
+        leftover
     }
 
     /// Opens `path` with `key` after a re-key, logging (not hiding) a failure: the caller then
-    /// reports `NoDatabaseOpen` and the lock screen asks for the PIN again.
+    /// reports `NoDatabaseOpen` and the lock screen asks for the PIN again. Never creates the
+    /// file: if it is gone, an empty database in its place would hide where the data went.
     fn reopen(&mut self, path: &Path, key: Option<&str>) {
-        match db::open(path, key) {
+        match db::open_existing(path, key) {
             Ok(connection) => {
                 self.connection = Some(connection);
                 self.key = key.map(Pin::new);
@@ -125,19 +129,19 @@ impl AppState {
     }
 }
 
-/// Replaces the (closed) database at `path` with `fresh`, keeping the old file aside until
-/// the new one is in place.
+/// Replaces the (closed) database at `path` with `fresh`, keeping the old file aside (and putting
+/// it back on any failure) until the new one is in place. The caller deletes the old file.
 fn swap_in(path: &Path, fresh: &Path) -> Result<()> {
     let previous = with_suffix(path, BACKUP_SUFFIX);
     db::remove_files(&previous)?;
     fs::rename(path, &previous).map_err(io_at(path))?;
     // sidecar files belong to the old file; left next to the new one they would corrupt it
-    db::remove_sidecars(path)?;
-    if let Err(error) = fs::rename(fresh, path) {
+    let replaced = db::remove_sidecars(path).and_then(|()| fs::rename(fresh, path).map_err(io_at(fresh)));
+    if let Err(error) = replaced {
         fs::rename(&previous, path).map_err(io_at(path))?;
-        return Err(io_at(fresh)(error));
+        return Err(error);
     }
-    db::remove_files(&previous)
+    Ok(())
 }
 
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {

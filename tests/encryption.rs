@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/10/28 15:53:09.126231
+//+ Revised: 	2026/10/29 00:10:41.502268
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -199,6 +199,27 @@ fn a_pin_change_that_cannot_swap_the_files_keeps_the_old_pin_working() {
     let mut reopened = fixture.state();
     assert_eq!(reopened.start(), Startup::Locked);
     reopened.unlock("246810").unwrap();
+}
+
+#[test]
+fn regression_a_pin_change_that_cannot_clear_the_sidecars_puts_the_database_back() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    state.set_pin("246810", "246810").unwrap();
+    assert_eq!(pupil_names(&state), [SECRET]);
+    // another program holds the WAL file, so it survives the close and can't be deleted
+    let wal = fixture.path("data").join(format!("{DATABASE_FILE_NAME}-wal"));
+    let _held = common::hold_against_removal(&wal);
+    let result = state.change_pin("246810", "135790", "135790");
+    assert!(matches!(result, Err(AppError::Io { .. })), "{result:?}");
+    assert_eq!(pupil_names(&state), [SECRET], "the real database is back and open, not an empty new one");
+    assert!(!fixture.path("data").join(format!("{DATABASE_FILE_NAME}.previous")).exists());
+    drop(_held);
+    state.shutdown();
+    let mut reopened = fixture.state();
+    assert_eq!(reopened.start(), Startup::Locked);
+    reopened.unlock("246810").unwrap();
+    assert_eq!(pupil_names(&reopened), [SECRET]);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:42.253612
-//+ Revised: 	2026/10/28 15:53:08.589167
+//+ Revised: 	2026/10/29 00:32:01.968554
 // -----------------------------------------------------------------------------
 
 use std::cell::RefCell;
@@ -10,6 +10,7 @@ use std::time::Instant;
 
 use slint::{ComponentHandle, SharedString};
 
+use crate::app::state::SetupReason;
 use crate::app::{SharedState, gradebook, view};
 use crate::error::{AppError, Result};
 use crate::i18n::{self, Message};
@@ -18,6 +19,7 @@ use crate::ui::{AppWindow, Gradebook};
 
 pub fn wire(window: &AppWindow, state: &SharedState) {
     wire_locking(window, state);
+    wire_leaving(window, state);
     wire_pin_settings(window, state);
     window.on_erase_last(|text| {
         let mut text = text.to_string();
@@ -79,11 +81,45 @@ fn wire_locking(window: &AppWindow, state: &SharedState) {
                 };
                 window.set_unlock_error(i18n::error_message(i18n::current(), &error).into());
             }
+            // the file went away while locked (e.g. its drive was unplugged): no PIN can open it, so
+            // offer what a restart would, the setup screen saying it is missing
+            Err(AppError::NotFound(path)) => {
+                log::error!("the locked database is gone: {}", path.display());
+                view::show_setup(&window, &SetupReason::DatabaseMissing(path));
+            }
             Err(error) => {
                 log::error!("unlocking failed: {error}");
                 window.set_unlock_error(i18n::error_message(i18n::current(), &error).into());
             }
         }
+    });
+}
+
+/// "Forgot the PIN?" leaves the lock screen for setup, where another database can be opened or a
+/// new one created; the locked file is left exactly as it is. "Back to the lock screen" returns.
+/// The guess limiter lives in the unlock callback, so leaving and coming back doesn't reset a wait.
+fn wire_leaving(window: &AppWindow, state: &SharedState) {
+    let (weak, shared) = (window.as_weak(), state.clone());
+    window.on_forgot_pin(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let Some(path) = shared.borrow().config().map(|config| config.database_path.clone()) else {
+            log::error!("\"Forgot the PIN?\" with no database chosen");
+            return;
+        };
+        log::info!("left the lock screen to choose another database");
+        view::show_setup(&window, &SetupReason::LeftLocked(path));
+    });
+
+    let (weak, shared) = (window.as_weak(), state.clone());
+    window.on_back_to_lock(move || {
+        let Some(window) = weak.upgrade() else { return };
+        if !shared.borrow().is_locked() {
+            log::error!("back to the lock screen, but no database is locked");
+            return;
+        }
+        show_locked(&window);
+        window.set_error_message(SharedString::new());
+        window.set_setup_required(false);
     });
 }
 

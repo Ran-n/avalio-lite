@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/10/28 16:34:05.740388
+//+ Revised: 	2026/10/29 00:10:41.633823
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -184,6 +184,17 @@ fn a_version_2_database_upgrades_with_all_its_data() {
     let (_dir, path) = scratch_copy("db-v2.db");
     let old = Connection::open(&path).unwrap();
     assert_eq!(migrations::schema_version(&old).unwrap(), 2, "the sample really is version 2");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+}
+
+#[test]
+fn a_version_3_database_upgrades_with_all_its_data() {
+    let (_dir, path) = scratch_copy("db-v3.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 3, "the sample really is version 3");
     drop(old);
     let connection = db::open(&path, None).unwrap();
     assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());

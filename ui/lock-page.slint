@@ -5,20 +5,26 @@ component Key inherits Rectangle {
     in property <string> label;
     in property <string> spoken-label: root.label;
     in property <bool> emphasized;
+    // a toggle (capital letters) that is on
+    in property <bool> active;
+    in property <length> key-width: 72px;
+    in property <length> key-height: 56px;
+    in property <length> label-size: 22px;
     callback pressed();
 
-    width: 72px;
-    height: 56px;
+    width: root.key-width;
+    height: root.key-height;
     border-radius: Theme.radius-m;
     background: root.emphasized ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : root.active ? Theme.accent-soft
         : touch.pressed ? Theme.line-strong : touch.has-hover ? Theme.line : Theme.raised;
     accessible-role: button;
     accessible-label: root.spoken-label;
     Text {
         text: root.label;
-        font-size: 22px;
+        font-size: root.label-size;
         font-weight: root.emphasized ? 700 : 500;
-        color: root.emphasized ? Theme.on-accent : Theme.text;
+        color: root.emphasized ? Theme.on-accent : root.active ? Theme.accent : Theme.text;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -28,12 +34,44 @@ component Key inherits Rectangle {
     }
 }
 
-// Covers the whole app until the right PIN is typed (keyboard or on-screen keys).
+// One key of the letter or symbol keyboard: types its character, a letter in capitals while
+// Shift is on.
+component LetterKey inherits Key {
+    in property <string> letter;
+    in property <bool> capitals;
+    callback typed(string);
+
+    label: root.capitals ? root.letter.to-uppercase() : root.letter;
+    key-width: 42px;
+    key-height: 52px;
+    label-size: 19px;
+    pressed => { root.typed(self.label); }
+}
+
+// Which on-screen keys show under the PIN field.
+enum Keys { numbers, letters, symbols }
+
+// Covers the whole app until the right PIN is typed: with the keyboard, or by clicking the
+// on-screen keys: numbers, or (after "ABC") letters and (after "#+=") symbols, for PINs that are
+// passwords. The symbols come in two pages, switched where Shift sits on the letter keys.
 export component LockPage inherits Rectangle {
     in-out property <string> pin;
     in property <string> error-message;
     callback unlock(string);
     callback erase();
+    // leaves the lock screen for the setup screen, without touching the locked file
+    callback forgot-pin();
+
+    property <Keys> keys: Keys.numbers;
+    property <bool> capitals;
+    property <bool> second-symbols;
+    property <bool> letters: root.keys == Keys.letters;
+    property <[string]> top-row: !root.letters ? (root.second-symbols ? ["~", "`", "^", "<", ">", "º", "ª", "·", "¬", "€"] : ["!", "@", "#", "$", "%", "&", "*", "(", ")", "-"])
+        : ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
+    property <[string]> middle-row: !root.letters ? (root.second-symbols ? ["¿", "¡", "£", "´", "¨", "©", "§", "ç", "¢", "¥"] : ["_", "=", "+", "[", "]", "{", "}", ";", ":", "'"])
+        : ["a", "s", "d", "f", "g", "h", "j", "k", "l", "ñ"];
+    property <[string]> bottom-row: !root.letters ? (root.second-symbols ? ["«", "»", "¶", "×", "÷", "±", "µ"] : ["\"", ",", ".", "/", "?", "\\", "|"])
+        : ["z", "x", "c", "v", "b", "n", "m"];
 
     background: Theme.canvas;
     // keep clicks from reaching the app underneath
@@ -43,7 +81,8 @@ export component LockPage inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             Rectangle {
-                width: 340px;
+                // wide enough for ten letter keys while the letter keyboard shows
+                width: root.keys == Keys.numbers ? 340px : 540px;
                 background: Theme.surface;
                 border-radius: Theme.radius-l;
                 border-width: 1px;
@@ -65,14 +104,26 @@ export component LockPage inherits Rectangle {
                         horizontal-alignment: center;
                         color: Theme.text;
                     }
-                    field := TextField {
-                        input-type: InputType.password;
-                        alignment: TextHorizontalAlignment.center;
-                        font-size: 22px;
-                        placeholder: @tr("PIN");
-                        text <=> root.pin;
-                        accepted(text) => { root.unlock(text); }
-                        init => { self.focus-input(); }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        field := TextField {
+                            horizontal-stretch: 1;
+                            input-type: InputType.password;
+                            alignment: TextHorizontalAlignment.center;
+                            font-size: 22px;
+                            placeholder: @tr("PIN");
+                            text <=> root.pin;
+                            accepted(text) => { root.unlock(text); }
+                            init => { self.focus-input(); }
+                        }
+                        Key {
+                            label: "✓";
+                            spoken-label: @tr("Unlock");
+                            emphasized: true;
+                            key-width: 56px;
+                            key-height: field.height;
+                            pressed => { root.unlock(root.pin); }
+                        }
                     }
                     if root.error-message != "": Text {
                         text: root.error-message;
@@ -80,40 +131,136 @@ export component LockPage inherits Rectangle {
                         wrap: word-wrap;
                         color: Theme.fail;
                     }
-                    HorizontalLayout {
-                    alignment: center;
-                    GridLayout {
-                        spacing: 10px;
-                        Row {
-                            Key { label: "1"; pressed => { root.pin += self.label; } }
-                            Key { label: "2"; pressed => { root.pin += self.label; } }
-                            Key { label: "3"; pressed => { root.pin += self.label; } }
-                        }
-                        Row {
-                            Key { label: "4"; pressed => { root.pin += self.label; } }
-                            Key { label: "5"; pressed => { root.pin += self.label; } }
-                            Key { label: "6"; pressed => { root.pin += self.label; } }
-                        }
-                        Row {
-                            Key { label: "7"; pressed => { root.pin += self.label; } }
-                            Key { label: "8"; pressed => { root.pin += self.label; } }
-                            Key { label: "9"; pressed => { root.pin += self.label; } }
-                        }
-                        Row {
-                            Key {
-                                label: "←";
-                                spoken-label: @tr("Erase");
-                                pressed => { root.erase(); field.focus-input(); }
+                    if root.keys == Keys.numbers: HorizontalLayout {
+                        alignment: center;
+                        GridLayout {
+                            spacing: 10px;
+                            Row {
+                                Key { label: "1"; pressed => { root.pin += self.label; } }
+                                Key { label: "2"; pressed => { root.pin += self.label; } }
+                                Key { label: "3"; pressed => { root.pin += self.label; } }
                             }
-                            Key { label: "0"; pressed => { root.pin += self.label; } }
-                            Key {
-                                label: "✓";
-                                spoken-label: @tr("Unlock");
-                                emphasized: true;
-                                pressed => { root.unlock(root.pin); }
+                            Row {
+                                Key { label: "4"; pressed => { root.pin += self.label; } }
+                                Key { label: "5"; pressed => { root.pin += self.label; } }
+                                Key { label: "6"; pressed => { root.pin += self.label; } }
+                            }
+                            Row {
+                                Key { label: "7"; pressed => { root.pin += self.label; } }
+                                Key { label: "8"; pressed => { root.pin += self.label; } }
+                                Key { label: "9"; pressed => { root.pin += self.label; } }
+                            }
+                            Row {
+                                Key {
+                                    label: "ABC";
+                                    spoken-label: @tr("Letters");
+                                    label-size: 17px;
+                                    pressed => { root.keys = Keys.letters; field.focus-input(); }
+                                }
+                                Key { label: "0"; pressed => { root.pin += self.label; } }
+                                Key {
+                                    label: "←";
+                                    spoken-label: @tr("Erase");
+                                    pressed => { root.erase(); field.focus-input(); }
+                                }
                             }
                         }
                     }
+                    if root.keys != Keys.numbers: VerticalLayout {
+                        spacing: 8px;
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            for letter in root.top-row: LetterKey {
+                                letter: letter;
+                                capitals: root.letters && root.capitals;
+                                typed(text) => { root.pin += text; }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            for letter in root.middle-row: LetterKey {
+                                letter: letter;
+                                capitals: root.letters && root.capitals;
+                                typed(text) => { root.pin += text; }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            if root.letters: Key {
+                                label: "⇧";
+                                spoken-label: @tr("Capital letters");
+                                active: root.capitals;
+                                key-width: 63px;
+                                key-height: 52px;
+                                pressed => { root.capitals = !root.capitals; field.focus-input(); }
+                            }
+                            if !root.letters: Key {
+                                label: root.second-symbols ? "2/2" : "1/2";
+                                spoken-label: @tr("More symbols");
+                                key-width: 63px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.second-symbols = !root.second-symbols; field.focus-input(); }
+                            }
+                            for letter in root.bottom-row: LetterKey {
+                                letter: letter;
+                                capitals: root.letters && root.capitals;
+                                typed(text) => { root.pin += text; }
+                            }
+                            Key {
+                                label: "←";
+                                spoken-label: @tr("Erase");
+                                key-width: 63px;
+                                key-height: 52px;
+                                pressed => { root.erase(); field.focus-input(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Key {
+                                label: "123";
+                                spoken-label: @tr("Numbers");
+                                key-width: 90px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.keys = Keys.numbers; field.focus-input(); }
+                            }
+                            if root.letters: Key {
+                                label: "#+=";
+                                spoken-label: @tr("Symbols");
+                                key-width: 90px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.keys = Keys.symbols; field.focus-input(); }
+                            }
+                            if !root.letters: Key {
+                                label: "ABC";
+                                spoken-label: @tr("Letters");
+                                key-width: 90px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.keys = Keys.letters; field.focus-input(); }
+                            }
+                            Key {
+                                label: "";
+                                spoken-label: @tr("Space");
+                                key-width: 282px;
+                                key-height: 52px;
+                                pressed => { root.pin += " "; field.focus-input(); }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        ActionButton {
+                            text: @tr("Forgot the PIN?");
+                            kind: ButtonKind.ghost;
+                            clicked => { root.forgot-pin(); }
+                        }
                     }
                 }
             }

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.102653
-//+ Revised: 	2026/10/28 22:23:17.332209
+//+ Revised: 	2026/10/29 00:10:41.569451
 // -----------------------------------------------------------------------------
 
 //! Error paths must reach the log at the right level, not just the screen. The app's own logger
@@ -97,11 +97,27 @@ fn a_failed_unlock_other_than_a_wrong_pin_is_an_error() {
     state.shutdown();
     let log = logged(|| {
         let ui = Ui::open(fixture);
-        fs::remove_file(ui.fixture.database()).unwrap();
+        // another program has the file open exclusively, so it can't be opened at all
+        let _held = common::hold_exclusively(&ui.fixture.database());
         ui.session.window.invoke_unlock("2468".into());
         assert!(!ui.session.window.get_unlock_error().is_empty(), "the lock screen says so too");
     });
     assert!(has_line(&log, "ERROR", "avalio_lite::app::lock_screen", "unlocking failed"), "{log}");
+}
+
+#[test]
+fn a_locked_database_that_is_gone_is_an_error() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_pin("2468", "2468").unwrap();
+    state.shutdown();
+    let log = logged(|| {
+        let ui = Ui::open(fixture);
+        fs::remove_file(ui.fixture.database()).unwrap();
+        ui.session.window.invoke_unlock("2468".into());
+        assert!(ui.session.window.get_setup_required());
+    });
+    assert!(has_line(&log, "ERROR", "avalio_lite::app::lock_screen", "the locked database is gone"), "{log}");
 }
 
 #[test]
