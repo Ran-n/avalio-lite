@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/10/29 01:00:46.897127 )
+[//]: # (+ Revised: 	2026/10/29 01:08:51.667727 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-29
 
 ### Added
 
