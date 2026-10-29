@@ -20,6 +20,8 @@ component Key inherits Rectangle {
         : touch.pressed ? Theme.line-strong : touch.has-hover ? Theme.line : Theme.raised;
     accessible-role: button;
     accessible-label: root.spoken-label;
+    // screen readers can press the keys too; Tab skips them, since the keyboard types the PIN directly
+    accessible-action-default => { root.pressed(); }
     Text {
         text: root.label;
         font-size: root.label-size;

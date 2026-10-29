@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/10/29 01:00:47.025776
+//+ Revised: 	2026/10/29 01:58:37.957536
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -868,6 +868,23 @@ fn screen_readers_can_press_the_custom_controls() {
     assert!(shows_text(&ui, "Appearance"));
     find(&ui, "Dark").invoke_accessible_default_action();
     assert!(ui.session.window.global::<Theme>().get_dark());
+}
+
+#[test]
+fn screen_readers_can_press_the_lock_screen_keys() {
+    let ui = encrypted();
+    find(&ui, "Letters").invoke_accessible_default_action();
+    find(&ui, "q").invoke_accessible_default_action();
+    find(&ui, "Numbers").invoke_accessible_default_action();
+    find(&ui, "1").invoke_accessible_default_action();
+    assert_eq!(ui.session.window.get_unlock_pin(), "q1");
+    find(&ui, "Erase").invoke_accessible_default_action();
+    find(&ui, "Erase").invoke_accessible_default_action();
+    for digit in PIN.chars() {
+        find(&ui, &digit.to_string()).invoke_accessible_default_action();
+    }
+    find(&ui, "Unlock").invoke_accessible_default_action();
+    assert!(!ui.session.window.get_locked());
 }
 
 #[test]
