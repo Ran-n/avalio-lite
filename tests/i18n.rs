@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/10/29 02:54:48.375601
+//+ Revised: 	2026/10/29 03:07:05.945136
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -145,6 +145,8 @@ fn every_message() -> Vec<Message<'static>> {
         Message::PinTurnedOn,
         Message::PinChanged,
         Message::PinTurnedOff,
+        Message::ShortcutChanged { action: "Exam", keys: "boom" },
+        Message::ShortcutsReset,
     ];
     for message in &all {
         match message {
@@ -158,7 +160,9 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::LockNeedsPin
             | Message::PinTurnedOn
             | Message::PinChanged
-            | Message::PinTurnedOff => {}
+            | Message::PinTurnedOff
+            | Message::ShortcutChanged { .. }
+            | Message::ShortcutsReset => {}
         }
     }
     all
@@ -195,6 +199,11 @@ fn every_error() -> Vec<AppError> {
             entry: "lock = \"x\"".into(),
             kind: ProblemKind::BadKeys(ShortcutError::UnknownKey),
         }]),
+        AppError::Shortcut(ShortcutError::UnknownKey),
+        AppError::Shortcut(ShortcutError::NeedsCtrlOrAlt),
+        AppError::Shortcut(ShortcutError::CtrlAlt),
+        AppError::Shortcut(ShortcutError::EditingKey('C')),
+        AppError::Shortcut(ShortcutError::Clash { keys: "Ctrl+H".parse().unwrap(), taken_by: Action::Lock }),
     ];
     for error in &all {
         match error {
@@ -218,7 +227,8 @@ fn every_error() -> Vec<AppError> {
             | AppError::PinMismatch
             | AppError::WrongPin
             | AppError::PinWait { .. }
-            | AppError::InvalidShortcuts(_) => {}
+            | AppError::InvalidShortcuts(_)
+            | AppError::Shortcut(_) => {}
         }
     }
     all

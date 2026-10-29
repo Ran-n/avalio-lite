@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/29 02:54:47.202823 )
+[//]: # (+ Revised: 	2026/10/29 03:07:05.350369 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite
@@ -46,7 +46,9 @@ The app speaks **Galician** and **English**. It follows the Windows language unt
 | Ctrl+PageDown | Next class | `next-class` |
 | Ctrl+PageUp | Previous class | `previous-class` |
 
-To change one, add it to `config.toml` under `[shortcuts]`, e.g. `lock = "Ctrl+K"`. A shortcut is Ctrl, Shift and Alt (not Ctrl and Alt together, which is AltGr) with A–Z, 0–9, `,`, `.`, PageUp, PageDown, Home or End; F1–F12 can also be used alone. An entry that isn't valid, or that two actions share, is reported when the app opens and the default is used.
+To change one, press **Change** next to it in **Settings → Keyboard shortcuts** and then the new keys (Esc cancels); it is saved at once. **Reset** puts one back, **Reset all** every one. Keys another shortcut already has are refused rather than taken over. Alternatively, with the app closed, add it to `config.toml` under `[shortcuts]`, e.g. `lock = "Ctrl+K"`.
+
+A shortcut is Ctrl, Shift and Alt with A–Z, 0–9, `,`, `.`, PageUp, PageDown, Home or End; F1–F12 can also be used alone. These can't be used: plain letters (they type into the cell), Ctrl and Alt together (that is AltGr on many keyboards), and Ctrl+A, C, V, X, Y and Z, which edit text. A `config.toml` entry that isn't valid, or that two actions share, is reported when the app opens and the default is used.
 
 Everything saves as you type. Scores accept `7.5` or `7,5`; a score that isn't a number within the test's range is shaded red and left out of the calculations. Calculated marks show as green pills at half their maximum or above (5 out of 10) and rose below it; failing test scores are shown in rose too.
 

@@ -77,7 +77,21 @@ export component AppWindow inherits Window {
     // it back whenever the focused field goes away (unlocking, finishing setup, changing page);
     // the lock screen's PIN field keeps the focus it takes when it appears.
     changed locked => {
-        if (!root.locked) {
+        if (root.locked) {
+            Shortcuts.recording = -1;
+        } else {
+            shortcuts.focus();
+        }
+    }
+    // leaving Settings ends a recording; starting one takes the keyboard, wherever it was
+    changed section => {
+        if (root.section != Section.settings) {
+            Shortcuts.recording = -1;
+        }
+    }
+    property <int> recording: Shortcuts.recording;
+    changed recording => {
+        if (root.recording >= 0) {
             shortcuts.focus();
         }
     }
@@ -92,7 +106,19 @@ export component AppWindow inherits Window {
             if (root.setup-required || root.locked) {
                 return reject;
             }
-            let action = Shortcuts.find(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            // recording a new shortcut in Settings: every key goes to the recorder, none to a field
+            if (Shortcuts.recording >= 0) {
+                if (event.text == Key.Escape) {
+                    Shortcuts.recording = -1;
+                } else if (!(event.text == Key.Control || event.text == Key.ControlR || event.text == Key.Shift
+                        || event.text == Key.ShiftR || event.text == Key.Alt || event.text == Key.AltGr
+                        || event.text == Key.Meta || event.text == Key.MetaR)) {
+                    // a modifier alone waits for the actual key
+                    Shortcuts.record(Shortcuts.recording, event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+                }
+                return accept;
+            }
+            let action =Shortcuts.find(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
             if (action == ShortcutAction.none) {
                 return reject;
             }

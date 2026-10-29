@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/10/29 02:54:48.438797
+//+ Revised: 	2026/10/29 03:07:06.070647
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -14,6 +14,7 @@ use avalio_lite::app::state::{AppState, SetupReason, Startup};
 use avalio_lite::config::{AppConfig, DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::error::{AppError, Folder};
 use avalio_lite::i18n::Language;
+use avalio_lite::shortcuts::{Action, ShortcutError, Shortcuts};
 
 fn pupil_count(state: &AppState) -> i64 {
     state.connection().unwrap().query_row("SELECT COUNT(*) FROM pupils", [], |row| row.get(0)).unwrap()
@@ -157,6 +158,64 @@ fn bad_shortcuts_are_reported_once() {
     let next = state.shortcuts().combo(avalio_lite::shortcuts::Action::NextClass);
     assert_eq!(next.to_string(), "F8", "the good entry is used");
     state.shutdown();
+}
+
+#[test]
+fn a_changed_shortcut_survives_a_restart() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_shortcut(Action::Lock, "Ctrl+K".parse().unwrap()).unwrap();
+    state.shutdown();
+    let mut restarted = fixture.state();
+    assert_eq!(restarted.start(), Startup::Ready);
+    assert_eq!(restarted.shortcuts().combo(Action::Lock).to_string(), "Ctrl+K");
+    restarted.shutdown();
+}
+
+#[test]
+fn a_failed_change_leaves_everything_as_it_was() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let before = fixture.store().load().unwrap();
+    let result = state.set_shortcut(Action::ToggleTheme, "Ctrl+L".parse().unwrap());
+    assert!(matches!(result, Err(AppError::Shortcut(ShortcutError::Clash { taken_by: Action::Lock, .. }))));
+    assert_eq!(fixture.store().load().unwrap(), before);
+    assert_eq!(state.shortcuts(), &Shortcuts::defaults());
+    state.shutdown();
+}
+
+#[test]
+fn a_change_that_cannot_be_saved_changes_nothing() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    // another program holds the settings file, so it can't be replaced
+    let _held = common::hold_exclusively(fixture.store().path());
+    assert!(matches!(state.set_shortcut(Action::Lock, "Ctrl+K".parse().unwrap()), Err(AppError::Io { .. })));
+    assert_eq!(state.shortcuts(), &Shortcuts::defaults());
+    drop(_held);
+    state.shutdown();
+}
+
+#[test]
+fn reset_all_removes_the_table() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_shortcut(Action::Lock, "Ctrl+K".parse().unwrap()).unwrap();
+    state.set_shortcut(Action::NextClass, "F8".parse().unwrap()).unwrap();
+    assert!(fs::read_to_string(fixture.store().path()).unwrap().contains("[shortcuts]"));
+    state.reset_shortcut(Action::NextClass).unwrap();
+    assert!(!fs::read_to_string(fixture.store().path()).unwrap().contains("next-class"));
+    state.reset_all_shortcuts().unwrap();
+    assert!(!fs::read_to_string(fixture.store().path()).unwrap().contains("[shortcuts]"));
+    assert_eq!(state.shortcuts(), &Shortcuts::defaults());
+    state.shutdown();
+}
+
+#[test]
+fn shortcuts_cannot_be_changed_before_setup() {
+    let fixture = Fixture::new();
+    let mut state = fixture.state();
+    assert!(matches!(state.set_shortcut(Action::Lock, "Ctrl+K".parse().unwrap()), Err(AppError::NoDatabaseOpen)));
 }
 
 #[test]

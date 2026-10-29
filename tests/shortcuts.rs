@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:47.030126
-//+ Revised: 	2026/10/29 02:54:48.792409
+//+ Revised: 	2026/10/29 03:07:06.008126
 // -----------------------------------------------------------------------------
 
 //! The shortcut rules, their text form in config.toml, and how config entries are applied.
@@ -138,6 +138,52 @@ fn key_presses_map_to_actions() {
     assert_eq!(pressed("2", true, false, true), None, "AltGr+2 types @, it is no shortcut");
     assert_eq!(pressed("l", false, false, false), None, "a plain letter is typing");
     assert_eq!(pressed("ñ", true, false, false), None);
+}
+
+#[test]
+fn editing_keys_are_refused() {
+    for letter in ['A', 'C', 'V', 'X', 'Y', 'Z'] {
+        let text = format!("Ctrl+{letter}");
+        assert_eq!(text.parse::<KeyCombo>(), Err(ShortcutError::EditingKey(letter)), "{text}");
+    }
+    assert!("Ctrl+Shift+Z".parse::<KeyCombo>().is_ok(), "only the plain editing keys are taken");
+    assert!("Alt+C".parse::<KeyCombo>().is_ok());
+    let (shortcuts, problems) = Shortcuts::from_config(&overrides(&[("lock", "ctrl+v")]));
+    assert_eq!(shortcuts, Shortcuts::defaults(), "a hand-edited config can't set them either");
+    assert_eq!(problems[0].kind, ProblemKind::BadKeys(ShortcutError::EditingKey('V')));
+}
+
+#[test]
+fn a_change_that_clashes_names_the_other_action() {
+    let result = Shortcuts::defaults().with_change(Action::ToggleTheme, combo("Ctrl+L"));
+    assert_eq!(result, Err(ShortcutError::Clash { keys: combo("Ctrl+L"), taken_by: Action::Lock }));
+    assert!(Shortcuts::defaults().with_change(Action::Lock, combo("Ctrl+L")).is_ok(), "its own keys are no clash");
+}
+
+#[test]
+fn only_differences_are_saved() {
+    let changed = Shortcuts::defaults().with_change(Action::Lock, combo("Ctrl+K")).unwrap();
+    assert_eq!(changed.to_config(), overrides(&[("lock", "Ctrl+K")]));
+    assert!(!changed.is_default(Action::Lock));
+    let back = changed.with_change(Action::Lock, combo("Ctrl+L")).unwrap();
+    assert!(back.to_config().is_empty());
+    assert_eq!(Shortcuts::from_config(&changed.to_config()).0, changed, "what is saved reads back the same");
+}
+
+#[test]
+fn reset_restores_the_default() {
+    let changed = Shortcuts::defaults().with_change(Action::NextClass, combo("F8")).unwrap();
+    let default = Shortcuts::defaults().combo(Action::NextClass);
+    assert_eq!(changed.with_change(Action::NextClass, default).unwrap(), Shortcuts::defaults());
+}
+
+#[test]
+fn recorded_presses_say_why_they_are_refused() {
+    assert_eq!(KeyCombo::checked_key_press("k", false, false, false), Err(ShortcutError::NeedsCtrlOrAlt));
+    assert_eq!(KeyCombo::checked_key_press("2", true, false, true), Err(ShortcutError::CtrlAlt));
+    assert_eq!(KeyCombo::checked_key_press("c", true, false, false), Err(ShortcutError::EditingKey('C')));
+    assert_eq!(KeyCombo::checked_key_press(" ", true, false, false), Err(ShortcutError::UnknownKey));
+    assert_eq!(KeyCombo::checked_key_press("k", true, false, false), Ok(combo("Ctrl+K")));
 }
 
 fn any_combo() -> impl proptest::strategy::Strategy<Value = KeyCombo> {

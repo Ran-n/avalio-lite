@@ -325,5 +325,20 @@ msgstr "Nome da clase"
 msgid "Keyboard shortcuts"
 msgstr "Atallos de teclado"
 
-msgid "Shortcuts work anywhere on this screen, even while you type in a cell. You can change them in config.toml."
-msgstr "Os atallos funcionan en calquera parte desta pantalla, mesmo mentres escribes nunha cela. Podes cambialos en config.toml."
+msgid "Shortcuts work anywhere on this screen, even while you type in a cell. Press Change and then the new keys."
+msgstr "Os atallos funcionan en calquera parte desta pantalla, mesmo mentres escribes nunha cela. Preme Cambiar e despois as novas teclas."
+
+msgid "Change"
+msgstr "Cambiar"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Reset"
+msgstr "Restablecer"
+
+msgid "Reset all"
+msgstr "Restablecer todo"
+
+msgid "Press the new keys…"
+msgstr "Preme as novas teclas…"
