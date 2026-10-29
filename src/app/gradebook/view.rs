@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.393948
-//+ Revised: 	2026/10/28 16:34:05.998938
+//+ Revised: 	2026/10/29 00:10:41.102685
 // -----------------------------------------------------------------------------
 
 use std::rc::Rc;
@@ -27,7 +27,10 @@ const NO_SOURCE: i32 = -1;
 /// cell being typed in alive, so typing is never interrupted.
 pub enum Refresh {
     Nothing,
-    ClassList,
+    /// the open class was renamed: the sidebar, and the name confirmations quote
+    ClassName,
+    /// a pupil was renamed: their row's name, which confirmations and screen readers use
+    PupilName(i64),
     Row(usize),
     /// column settings changed: recalculate cells and update the headers' tags in place
     Columns,
@@ -40,7 +43,8 @@ pub enum Refresh {
 pub fn apply(window: &AppWindow, connection: &Connection, refresh: Refresh) -> Result<()> {
     match refresh {
         Refresh::Nothing => Ok(()),
-        Refresh::ClassList => show_class_list(window, connection).map(|_| ()),
+        Refresh::ClassName => show_class_name(window, connection),
+        Refresh::PupilName(pupil_id) => show_pupil_name(window, connection, pupil_id),
         Refresh::Row(row) => refresh_rows(window, connection, Some(row)),
         Refresh::Columns => refresh_columns(window, connection),
         Refresh::Sheet => show_sheet(window, connection, current_class_id(window)),
@@ -104,6 +108,28 @@ fn show_sheet(window: &AppWindow, connection: &Connection, class_id: i64) -> Res
     show_weight_total(window, &loaded.columns);
     show_summary(window, &loaded);
     panel::keep_in_sync(window, &loaded.columns);
+    Ok(())
+}
+
+/// The typed-in name field already shows the new name; this updates what the rest of the window
+/// knows it by. (Typing broke the field's binding, so this never moves its caret.)
+fn show_class_name(window: &AppWindow, connection: &Connection) -> Result<()> {
+    show_class_list(window, connection)?;
+    let name = classes::class_name(connection, current_class_id(window))?;
+    window.global::<Gradebook>().set_class_name(name.into());
+    Ok(())
+}
+
+fn show_pupil_name(window: &AppWindow, connection: &Connection, pupil_id: i64) -> Result<()> {
+    let name: SharedString = pupils::pupil_name(connection, pupil_id)?.into();
+    let rows = window.global::<Gradebook>().get_rows();
+    let found = rows.iter().enumerate().find(|(_, row)| i64::from(row.pupil_id) == pupil_id);
+    if let Some((index, mut row)) = found
+        && row.name != name
+    {
+        row.name = name;
+        rows.set_row_data(index, row);
+    }
     Ok(())
 }
 

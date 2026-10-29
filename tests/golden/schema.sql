@@ -23,6 +23,18 @@ BEGIN
     SELECT RAISE(ABORT, 'a cell must belong to a pupil of its column''s class');
 END;
 
+CREATE TRIGGER cells_only_in_typed_columns_on_insert BEFORE INSERT ON cells
+WHEN NOT EXISTS (SELECT 1 FROM sheet_columns WHERE id = NEW.column_id AND kind IN ('info', 'test'))
+BEGIN
+    SELECT RAISE(ABORT, 'only info and test columns hold typed cells');
+END;
+
+CREATE TRIGGER cells_only_in_typed_columns_on_update BEFORE UPDATE OF column_id ON cells
+WHEN NOT EXISTS (SELECT 1 FROM sheet_columns WHERE id = NEW.column_id AND kind IN ('info', 'test'))
+BEGIN
+    SELECT RAISE(ABORT, 'only info and test columns hold typed cells');
+END;
+
 CREATE TABLE class_pupils (
     class_id  INTEGER NOT NULL REFERENCES classes (id) ON DELETE CASCADE,
     pupil_id  INTEGER NOT NULL REFERENCES pupils (id) ON DELETE CASCADE,

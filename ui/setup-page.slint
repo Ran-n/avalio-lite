@@ -1,7 +1,8 @@
 import { Theme } from "theme.slint";
 import { ActionButton, BrandMark, ButtonKind, FolderField, MessageBanner } from "components.slint";
 
-export enum SetupNotice { first-run, database-missing, config-unreadable, database-unusable }
+// left-locked: the user left the lock screen ("Forgot the PIN?"); the locked file stays as it is
+export enum SetupNotice { first-run, database-missing, config-unreadable, database-unusable, left-locked }
 
 export component SetupPage inherits Rectangle {
     in property <SetupNotice> notice;
@@ -13,6 +14,7 @@ export component SetupPage inherits Rectangle {
     callback browse-log-folder();
     callback create-database();
     callback open-existing-database();
+    callback back-to-lock();
 
     background: Theme.canvas;
     HorizontalLayout {
@@ -42,6 +44,7 @@ export component SetupPage inherits Rectangle {
                         text: root.notice == SetupNotice.first-run ? @tr("Everything goes in one database file in the folder you choose. You can move it later in Settings.")
                             : root.notice == SetupNotice.database-missing ? @tr("The database isn't at {} any more. Open it from where it is now, or start a new one.", root.notice-detail)
                             : root.notice == SetupNotice.config-unreadable ? @tr("The settings file couldn't be read ({}). Choose your folders again.", root.notice-detail)
+                            : root.notice == SetupNotice.left-locked ? @tr("The locked database stays at {}, unchanged; open it again with its PIN whenever you like. Without the PIN nobody can read it. To start over, create a new database in a different folder.", root.notice-detail)
                             : @tr("The database couldn't be opened ({}). Open another one, or start a new one.", root.notice-detail);
                         wrap: word-wrap;
                         color: Theme.muted;
@@ -74,6 +77,14 @@ export component SetupPage inherits Rectangle {
                             kind: ButtonKind.primary;
                             clicked => { root.create-database(); }
                         }
+                    }
+                    if root.notice == SetupNotice.left-locked: HorizontalLayout {
+                        ActionButton {
+                            text: @tr("Back to the lock screen");
+                            kind: ButtonKind.ghost;
+                            clicked => { root.back-to-lock(); }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
                     }
                 }
             }

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/10/28 21:20:49.227027
+//+ Revised: 	2026/10/29 01:00:47.089106
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -351,10 +351,43 @@ fn the_lock_screen() {
     let mut app = App::start(&config(&fixture), "en");
     assert_eq!(app.state()["locked"], true);
     every_look(&mut app, "lock", |app, image, _, _| {
-        for key in ["1", "5", "9", "0", "Erase", "Unlock"] {
+        for key in ["1", "5", "9", "0", "Letters", "Erase", "Unlock", "Forgot the PIN?"] {
             assert_on_screen(image, located(app, key), key);
         }
     });
+    app.click("Letters");
+    every_look(&mut app, "lock-letters", |app, image, _, _| {
+        for key in ["q", "p", "a", "ñ", "z", "m", "Capital letters", "Erase", "Numbers", "Space", "Unlock"] {
+            assert_on_screen(image, located(app, key), key);
+        }
+    });
+    app.click("Symbols");
+    every_look(&mut app, "lock-symbols", |app, image, _, _| {
+        for key in ["!", "-", "_", "'", "\"", "|", "More symbols", "Erase", "Numbers", "Letters", "Space"] {
+            assert_on_screen(image, located(app, key), key);
+        }
+    });
+    app.click("More symbols");
+    every_look(&mut app, "lock-symbols-2", |app, image, _, _| {
+        for key in ["~", "€", "¿", "¥", "«", "µ", "More symbols"] {
+            assert_on_screen(image, located(app, key), key);
+        }
+    });
+    app.click("Numbers");
+    app.click("Forgot the PIN?");
+    assert_eq!(app.state()["setup_required"], true);
+    // the suggested folders are the test's scratch folder; a fixed one keeps the baselines stable
+    app.type_into("Database folder", SHOWN_FOLDER);
+    app.type_into("Log folder", SHOWN_FOLDER);
+    every_look(&mut app, "left-locked", |app, image, _, _| {
+        for control in ["Back to the lock screen", "Open an existing database…", "Create database"] {
+            assert_on_screen(image, located(app, control), control);
+        }
+    });
+    app.click("Back to the lock screen");
+    let state = app.state();
+    assert_eq!(state["setup_required"], false, "{state}");
+    assert_eq!(state["locked"], true, "back on the lock screen: {state}");
     for key in ["1", "Erase"].into_iter().chain(PIN.split("").filter(|digit| !digit.is_empty())) {
         app.click(key);
     }
@@ -369,6 +402,24 @@ fn the_lock_screen() {
     let mut app = App::start(&config(&fixture), "gl");
     let image = galician_look(&mut app, "lock");
     assert_on_screen(&image, located(&mut app, "Desbloquear"), "Desbloquear");
+    assert_on_screen(&image, located(&mut app, "Esqueciches o PIN?"), "Esqueciches o PIN?");
+    app.click("Letras");
+    let image = galician_look(&mut app, "lock-letters");
+    for key in ["Maiúsculas", "Borrar", "Números", "Símbolos", "Espazo", "Esqueciches o PIN?"] {
+        assert_on_screen(&image, located(&mut app, key), key);
+    }
+    app.click("Símbolos");
+    let image = galician_look(&mut app, "lock-symbols");
+    for key in ["Máis símbolos", "Letras", "Números", "Espazo"] {
+        assert_on_screen(&image, located(&mut app, key), key);
+    }
+    app.click("Esqueciches o PIN?");
+    app.type_into("Cartafol da base de datos", SHOWN_FOLDER);
+    app.type_into("Cartafol dos rexistros", SHOWN_FOLDER);
+    let image = galician_look(&mut app, "left-locked");
+    for control in ["Volver á pantalla de bloqueo", "Abrir unha base de datos existente…", "Crear base de datos"] {
+        assert_on_screen(&image, located(&mut app, control), control);
+    }
     app.quit();
 }
 

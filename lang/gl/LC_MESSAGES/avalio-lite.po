@@ -63,6 +63,12 @@ msgstr "Non se puido ler o ficheiro de axustes ({}). Escolle de novo os cartafol
 msgid "The database couldn't be opened ({}). Open another one, or start a new one."
 msgstr "Non se puido abrir a base de datos ({}). Abre outra ou crea unha nova."
 
+msgid "The locked database stays at {}, unchanged; open it again with its PIN whenever you like. Without the PIN nobody can read it. To start over, create a new database in a different folder."
+msgstr "A base de datos bloqueada segue en {}, sen cambios; ábrea de novo co seu PIN cando queiras. Sen o PIN ninguén pode lela. Para empezar de novo, crea unha base de datos nova noutro cartafol."
+
+msgid "Back to the lock screen"
+msgstr "Volver á pantalla de bloqueo"
+
 msgid "Database folder"
 msgstr "Cartafol da base de datos"
 
@@ -291,6 +297,27 @@ msgstr "Borrar"
 
 msgid "Unlock"
 msgstr "Desbloquear"
+
+msgid "Forgot the PIN?"
+msgstr "Esqueciches o PIN?"
+
+msgid "Letters"
+msgstr "Letras"
+
+msgid "Numbers"
+msgstr "Números"
+
+msgid "Capital letters"
+msgstr "Maiúsculas"
+
+msgid "Space"
+msgstr "Espazo"
+
+msgid "Symbols"
+msgstr "Símbolos"
+
+msgid "More symbols"
+msgstr "Máis símbolos"
 
 msgid "Class name"
 msgstr "Nome da clase"

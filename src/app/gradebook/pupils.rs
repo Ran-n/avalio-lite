@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.266960
-//+ Revised: 	2026/10/28 15:53:08.850877
+//+ Revised: 	2026/10/29 00:10:41.036107
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model};
@@ -45,7 +45,7 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
         let Some(window) = weak.upgrade() else { return };
         run(&window, &shared, "rename pupil", |connection| {
             pupils::rename_pupil(connection, i64::from(pupil_id), &name)?;
-            Ok(Refresh::Nothing)
+            Ok(Refresh::PupilName(i64::from(pupil_id)))
         });
     });
 

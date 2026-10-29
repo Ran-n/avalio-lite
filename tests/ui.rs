@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/10/28 22:23:17.411691
+//+ Revised: 	2026/10/29 01:00:47.025776
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -13,6 +13,7 @@ mod common;
 use std::fs;
 
 use avalio_lite::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
+use avalio_lite::db;
 use avalio_lite::error::{AppError, Folder};
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{classes, columns, pupils};
@@ -440,6 +441,69 @@ fn a_wrong_pin_is_reported_and_keeps_the_lock() {
     assert!(ui.session.window.get_unlock_pin().is_empty());
 }
 
+/// Was: the lock screen said the file doesn't exist on every try, with no way off it.
+#[test]
+fn regression_a_database_gone_while_locked_asks_where_it_went() {
+    let ui = encrypted();
+    fs::remove_file(ui.fixture.database()).unwrap();
+    type_pin_on_keypad(&ui, PIN);
+    click(&ui, "Unlock");
+    let window = &ui.session.window;
+    assert!(window.get_setup_required(), "the setup screen replaces the lock screen");
+    assert_eq!(window.get_setup_notice(), SetupNotice::DatabaseMissing);
+    assert_eq!(window.get_setup_notice_detail(), ui.fixture.database().display().to_string());
+    assert!(!ui.fixture.database().exists(), "no empty database was made in its place");
+    assert!(shows(&ui, "Create database"));
+}
+
+#[test]
+fn forgot_the_pin_leaves_the_lock_screen_for_setup_and_can_come_back() {
+    let ui = encrypted();
+    click(&ui, "Forgot the PIN?");
+    let window = &ui.session.window;
+    assert!(window.get_setup_required());
+    assert_eq!(window.get_setup_notice(), SetupNotice::LeftLocked);
+    assert_eq!(window.get_setup_notice_detail(), ui.fixture.database().display().to_string());
+    assert!(db::is_encrypted(&ui.fixture.database()).unwrap(), "the locked file is left as it is");
+    click(&ui, "Back to the lock screen");
+    assert!(!window.get_setup_required());
+    assert!(window.get_locked());
+    unlock(&ui);
+}
+
+#[test]
+fn after_forgetting_the_pin_a_new_database_can_be_started_elsewhere() {
+    let ui = encrypted();
+    click(&ui, "Forgot the PIN?");
+    let window = &ui.session.window;
+    window.set_setup_database_folder(ui.fixture.path("fresh").display().to_string().into());
+    window.set_setup_log_folder(ui.fixture.path("logs").display().to_string().into());
+    click(&ui, "Create database");
+    assert!(!window.get_setup_required());
+    assert!(!window.get_locked(), "the new database has no PIN");
+    assert!(!window.get_pin_set());
+    let saved = ui.fixture.store().load().unwrap().unwrap();
+    assert_eq!(saved.database_path, ui.fixture.path("fresh").join(DATABASE_FILE_NAME));
+    assert!(db::is_encrypted(&ui.fixture.database()).unwrap(), "the old file is still there, still encrypted");
+}
+
+#[test]
+fn back_on_the_lock_screen_does_not_reset_the_wait() {
+    let ui = encrypted();
+    for _ in 0..5 {
+        type_pin_on_keypad(&ui, "1111");
+        click(&ui, "Unlock");
+    }
+    click(&ui, "Forgot the PIN?");
+    click(&ui, "Back to the lock screen");
+    type_pin_on_keypad(&ui, PIN);
+    click(&ui, "Unlock");
+    assert!(ui.session.window.get_locked(), "still waiting");
+    let error = ui.session.window.get_unlock_error().to_string();
+    let waits: Vec<String> = (1..=30).map(|seconds| error_text(&AppError::PinWait { seconds })).collect();
+    assert!(waits.contains(&error), "the wait goes on: {error}");
+}
+
 #[test]
 fn after_five_wrong_pins_even_the_right_one_waits() {
     let ui = encrypted();
@@ -511,6 +575,70 @@ fn a_password_with_letters_and_spaces_locks_and_unlocks() {
     press_enter(&ui);
     assert!(!ui.session.window.get_locked());
     assert!(ui.session.state.borrow().connection().is_some());
+}
+
+#[test]
+fn a_password_can_be_clicked_on_the_letter_keys() {
+    const PASSWORD: &str = "Ñu 7xa";
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_pin(PASSWORD, PASSWORD).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    click(&ui, "Letters");
+    assert!(!shows(&ui, "1"), "the letter keys replace the number keys");
+    click(&ui, "Capital letters");
+    click(&ui, "Ñ");
+    click(&ui, "Capital letters");
+    click(&ui, "u");
+    click(&ui, "Space");
+    click(&ui, "Numbers");
+    click(&ui, "7");
+    click(&ui, "Letters");
+    for letter in ["x", "q", "Erase", "a"] {
+        click(&ui, letter);
+    }
+    assert_eq!(ui.session.window.get_unlock_pin(), PASSWORD);
+    click(&ui, "Unlock");
+    assert!(!ui.session.window.get_locked());
+    assert!(ui.session.state.borrow().connection().is_some());
+}
+
+#[test]
+fn a_password_with_symbols_can_be_clicked_on_the_symbol_keys() {
+    const PASSWORD: &str = "a#\\€¿b";
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_pin(PASSWORD, PASSWORD).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    click(&ui, "Letters");
+    click(&ui, "a");
+    click(&ui, "Symbols");
+    assert!(!shows(&ui, "q"), "the symbol keys replace the letter keys");
+    click(&ui, "#");
+    click(&ui, "\\");
+    click(&ui, "More symbols");
+    assert!(!shows(&ui, "#"), "the second page of symbols");
+    click(&ui, "€");
+    click(&ui, "¿");
+    click(&ui, "Letters");
+    click(&ui, "b");
+    assert_eq!(ui.session.window.get_unlock_pin(), PASSWORD);
+    click(&ui, "Unlock");
+    assert!(!ui.session.window.get_locked());
+}
+
+#[test]
+fn the_lock_screen_opens_on_the_number_keys_again() {
+    let ui = encrypted();
+    click(&ui, "Letters");
+    assert!(shows(&ui, "q"));
+    type_text(&ui, PIN);
+    press_enter(&ui);
+    assert!(!ui.session.window.get_locked(), "the keyboard still types into the PIN field");
+    click(&ui, "Lock (Ctrl+L)");
+    assert!(shows(&ui, "1") && !shows(&ui, "q"), "a new lock screen starts on the numbers");
 }
 
 #[test]
@@ -851,6 +979,31 @@ fn a_pupil_is_renamed_in_place() {
     click_nth(&ui, "Pupil", 0);
     replace_text(&ui, "Ana María");
     assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils WHERE name = 'Ana María'"), 1);
+}
+
+/// Was: the row kept the old name, so the removal question asked about "Ana".
+#[test]
+fn regression_a_renamed_pupil_is_asked_about_by_the_new_name() {
+    let ui = seeded();
+    click_nth(&ui, "Pupil", 0);
+    replace_text(&ui, "Ana María");
+    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().name, "Ana María");
+    ui.dialogs.answer_next(false);
+    click_nth(&ui, "Remove from this class", 0);
+    let question = english(&Message::ConfirmRemovePupil { pupil: "Ana María", class: "1A" });
+    assert_eq!(ui.dialogs.questions.borrow()[0], question);
+}
+
+/// Was: the delete question still named the class by its old name.
+#[test]
+fn regression_a_renamed_class_is_asked_about_by_the_new_name() {
+    let ui = seeded();
+    type_into(&ui, "Class name", "1A bis ");
+    assert_eq!(gradebook(&ui).get_class_name(), "1A bis", "saved and shown trimmed");
+    click(&ui, "More actions");
+    ui.dialogs.answer_next(false);
+    click(&ui, "Delete class");
+    assert_eq!(ui.dialogs.questions.borrow()[0], english(&Message::ConfirmDeleteClass { class: "1A bis" }));
 }
 
 #[test]

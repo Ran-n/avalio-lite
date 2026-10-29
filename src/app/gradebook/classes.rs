@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:52.882316
-//+ Revised: 	2026/10/28 15:53:08.718869
+//+ Revised: 	2026/10/29 00:10:40.956555
 // -----------------------------------------------------------------------------
 
 use slint::ComponentHandle;
@@ -37,7 +37,7 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
         let class_id = current_class_id(&window);
         run(&window, &shared, "rename class", |connection| {
             classes::rename_class(connection, class_id, &name)?;
-            Ok(Refresh::ClassList)
+            Ok(Refresh::ClassName)
         });
     });
 

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.116536
-//+ Revised: 	2026/10/28 22:23:17.263711
+//+ Revised: 	2026/10/29 00:10:41.430443
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -360,6 +360,68 @@ fn the_schema_enforces_class_membership() {
     let source: Option<i64> =
         connection.query_row("SELECT source_column_id FROM sheet_columns WHERE id = 4", [], |row| row.get(0)).unwrap();
     assert_eq!(source, None, "deleting the source still just unsets it");
+}
+
+/// Migration 4 drops cells that were never shown: values stored in calculated columns.
+#[test]
+fn migration_4_removes_cells_of_calculated_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut connection = Connection::open(dir.path().join("x.db")).unwrap();
+    migrations::migrate_to(&mut connection, 3).unwrap();
+    connection
+        .execute_batch(
+            "INSERT INTO classes (id, name) VALUES (1, '1A');
+             INSERT INTO pupils (id, name) VALUES (1, 'Ana');
+             INSERT INTO class_pupils VALUES (1, 1, 1);
+             INSERT INTO sheet_columns (id, class_id, position, title, kind, weight, max_score)
+                 VALUES (1, 1, 1, 'Exam', 'test', 100, 10);
+             INSERT INTO sheet_columns (id, class_id, position, title, kind, max_score)
+                 VALUES (2, 1, 2, 'Final grade', 'weighted', 10);
+             INSERT INTO sheet_columns (id, class_id, position, title, kind) VALUES (3, 1, 3, 'Notes', 'info');
+             INSERT INTO cells VALUES (1, 1, '7'), (2, 1, '9'), (3, 1, 'ok');",
+        )
+        .unwrap();
+    migrations::migrate_to(&mut connection, 4).unwrap();
+    let kept: Vec<i64> = connection
+        .prepare("SELECT column_id FROM cells ORDER BY column_id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(kept, [1, 3], "the final grade is calculated, never typed");
+}
+
+/// The file refuses typed values in final grade, average and rounded columns.
+#[test]
+fn the_schema_keeps_calculated_columns_free_of_cells() {
+    let dir = tempfile::tempdir().unwrap();
+    let connection = db::open(&dir.path().join("x.db"), None).unwrap();
+    connection
+        .execute_batch(
+            "INSERT INTO classes (id, name) VALUES (1, '1A');
+             INSERT INTO pupils (id, name) VALUES (1, 'Ana');
+             INSERT INTO class_pupils VALUES (1, 1, 1);
+             INSERT INTO sheet_columns (id, class_id, position, title, kind, weight, max_score)
+                 VALUES (1, 1, 1, 'Exam', 'test', 100, 10);
+             INSERT INTO sheet_columns (id, class_id, position, title, kind, max_score)
+                 VALUES (2, 1, 2, 'Final grade', 'weighted', 10), (3, 1, 3, 'Average', 'average', 10);
+             INSERT INTO sheet_columns (id, class_id, position, title, kind, source_column_id, decimals)
+                 VALUES (4, 1, 4, 'Rounded', 'round', 2, 0);
+             INSERT INTO cells VALUES (1, 1, '7');",
+        )
+        .unwrap();
+    let refused = |sql: &str| connection.execute_batch(sql).is_err();
+    for column in [2, 3, 4] {
+        assert!(refused(&format!("INSERT INTO cells VALUES ({column}, 1, '9')")), "column {column} is calculated");
+    }
+    assert!(refused("UPDATE cells SET column_id = 2"), "nor can a cell be moved into one");
+    connection
+        .execute_batch(
+            "INSERT INTO sheet_columns (id, class_id, position, title, kind) VALUES (5, 1, 5, 'Notes', 'info');
+                              INSERT INTO cells VALUES (5, 1, 'ok')",
+        )
+        .unwrap();
 }
 
 #[test]
