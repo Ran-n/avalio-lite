@@ -24,14 +24,20 @@ zeroize = "1"
 
 [build-dependencies]
 slint-build = "1.18"
+# embeds assets/logo.ico in the exe, for Explorer, the Start menu and the uninstall entry
+winresource = "0.1"
 
 [dev-dependencies]
 # Slint's headless backend for the UI tests; pinned to the exact Slint version it belongs to.
 i-slint-backend-testing = "=1.18.1"
 # the desktop test driver reads where an open popup menu sits; internal API, so pinned the same way
 i-slint-core = "=1.18.1"
+# renders assets/logo.svg into the .ico and the PNG (examples/render_logo.rs) and checks them (tests/logo.rs)
+ico = "0.6"
 png = "0.18"
 proptest = "1"
+# the same version Slint renders SVGs with, so it isn't compiled twice
+resvg = "0.48"
 serde_json = "1"
 tempfile = "3"
 # Win32 calls the desktop tests use to find, capture and click the real window

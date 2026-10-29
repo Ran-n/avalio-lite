@@ -28,6 +28,8 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=..\assets\logo.ico
+; the exe carries the logo too (build.rs embeds it), so the uninstall entry shows it
 UninstallDisplayIcon={app}\avalio-lite.exe
 
 [Tasks]

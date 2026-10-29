@@ -1,10 +1,6 @@
-// -----------------------------------------------------------------------------
-//+ Authors: 	Ran# <ran.hash@proton.me>
-//+ Created: 	2026/10/27 22:32:33.763628
-//+ Revised: 	2026/10/28 15:53:07.995855
-// -----------------------------------------------------------------------------
-
 use slint_build::{CompilerConfiguration, DefaultTranslationContext};
+
+const ICON: &str = "assets/logo.ico";
 
 fn main() {
     // Translations live in lang/<code>/LC_MESSAGES/avalio-lite.po and are bundled into the exe.
@@ -17,4 +13,14 @@ fn main() {
         .with_default_translation_context(DefaultTranslationContext::None)
         .with_debug_info(debug);
     slint_build::compile_with_config("ui/app-window.slint", config).expect("Slint UI failed to compile");
+
+    // The exe's own icon, shown by Explorer, the Start menu and the uninstall entry. A build
+    // without it is broken, so a failure stops the build.
+    println!("cargo:rerun-if-changed={ICON}");
+    if std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "windows") {
+        winresource::WindowsResource::new()
+            .set_icon(ICON)
+            .compile()
+            .unwrap_or_else(|error| panic!("could not embed {ICON} in the exe: {error}"));
+    }
 }

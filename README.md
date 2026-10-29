@@ -1,10 +1,12 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/29 01:58:37.893533 )
+[//]: # (+ Revised: 	2026/10/29 02:27:42.168172 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite
+
+<p align="center"><img src="assets/logo.svg" alt="avalio lite" width="96"></p>
 
 Lightweight, local edition of Avalio — a teacher-focused student evaluation app.
 
@@ -113,7 +115,8 @@ src/
   i18n/         interface language: Rust-side texts and error messages per language
 ui/             Slint UI with its own light and dark theme (theme.slint); gradebook.slint holds the sheet's data and actions
 lang/           translations of the UI strings, lang/<code>/LC_MESSAGES/avalio-lite.po, bundled into the exe
-examples/       demo_data: builds a sample database; app_driver: runs the app for the desktop tests
+assets/         logo (SVG source, generated .ico/.png; regenerate with cargo run --example render_logo -- <preview folder>)
+examples/       demo_data: builds a sample database; app_driver: runs the app for the desktop tests; render_logo: the icon files
 migrations/     numbered SQL schema files, embedded in the exe
 installer/      Inno Setup script
 scripts/        release, coverage gate, Perl setup
