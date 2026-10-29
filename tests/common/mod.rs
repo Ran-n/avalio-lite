@@ -1,13 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/10/28 15:53:06.324440
+//+ Revised: 	2026/10/29 02:27:41.984380
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
 #![allow(dead_code)]
 
 pub mod controls;
+pub mod logo;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;

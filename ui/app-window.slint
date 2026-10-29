@@ -56,6 +56,8 @@ export component AppWindow inherits Window {
     }
 
     title: "avalio-lite";
+    // Windows draws the title bar and taskbar itself, so they always get the light variant
+    icon: @image-url("../assets/logo.svg");
     background: Theme.canvas;
     default-font-family: "Segoe UI";
     default-font-size: 15px;

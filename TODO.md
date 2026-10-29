@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/28 10:26:46.388247 )
-[//]: # (+ Revised: 	2026/10/28 22:47:24.992520 )
+[//]: # (+ Revised: 	2026/10/29 02:27:42.294974 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # TODO
@@ -10,11 +10,10 @@ The backlog. Each item is self-contained: reading it alone is enough to
 implement it fully, without asking anything. Work top to bottom unless an item
 says otherwise.
 
-Next item number: 16
+Next item number: 17
 
 ## Index
 
-1. [Create a logo and use it everywhere the app shows itself](#1-create-a-logo-and-use-it-everywhere-the-app-shows-itself)
 2. [List the keyboard shortcuts in Settings and read them from config.toml](#2-list-the-keyboard-shortcuts-in-settings-and-read-them-from-configtoml)
 3. [Change keyboard shortcuts from Settings](#3-change-keyboard-shortcuts-from-settings)
 4. [Share one helper for "run this callback while the window is alive"](#4-share-one-helper-for-run-this-callback-while-the-window-is-alive)
@@ -29,6 +28,7 @@ Next item number: 16
 13. [Restore everything from an .avalio backup](#13-restore-everything-from-an-avalio-backup)
 14. [Add the classes of an .avalio backup to the app](#14-add-the-classes-of-an-avalio-backup-to-the-app)
 15. [Duplicate a class, with or without its pupils and marks](#15-duplicate-a-class-with-or-without-its-pupils-and-marks)
+16. [Get the user's sign-off on the logo, and redraw it if they ask](#16-get-the-users-sign-off-on-the-logo-and-redraw-it-if-they-ask)
 
 ## Adding an item
 
@@ -88,62 +88,6 @@ Next item number: 16
 ```
 
 ---
-
-## 1. Create a logo and use it everywhere the app shows itself
-
-**Why:** the app has no logo. Inside the app, `BrandMark` (`ui/components.slint`, around line 224) draws a 30 × 30 px rounded tile in the theme accent (`Theme.accent`: `#2f54d6` light, `#8ea6ff` dark) with a bold lowercase "a" typed in Segoe UI on top. It appears in the sidebar (`ui/shell.slint`), on the first-run screen (`ui/setup-page.slint`) and on the lock screen (`ui/lock-page.slint`). Everywhere outside the app's own pages there is nothing: the window's title bar and the Windows taskbar show the generic default icon, `avalio-lite.exe` has no icon in Explorer, the installer (`installer/avalio-lite.iss`) uses Inno Setup's default icon, and `README.md` has no image. The user asked to "create and use a logo".
-**Goal:** one logo, drawn as vector art, shown in the sidebar, first-run and lock screens, the window title bar, the taskbar, Explorer (for the `.exe`), the installer and its Start-menu shortcut, the uninstall entry, and at the top of the README. It stays legible at 16 px and works on both the light and the dark theme.
-
-### Behaviour
-- **The design:** a rounded square tile with a white tick (✓) inside, the stroke widening slightly into a small underline on the right, like a teacher's marking pen ticking a line in a mark book. That ties the logo to what the app does (marking), and a single bold stroke stays readable at 16 px, where letters and thin details blur. It replaces the typed "a", which depends on the installed font and turns into a grey blob at taskbar size.
-  - Drawn on a 64 × 64 grid. Tile: `rect x=0 y=0 width=64 height=64 rx=15`.
-  - Tick: one stroke path `M 17 34 L 27 44 L 47 22`, stroke width 7, round caps and joins.
-  - Underline: `M 34 50 L 47 50`, same stroke style.
-  - **Light** (`assets/logo.svg`): tile `#2f54d6` (the light theme's accent), strokes `#ffffff`.
-  - **Dark** (`assets/logo-dark.svg`): tile `#8ea6ff`, strokes `#10162b` (the dark theme's `accent` and `on-accent`), so the in-app mark matches the theme.
-- **Approval first:** before wiring the logo in, render it at 256, 32 and 16 px on white and on `#13161c`, and send the images to the user. If they want changes, adjust the paths and repeat. Don't start the "use it" steps until they approve.
-- **In-app** (sidebar, first-run, lock screen): shown at 30 × 30 px, as now. Light theme uses `logo.svg`, dark theme uses `logo-dark.svg`, and switching themes swaps it immediately.
-- **Window icon** (title bar and taskbar): always `logo.svg`, whatever the in-app theme, because Windows draws the title bar and taskbar itself.
-- **`.exe` icon in Explorer, Start menu, installer and uninstall entry:** `assets/logo.ico` with 16, 24, 32, 48, 64 and 256 px images rendered from `logo.svg`, because Windows picks the size it needs from the `.ico`.
-- **README:** the logo at 96 px, centred above the one-line description.
-- **The portable `.exe`** gets the same icon as the installed one, since it's the same file.
-
-### Out of scope
-- Renaming the app or changing the wordmark text "avalio lite" next to the logo in the sidebar.
-- Other icons (lock, sun, moon, gear, ⋯ in `Icon`) and the app's colours.
-- A splash screen.
-
-### Implementation
-1. `assets/logo.svg` and `assets/logo-dark.svg`: create both from the shapes and colours in Behaviour. Keep them hand-readable: no editor metadata, `viewBox="0 0 64 64"`, no fixed `width`/`height`, so every size renders sharp.
-2. `examples/render_logo.rs`: a small program that renders `assets/logo.svg` with the `resvg` crate (Slint already compiles it; add `resvg` and `ico` under `[dev-dependencies]` in `Cargo.toml`, pinned to the versions `cargo add` picks). It writes `assets/logo.ico` (16, 24, 32, 48, 64, 256 px) and `assets/logo-256.png`, plus preview PNGs on white and on `#13161c` into a folder given as the first argument. Same style as `examples/demo_data.rs`: header comment with usage, `ExitCode`, errors go to stderr, nothing panics. Because the `.ico` is generated, a changed SVG can be turned back into icons with one command.
-3. Run `cargo run --example render_logo -- <scratch folder>` and send the previews to the user for approval (see Behaviour). Commit the generated `assets/logo.ico` and `assets/logo-256.png`, so the build doesn't need to render them.
-4. `ui/components.slint`, `BrandMark`: replace the `Rectangle` + `Text` with an `Image` whose `source` is `Theme.dark ? @image-url("../assets/logo-dark.svg") : @image-url("../assets/logo.svg")`, 30 × 30 px, and keep the component name, so `shell.slint`, `setup-page.slint` and `lock-page.slint` need no change (grep `BrandMark` to confirm those are the only three users). Add `accessible-role: image` and `accessible-label: "avalio lite"`.
-5. `ui/app-window.slint`, `AppWindow`: set `icon: @image-url("../assets/logo.svg");` for the title bar and taskbar.
-6. `Cargo.toml` + `build.rs`: add `winresource` under `[build-dependencies]`. In `build.rs`, after the Slint compile, when `CARGO_CFG_TARGET_OS` is `windows`, embed `assets/logo.ico` with `winresource::WindowsResource::new().set_icon("assets/logo.ico").compile()`. If that call fails, panic with a message naming the file: a build without its icon is a broken build, not something to ignore. Add `cargo:rerun-if-changed=assets/logo.ico`.
-7. `installer/avalio-lite.iss`, `[Setup]`: add `SetupIconFile=..\assets\logo.ico`. Keep `UninstallDisplayIcon={app}\avalio-lite.exe`, which now carries the embedded icon.
-8. `README.md`: add `<p align="center"><img src="assets/logo.svg" alt="avalio lite" width="96"></p>` between the title and the description, as in the user's other projects (timtapper's README).
-9. Run `metadata -c` on `examples/render_logo.rs` and `metadata -m` on every edited `.rs` and `.md` file. `metadata` only handles `.py .sh .rs .md`, so skip the `.svg`, `.slint` and `.iss` files.
-
-### Tests
-- `tests/logo.rs`, `both_logo_variants_parse_and_are_square`: `usvg` parses `assets/logo.svg` and `assets/logo-dark.svg`, and each view box is 64 × 64. Proves the files the UI and installer load are valid.
-- `tests/logo.rs`, `ico_has_every_windows_size`: decode `assets/logo.ico` with the `ico` crate and assert exactly the sizes 16, 24, 32, 48, 64 and 256. Proves Explorer and the taskbar get a sharp image at each size.
-- `tests/logo.rs`, `ico_is_up_to_date_with_the_svg`: render `logo.svg` at 32 px with the same function the example uses (move it into a small `pub fn` the example and the test share, so the code isn't duplicated) and compare it with the 32 px image in `logo.ico`, allowing a per-pixel difference of 2. Fails when someone edits the SVG and forgets to regenerate the icon.
-- `tests/logo.rs`, `logo_stays_legible_at_16px`: render at 16 px and assert the tick's centre pixel (around x 8, y 10) is closer to white than to the tile colour. Guards against a redesign that disappears at taskbar size.
-- `examples/render_logo.rs` exits non-zero with a message when the output folder argument is missing (run it once by hand; note the result in the reply).
-- Manual, light and dark: run the app and take screenshots of the sidebar, the first-run screen (start with no `config.toml`) and the lock screen in both themes. Check the logo is sharp and swaps with the theme, and that the title bar and taskbar show the logo. Run `scripts/release.ps1` and check the `.exe` icon in Explorer and the installer's own icon.
-
-### Docs
-- `README.md`: the logo image (step 8). In the Layout block, add a line `assets/        logo (SVG source, generated .ico/.png; regenerate with cargo run --example render_logo)`.
-- `CHANGELOG.md` (when committing): "Added the avalio-lite logo to the window, taskbar, program file, installer and README".
-
-### Done when
-- [ ] The user approved the rendered logo (their reply quoted in the hand-off).
-- [ ] `assets/logo.svg`, `assets/logo-dark.svg`, `assets/logo.ico` and `assets/logo-256.png` exist and are committed.
-- [ ] Sidebar, first-run and lock screens show the logo in both themes (screenshots attached), and it swaps when the theme is toggled.
-- [ ] The title bar and the taskbar show the logo (screenshot).
-- [ ] `dist\avalio-lite-<version>-portable.exe` and the installer show the logo in Explorer, and the installed app's Start-menu entry and Settings → Apps entry show it.
-- [ ] README shows the logo.
-- [ ] `cargo test` (including `tests/logo.rs`), `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` all pass.
 
 ## 2. List the keyboard shortcuts in Settings and read them from config.toml
 
@@ -928,3 +872,31 @@ Line numbers are from before the toolchain pin, and some of these lines no longe
 - [ ] Rounded columns in a copy point at the copy's columns; a failed copy adds nothing.
 - [ ] Desktop screenshot of the Galician menu at 1000×600 reviewed; nothing clipped.
 - [ ] `cargo test`, the coverage gate, the desktop suite, clippy and fmt pass.
+
+## 16. Get the user's sign-off on the logo, and redraw it if they ask
+
+**Why:** item 1 (the logo) was built while the user was away, so its "approval first" step was replaced by sending them the previews (2026-10-29) and carrying on. The logo is in use everywhere: the sidebar, first-run and lock screens (`BrandMark` in `ui/components.slint`), the window and taskbar (`icon` in `ui/app-window.slint`), the exe (`build.rs` embeds `assets/logo.ico`), the installer (`SetupIconFile` in `installer/avalio-lite.iss`) and the README.
+**Goal:** the user has seen the logo and either approved it or had it changed to what they want.
+
+### Behaviour
+- Ask the user (with AskUserQuestion) whether the tick-on-tile logo is approved, showing `assets/logo-256.png` and the 16 px rendering. Options: approve; change colours; change the shape; something else.
+- On approval: nothing else changes; note the approval and their words in the hand-off.
+- On a change: edit only `assets/logo.svg` and `assets/logo-dark.svg` (same 64 × 64 view box; the dark variant keeps the dark theme's `accent` `#8ea6ff` tile and `on-accent` `#0f1530` strokes unless told otherwise), then regenerate the icon files.
+
+### Out of scope
+- Where the logo is used; that is done.
+
+### Implementation
+1. Ask as described; wait for the answer.
+2. If a change is wanted, edit the two SVGs, run `cargo run --example render_logo -- <scratch folder>`, send the new previews, and repeat until approved.
+3. Rewrite the desktop baselines (`$env:AVALIO_UPDATE_BASELINES = "1"; cargo test --test desktop -- --ignored --test-threads=1`) and review every changed image.
+
+### Tests
+- `tests/logo.rs` already checks the files are valid, up to date with the SVG and legible at 16 px; it must still pass.
+
+### Docs
+- `CHANGELOG.md` (when committing, only if the logo changed): "Changed the logo to …".
+
+### Done when
+- [ ] The user's approval (quoted) or the redrawn logo, approved.
+- [ ] `cargo test`, the desktop suite, clippy and fmt pass.

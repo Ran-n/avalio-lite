@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/10/28 22:55:05.200796
+//+ Revised: 	2026/10/29 02:27:42.046556
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -105,6 +105,9 @@ impl App {
         let window = AppWindow::of_process(child.id(), Duration::from_secs(20));
         let mut app = Self { child, stdin, replies, window, scale: 1.0 };
         app.scale = app.send(json!({ "cmd": "ping" }))["scale"].as_f64().unwrap();
+        // a click before the first frames are drawn (the SVG logo is rasterized then) can be lost,
+        // so tests only start once the window shows a settled picture
+        app.capture();
         app
     }
 

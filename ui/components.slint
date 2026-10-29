@@ -268,19 +268,13 @@ export component FolderField inherits VerticalLayout {
 }
 
 // The app's mark: a rounded accent tile with a lowercase "a".
-export component BrandMark inherits Rectangle {
+// The logo: a marking tick on the accent tile, in the variant drawn for the current theme.
+export component BrandMark inherits Image {
     width: 30px;
     height: 30px;
-    border-radius: 9px;
-    background: Theme.accent;
-    Text {
-        text: "a";
-        font-size: 19px;
-        font-weight: 800;
-        color: Theme.on-accent;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
+    source: Theme.dark ? @image-url("../assets/logo-dark.svg") : @image-url("../assets/logo.svg");
+    accessible-role: image;
+    accessible-label: "avalio lite";
 }
 
 // Small rounded label for column facts such as "50%" or "/10".
