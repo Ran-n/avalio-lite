@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/10/29 03:07:06.070647
+//+ Revised: 	2026/10/29 04:09:18.851306
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -381,6 +381,18 @@ fn an_unusable_log_folder_still_opens_the_database_and_logs_can_move_later() {
     assert_eq!(state.start(), Startup::Ready);
     state.move_logs(&fixture.path("logs-again")).unwrap();
     assert!(fixture.path("logs-again").join(LOG_FILE_NAME).is_file(), "logging starts in the new folder");
+}
+
+#[test]
+fn a_new_database_with_an_unusable_log_folder_still_opens() {
+    let fixture = Fixture::new();
+    let blocked = fixture.path("blocked");
+    fs::write(&blocked, b"a file where the folder should be").unwrap();
+    let mut state = fixture.state();
+    state.create_database(&fixture.path("data"), &blocked).unwrap();
+    assert!(state.connection().is_some(), "logging falls back to stderr; the data still opens");
+    assert_eq!(fixture.store().load().unwrap().unwrap().log_dir, blocked);
+    state.shutdown();
 }
 
 #[test]

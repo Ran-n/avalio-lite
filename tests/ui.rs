@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/10/29 03:07:06.131158
+//+ Revised: 	2026/10/29 04:09:18.977366
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -301,6 +301,16 @@ fn the_saved_language_and_theme_are_applied_at_startup() {
 }
 
 #[test]
+fn a_saved_light_theme_wins_over_the_windows_setting() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_theme(ThemeChoice::Light).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    assert!(!ui.session.window.global::<Theme>().get_dark());
+}
+
+#[test]
 fn the_windows_language_is_used_until_one_is_chosen() {
     let ui = Ui::open_in(Fixture::new(), Language::Galician);
     assert_eq!(ui.session.window.get_language_code(), "gl");
@@ -446,6 +456,18 @@ fn a_wrong_pin_is_reported_and_keeps_the_lock() {
     assert!(ui.session.window.get_locked());
     assert_eq!(ui.session.window.get_unlock_error(), error_text(&AppError::WrongPin));
     assert!(ui.session.window.get_unlock_pin().is_empty());
+}
+
+/// The leave and return callbacks only act when they apply: no database chosen, or none locked.
+#[test]
+fn leaving_and_returning_to_the_lock_screen_need_a_locked_database() {
+    let ui = Ui::open(Fixture::new());
+    ui.session.window.invoke_forgot_pin();
+    assert_eq!(ui.session.window.get_setup_notice(), SetupNotice::FirstRun, "still the first-run screen");
+    drop(ui);
+    let ui = seeded();
+    ui.session.window.invoke_back_to_lock();
+    assert!(!ui.session.window.get_locked(), "nothing is locked, so there is nothing to go back to");
 }
 
 /// Was: the lock screen said the file doesn't exist on every try, with no way off it.
@@ -598,6 +620,15 @@ fn every_shortcut_works_from_a_focused_cell() {
 }
 
 #[test]
+fn the_class_shortcuts_do_nothing_without_classes() {
+    let ui = Ui::with_database();
+    with_keys(&ui, false, Key::PageDown);
+    with_keys(&ui, false, Key::PageUp);
+    assert_eq!(gradebook(&ui).get_current_class_id(), -1);
+    assert!(gradebook(&ui).get_error_message().is_empty());
+}
+
+#[test]
 fn shortcuts_do_nothing_on_the_lock_and_first_run_screens() {
     let ui = encrypted();
     with_keys(&ui, false, ",");
@@ -745,6 +776,15 @@ fn reset_and_reset_all_bring_back_the_defaults() {
     assert!(ui.fixture.store().load().unwrap().unwrap().shortcuts.is_empty());
     assert!(ui.session.window.global::<avalio_lite::ui::Shortcuts>().get_all_default(), "Reset all is greyed again");
     assert!(!shows(&ui, "Reset"));
+}
+
+#[test]
+fn a_recording_for_a_row_that_does_not_exist_changes_nothing() {
+    let ui = seeded();
+    ui.session.window.global::<avalio_lite::ui::Shortcuts>().invoke_record(99, "k".into(), true, false, false);
+    ui.session.window.global::<avalio_lite::ui::Shortcuts>().invoke_reset(-1);
+    assert!(ui.session.window.global::<avalio_lite::ui::Shortcuts>().get_all_default());
+    assert!(ui.fixture.store().load().unwrap().unwrap().shortcuts.is_empty());
 }
 
 #[test]
@@ -1391,6 +1431,31 @@ fn hiding_weights_and_scales_is_saved() {
 
 // ---------------------------------------------------------------------------------------------
 // Cells and summary
+
+/// When the file changed under the open sheet (a pupil or a column added from elsewhere), an
+/// in-place refresh would put values in the wrong rows or columns, so the whole sheet is redrawn.
+#[test]
+fn a_sheet_that_changed_underneath_is_redrawn_whole() {
+    let ui = seeded();
+    {
+        let state = ui.session.state.borrow();
+        let connection = state.connection().unwrap();
+        let class = classes::list_classes(connection).unwrap()[0].id;
+        pupils::add_new_pupil(connection, class, "Carla").unwrap();
+    }
+    type_into(&ui, "Ana, Exam", "8");
+    assert_eq!(gradebook(&ui).get_rows().row_count(), 3, "the new pupil shows");
+    {
+        let state = ui.session.state.borrow();
+        let connection = state.connection().unwrap();
+        let class = classes::list_classes(connection).unwrap()[0].id;
+        columns::add_column(connection, class, ColumnType::Info, Language::English).unwrap();
+    }
+    let exam = gradebook(&ui).get_columns().row_data(0).unwrap().id;
+    gradebook(&ui).invoke_set_weight(exam, "100".into());
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 3, "the new column shows");
+    assert_eq!(cell_text(&ui, 0, 0), "8", "and the marks stay in their places");
+}
 
 #[test]
 fn typing_marks_updates_the_final_grade_and_summary() {

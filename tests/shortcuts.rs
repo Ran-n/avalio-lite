@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:47.030126
-//+ Revised: 	2026/10/29 03:07:06.008126
+//+ Revised: 	2026/10/29 04:09:18.789416
 // -----------------------------------------------------------------------------
 
 //! The shortcut rules, their text form in config.toml, and how config entries are applied.
@@ -184,6 +184,34 @@ fn recorded_presses_say_why_they_are_refused() {
     assert_eq!(KeyCombo::checked_key_press("c", true, false, false), Err(ShortcutError::EditingKey('C')));
     assert_eq!(KeyCombo::checked_key_press(" ", true, false, false), Err(ShortcutError::UnknownKey));
     assert_eq!(KeyCombo::checked_key_press("k", true, false, false), Ok(combo("Ctrl+K")));
+}
+
+/// The English texts the log gets for refused shortcuts and ignored config entries.
+#[test]
+fn refusals_and_ignored_entries_read_well_in_the_log() {
+    let texts = [
+        (ShortcutError::UnknownKey, "not a key a shortcut can use"),
+        (ShortcutError::NeedsCtrlOrAlt, "needs Ctrl or Alt (only F1 to F12 can be used alone)"),
+        (ShortcutError::CtrlAlt, "Ctrl and Alt together are what AltGr sends"),
+        (ShortcutError::EditingKey('C'), "Ctrl+C is used for editing text"),
+        (ShortcutError::Clash { keys: combo("Ctrl+H"), taken_by: Action::Lock }, "Ctrl+H is already used by lock"),
+    ];
+    for (error, text) in texts {
+        assert_eq!(error.to_string(), text);
+    }
+    let (_, problems) =
+        Shortcuts::from_config(&overrides(&[("lokc", "Ctrl+K"), ("lock", "Ctrl+"), ("next-class", "Ctrl+L")]));
+    let logged: Vec<String> = problems.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        logged,
+        [
+            "lock = \"Ctrl+\": not a key a shortcut can use",
+            "lokc = \"Ctrl+K\": no such action",
+            "next-class = \"Ctrl+L\": the same keys as another action",
+        ]
+    );
+    let error = avalio_lite::error::AppError::InvalidShortcuts(problems);
+    assert!(error.to_string().contains("lokc = \"Ctrl+K\": no such action; "), "{error}");
 }
 
 fn any_combo() -> impl proptest::strategy::Strategy<Value = KeyCombo> {

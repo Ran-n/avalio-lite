@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.812550
-//+ Revised: 	2026/10/28 22:23:17.008109
+//+ Revised: 	2026/10/29 04:09:18.141036
 // -----------------------------------------------------------------------------
 
 //! The database file. SQLite through SQLCipher: without a key it is a plain SQLite file;
@@ -17,6 +17,7 @@ use rusqlite::{Connection, ErrorCode, OpenFlags};
 use zeroize::Zeroizing;
 
 use crate::error::{AppError, Result, io_at};
+use crate::storage;
 
 const SIDECAR_SUFFIXES: &[&str] = &["-wal", "-shm"];
 /// Every unencrypted SQLite file starts with these 16 bytes; an encrypted one starts with random salt.
@@ -27,9 +28,7 @@ const NO_KEY: &str = "";
 /// Opens (creating if needed) the database at `path`, unlocking it with `key` when it is
 /// encrypted, and brings its schema up to date. A wrong or missing key is `WrongPin`.
 pub fn open(path: &Path, key: Option<&str>) -> Result<Connection> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(io_at(dir))?;
-    }
+    storage::ensure_parent(path)?;
     let mut connection = Connection::open(path)?;
     apply_key(&connection, key)?;
     connection.pragma_update(None, "foreign_keys", true)?;
@@ -66,9 +65,7 @@ pub fn export(connection: &Connection, destination: &Path, key: Option<&str>) ->
     if destination.exists() {
         return Err(AppError::AlreadyExists(destination.to_path_buf()));
     }
-    if let Some(dir) = destination.parent() {
-        fs::create_dir_all(dir).map_err(io_at(dir))?;
-    }
+    storage::ensure_parent(destination)?;
     let version = migrations::schema_version(connection)?;
     connection.execute(
         "ATTACH DATABASE ?1 AS export KEY ?2",

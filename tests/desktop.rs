@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/10/29 03:07:05.883979
+//+ Revised: 	2026/10/29 04:09:18.470462
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -468,4 +468,58 @@ fn keyboard_focus() {
         app.theme(dark);
     }
     app.quit();
+}
+
+/// The app as users run it: `main`, `app::run` and the real Windows dialogs, which every other test
+/// replaces. Tab to the first-run screen's "Browse…", press it, close the folder dialog that opens,
+/// then close the window: the app must quit cleanly.
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_real_dialogs_open_and_close() {
+    use desktop_support::window::{AppWindow, dialog_of};
+    use std::process::{Child, Command, Stdio};
+    use std::time::Duration;
+    /// The first-run card is centred; its database "Browse…" sits this far from the window's
+    /// centre (logical pixels, from the setup baseline). The app driver can't help here: this is
+    /// the real app, which has no driver.
+    const BROWSE_FROM_CENTRE: (f64, f64) = (204.0, 33.0);
+    const LOGICAL_WIDTH: f64 = 1280.0;
+
+    /// Kills the app if the test fails before it quits, so no window is left behind.
+    struct Running(Child);
+    impl Drop for Running {
+        fn drop(&mut self) {
+            if matches!(self.0.try_wait(), Ok(None)) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+    }
+
+    let _turn = desktop_support::turn();
+    let fixture = Fixture::new();
+    let mut app = Running(
+        Command::new(desktop_support::app_exe())
+            .env(avalio_lite::config::CONFIG_DIR_ENV, fixture.path("config"))
+            .current_dir(fixture.root.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("the app starts"),
+    );
+    let pid = app.0.id();
+    let window = AppWindow::of_process(pid, Duration::from_secs(20));
+    std::thread::sleep(Duration::from_millis(800));
+    let (width, height) = window.client_size();
+    let scale = f64::from(width) / LOGICAL_WIDTH;
+    let x = f64::from(width) / 2.0 + BROWSE_FROM_CENTRE.0 * scale;
+    let y = f64::from(height) / 2.0 + BROWSE_FROM_CENTRE.1 * scale;
+    window.click(x as i32, y as i32);
+    let dialog = dialog_of(pid, &window, Duration::from_secs(10)).expect("the folder dialog opens");
+    dialog.close();
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(dialog_of(pid, &window, Duration::ZERO).is_none(), "closing it cancels it");
+    window.close();
+    let status = app.0.wait().expect("the app exits");
+    assert!(status.success(), "a cancelled dialog and the close button quit cleanly: {status}");
 }
