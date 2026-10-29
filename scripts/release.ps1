@@ -12,8 +12,9 @@ Write-Host "Releasing avalio-lite $version"
 
 . "$PSScriptRoot\use-perl.ps1"
 
-# the default suite under its coverage gate, then the desktop tests, which open the real window
-& "$PSScriptRoot\coverage.ps1"
+# the default suite under its line and branch coverage gates, then the desktop tests, which open
+# the real window
+& "$PSScriptRoot\coverage.ps1" -Branches
 cargo test --test desktop -- --ignored --test-threads=1
 if ($LASTEXITCODE -ne 0) { throw 'desktop tests failed' }
 cargo build --release
