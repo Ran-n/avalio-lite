@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.139186
-//+ Revised: 	2026/10/29 02:54:47.458617
+//+ Revised: 	2026/10/29 04:09:17.643501
 // -----------------------------------------------------------------------------
 
 mod cells;
@@ -14,7 +14,7 @@ pub mod view;
 use rusqlite::Connection;
 use slint::{ComponentHandle, SharedString};
 
-use crate::app::{SharedDialogs, SharedState, shortcuts};
+use crate::app::{SharedDialogs, SharedState, shortcuts, with_window};
 use crate::error::{AppError, Result};
 use crate::i18n;
 use crate::ui::{AppWindow, Gradebook};
@@ -30,9 +30,8 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
 }
 
 fn wire_preferences(window: &AppWindow, state: &SharedState) {
-    let (weak, shared) = (window.as_weak(), state.clone());
-    window.global::<Gradebook>().on_toggle_column_settings(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    window.global::<Gradebook>().on_toggle_column_settings(with_window(window, move |window| {
         let gradebook = window.global::<Gradebook>();
         let show = !gradebook.get_show_column_settings();
         match shared.borrow_mut().set_show_column_settings(show) {
@@ -45,7 +44,7 @@ fn wire_preferences(window: &AppWindow, state: &SharedState) {
                 gradebook.set_error_message(i18n::error_message(i18n::current(), &error).into());
             }
         }
-    });
+    }));
 }
 
 /// Redraws the class list and the open sheet in place, e.g. after the language changes.

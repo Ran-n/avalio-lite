@@ -4,7 +4,7 @@
 use slint::{ComponentHandle, SharedString};
 
 use crate::app::gradebook::view::model;
-use crate::app::{SharedState, view};
+use crate::app::{SharedState, view, with_window, with_window1, with_window5};
 use crate::error::{AppError, Result};
 use crate::i18n::{self, Message, shortcuts::action_label, shortcuts::display, shortcuts::key_names};
 use crate::shortcuts::{Action, KeyCombo};
@@ -22,39 +22,36 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
             .map_or(ShortcutAction::None, to_ui)
     });
 
-    let (weak, shared) = (window.as_weak(), state.clone());
-    global.on_record(move |row, text, ctrl, shift, alt| {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    global.on_record(with_window5(window, move |window, row, text: SharedString, ctrl, shift, alt| {
         let Some(action) = action_at(row) else { return };
         let result = KeyCombo::checked_key_press(&text, ctrl, shift, alt)
             .map_err(AppError::Shortcut)
             .and_then(|combo| shared.borrow_mut().set_shortcut(action, combo));
         // a refused combination keeps the row recording, so the user can try again or press Esc
-        after_change(&window, &shared, "change shortcut", result, |language, shortcuts| {
+        after_change(window, &shared, "change shortcut", result, |language, shortcuts| {
             let keys = display(language, &shortcuts.combo(action));
             i18n::text(language, &Message::ShortcutChanged { action: action_label(language, action), keys: &keys })
         });
-    });
+    }));
 
-    let (weak, shared) = (window.as_weak(), state.clone());
-    global.on_reset(move |row| {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    global.on_reset(with_window1(window, move |window, row| {
         let Some(action) = action_at(row) else { return };
         let result = shared.borrow_mut().reset_shortcut(action);
-        after_change(&window, &shared, "reset shortcut", result, |language, shortcuts| {
+        after_change(window, &shared, "reset shortcut", result, |language, shortcuts| {
             let keys = display(language, &shortcuts.combo(action));
             i18n::text(language, &Message::ShortcutChanged { action: action_label(language, action), keys: &keys })
         });
-    });
+    }));
 
-    let (weak, shared) = (window.as_weak(), state.clone());
-    global.on_reset_all(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    global.on_reset_all(with_window(window, move |window| {
         let result = shared.borrow_mut().reset_all_shortcuts();
-        after_change(&window, &shared, "reset all shortcuts", result, |language, _| {
+        after_change(window, &shared, "reset all shortcuts", result, |language, _| {
             i18n::text(language, &Message::ShortcutsReset)
         });
-    });
+    }));
 }
 
 /// After a change: on success the recording ends, the card and labels show the new keys and the
