@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/29 04:09:17.261781 )
+[//]: # (+ Revised: 	2026/10/29 04:36:58.594861 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite
@@ -103,7 +103,7 @@ Set `LOG_LEVEL` (`error`, `warn`, `info`, `debug`, `trace`) to change log verbos
 ```powershell
 cargo test                       # the default suite: logic, database, files, the UI headless
 .\scripts\coverage.ps1           # the same under coverage; fails below the line-coverage gate
-.\scripts\coverage.ps1 -Branches # plus branch coverage (nightly toolchain)
+.\scripts\coverage.ps1 -Branches # plus the branch-coverage gate (nightly toolchain); what release.ps1 runs
 cargo test --test desktop -- --ignored --test-threads=1   # the real app in its real window
 cargo test regression            # only the regression tests, one per fixed bug
 ```
@@ -111,7 +111,7 @@ cargo test regression            # only the regression tests, one per fixed bug
 - **Default suite** (`tests/`, one file per module): unit and property tests (proptest) for the logic; integration tests on real databases and folders; golden files for every saved format (`tests/golden/`); a step-by-step migration walk; the entry point and quit path; error logging; the version; and the UI (`tests/ui.rs`), the real window on Slint's headless backend, clicked and typed into through its controls' accessible labels, with dialogs answered by a fake.
 - **Desktop tests** (`tests/desktop.rs`) open real windows, so they are left out of `cargo test`. They start the app through `examples/app_driver.rs` on scratch data, click and type through Windows messages, check colours and positions pixel by pixel, and compare every screen in light and dark, at the normal and the minimum window size, and in Galician at the minimum size, with reviewed baselines in `tests/desktop/baselines/`. After a deliberate change to the look, rewrite them with `$env:AVALIO_UPDATE_BASELINES = "1"`, open every changed image and check nothing is clipped, wrapped or cut off before committing; a failure saves the screen and a marked diff in `target\desktop-failures\` (for a screen that never stops changing, its last two frames and what still changes).
 - **Golden files** change only with a format: `$env:AVALIO_UPDATE_GOLDEN = "1"; cargo test --test golden` rewrites the current-format samples. Samples of older formats are never rewritten.
-- **Coverage** needs `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview`. Raise the gate in `scripts\coverage.ps1` as coverage grows; never lower it. The script lists, with the reason for each, the few lines left uncovered on purpose (the real exe and its Windows dialogs, which a desktop test covers instead, and double faults); any other uncovered line needs a test. If the coverage build kept stale code from an earlier build (a file then reports more executable lines than it has), the script says so, cleans it and measures again.
+- **Coverage** needs `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview`. Raise the gates in `scripts\coverage.ps1` (`$MinLines`, and `$MinBranches` for `-Branches`) as coverage grows; never lower them. Branch data needs the nightly toolchain (`rustup toolchain install nightly --component llvm-tools-preview`); `-Branches` without it fails with that hint rather than skipping the check. The script lists, with the reason for each, the few lines left uncovered on purpose (the real exe and its Windows dialogs, which a desktop test covers instead, and double faults); any other uncovered line needs a test. If the coverage build kept stale code from an earlier build (a file then reports more executable lines than it has), the script says so, cleans it and measures again.
 
 ### Layout
 

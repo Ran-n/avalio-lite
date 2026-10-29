@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/28 10:26:46.388247 )
-[//]: # (+ Revised: 	2026/10/29 04:09:17.326373 )
+[//]: # (+ Revised: 	2026/10/29 04:36:58.827633 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # TODO
@@ -14,7 +14,6 @@ Next item number: 17
 
 ## Index
 
-6. [Gate branch coverage too](#6-gate-branch-coverage-too)
 7. [Run mutation testing on the core logic and strengthen weak tests](#7-run-mutation-testing-on-the-core-logic-and-strengthen-weak-tests)
 8. [Make the desktop baselines work on other displays](#8-make-the-desktop-baselines-work-on-other-displays)
 9. [Turn on the hook that loads matching memory rules into each prompt](#9-turn-on-the-hook-that-loads-matching-memory-rules-into-each-prompt)
@@ -84,33 +83,6 @@ Next item number: 17
 ```
 
 ---
-
-## 6. Gate branch coverage too
-
-**Why:** the testing rules want branch coverage measured and gated. `scripts/coverage.ps1 -Branches` already reports it through the nightly toolchain (`cargo +nightly llvm-cov --branch`), but cargo-llvm-cov 0.9 can only fail on lines, functions and regions (`--fail-under-lines`, `--fail-under-functions`, `--fail-under-regions`), not on branches. So a drop in branch coverage goes unnoticed. Do this after item 5.
-**Goal:** `.\scripts\coverage.ps1` fails when either line or branch coverage drops below its gate.
-
-### Behaviour
-- Without `-Branches`, the script still checks lines only, on stable Rust.
-- With `-Branches`, or always if the nightly toolchain is installed (decide by checking `rustup toolchain list` for `nightly`), it also reads the branch total and fails below `$MinBranches`.
-- With no nightly toolchain, it prints how to install one (`rustup toolchain install nightly --component llvm-tools-preview`) and fails, rather than skipping the check silently.
-
-### Out of scope
-- Raising branch coverage itself; set the gate to whatever the total is now.
-
-### Implementation
-1. `scripts/coverage.ps1`: after the line run, run `cargo +nightly llvm-cov report --branch --json --summary-only` and read `data[0].totals.branches.percent` with `ConvertFrom-Json`. Compare it with a new `$MinBranches` (the current whole number). `throw` with both numbers when it's below.
-2. `scripts/release.ps1`: call `coverage.ps1 -Branches`, so a release checks both.
-
-### Tests
-- Run the script once with `$MinBranches` set one above the current total and confirm it fails with a message naming both numbers; then set it back.
-
-### Docs
-- `README.md`, *Tests* section: the branch gate and the nightly requirement. `CONTRIBUTING.md` step 4: add `-Branches`. Changelog: "Coverage gate checks branches as well as lines."
-
-### Done when
-- [ ] A branch total under `$MinBranches` fails the script (shown once on purpose).
-- [ ] `.\scripts\release.ps1` runs the branch gate.
 
 ## 7. Run mutation testing on the core logic and strengthen weak tests
 

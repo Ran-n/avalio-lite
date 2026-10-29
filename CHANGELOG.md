@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/10/29 04:09:17.196897 )
+[//]: # (+ Revised: 	2026/10/29 04:36:58.749687 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -21,6 +21,7 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ### Changed
 
 - Line coverage raised to 98 % and the gate with it; the coverage script lists the few lines left uncovered on purpose, and a desktop test now runs the real exe with its Windows dialogs
+- The coverage gate checks branches (92 %) as well as lines, on the nightly toolchain; release.ps1 runs both, and the coverage script's -Branches mode, which never worked, now does
 
 ### Fixed
 
