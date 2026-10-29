@@ -1,13 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:43.679671
-//+ Revised: 	2026/10/28 10:52:43.679671
+//+ Revised: 	2026/10/29 04:09:17.713014
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model};
 
 use super::view::{column_item, model};
 use super::{SharedState, run, view::Refresh};
+use crate::app::{with_window, with_window1};
 use crate::gradebook::columns::list_columns;
 use crate::gradebook::model::Column;
 use crate::ui::{AppWindow, ColumnItem, Gradebook};
@@ -17,25 +18,19 @@ const CLOSED: i32 = -1;
 pub fn wire(window: &AppWindow, state: &SharedState) {
     let gradebook = window.global::<Gradebook>();
 
-    let (weak, shared) = (window.as_weak(), state.clone());
-    gradebook.on_open_column_panel(move |index| {
-        let Some(window) = weak.upgrade() else { return };
-        let class_id = super::view::current_class_id(&window);
-        run(&window, &shared, "open column settings", |connection| {
+    let shared = state.clone();
+    gradebook.on_open_column_panel(with_window1(window, move |window, index| {
+        let class_id = super::view::current_class_id(window);
+        run(window, &shared, "open column settings", |connection| {
             let columns = list_columns(connection, class_id)?;
             if let Some(column) = usize::try_from(index).ok().and_then(|index| columns.get(index)) {
-                show(&window, column, &columns, index);
+                show(window, column, &columns, index);
             }
             Ok(Refresh::Nothing)
         });
-    });
+    }));
 
-    let weak = window.as_weak();
-    gradebook.on_close_column_panel(move || {
-        if let Some(window) = weak.upgrade() {
-            close(&window);
-        }
-    });
+    gradebook.on_close_column_panel(with_window(window, close));
 }
 
 /// Opens the panel for `column`. The one-item model is replaced each time, so the panel is

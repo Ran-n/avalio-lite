@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:42.253612
-//+ Revised: 	2026/10/29 00:32:01.968554
+//+ Revised: 	2026/10/29 04:09:17.881631
 // -----------------------------------------------------------------------------
 
 use std::cell::RefCell;
@@ -11,7 +11,7 @@ use std::time::Instant;
 use slint::{ComponentHandle, SharedString};
 
 use crate::app::state::SetupReason;
-use crate::app::{SharedState, gradebook, view};
+use crate::app::{SharedState, gradebook, view, with_window, with_window1};
 use crate::error::{AppError, Result};
 use crate::i18n::{self, Message};
 use crate::lock::AttemptLimiter;
@@ -44,21 +44,19 @@ pub fn show_unprotected(window: &AppWindow) {
 }
 
 fn wire_locking(window: &AppWindow, state: &SharedState) {
-    let (weak, shared) = (window.as_weak(), state.clone());
-    window.on_lock_now(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    window.on_lock_now(with_window(window, move |window| {
         if shared.borrow_mut().lock() {
-            show_locked(&window);
+            show_locked(window);
         } else {
             let hint = i18n::text(i18n::current(), &Message::LockNeedsPin);
             window.global::<Gradebook>().set_error_message(hint.into());
         }
-    });
+    }));
 
-    let (weak, shared) = (window.as_weak(), state.clone());
+    let shared = state.clone();
     let limiter = Rc::new(RefCell::new(AttemptLimiter::default()));
-    window.on_unlock(move |pin| {
-        let Some(window) = weak.upgrade() else { return };
+    window.on_unlock(with_window1(window, move |window, pin: SharedString| {
         let now = Instant::now();
         let waiting = limiter.borrow().wait_remaining(now);
         let outcome = match waiting {
@@ -71,7 +69,7 @@ fn wire_locking(window: &AppWindow, state: &SharedState) {
                 limiter.borrow_mut().record_success();
                 window.set_unlock_error(SharedString::new());
                 window.set_locked(false);
-                gradebook::show_database(&window, &shared);
+                gradebook::show_database(window, &shared);
             }
             Err(AppError::WrongPin) => {
                 limiter.borrow_mut().record_failure(now);
@@ -85,66 +83,61 @@ fn wire_locking(window: &AppWindow, state: &SharedState) {
             // offer what a restart would, the setup screen saying it is missing
             Err(AppError::NotFound(path)) => {
                 log::error!("the locked database is gone: {}", path.display());
-                view::show_setup(&window, &SetupReason::DatabaseMissing(path));
+                view::show_setup(window, &SetupReason::DatabaseMissing(path));
             }
             Err(error) => {
                 log::error!("unlocking failed: {error}");
                 window.set_unlock_error(i18n::error_message(i18n::current(), &error).into());
             }
         }
-    });
+    }));
 }
 
 /// "Forgot the PIN?" leaves the lock screen for setup, where another database can be opened or a
 /// new one created; the locked file is left exactly as it is. "Back to the lock screen" returns.
 /// The guess limiter lives in the unlock callback, so leaving and coming back doesn't reset a wait.
 fn wire_leaving(window: &AppWindow, state: &SharedState) {
-    let (weak, shared) = (window.as_weak(), state.clone());
-    window.on_forgot_pin(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    window.on_forgot_pin(with_window(window, move |window| {
         let Some(path) = shared.borrow().config().map(|config| config.database_path.clone()) else {
             log::error!("\"Forgot the PIN?\" with no database chosen");
             return;
         };
         log::info!("left the lock screen to choose another database");
-        view::show_setup(&window, &SetupReason::LeftLocked(path));
-    });
+        view::show_setup(window, &SetupReason::LeftLocked(path));
+    }));
 
-    let (weak, shared) = (window.as_weak(), state.clone());
-    window.on_back_to_lock(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    window.on_back_to_lock(with_window(window, move |window| {
         if !shared.borrow().is_locked() {
             log::error!("back to the lock screen, but no database is locked");
             return;
         }
-        show_locked(&window);
+        show_locked(window);
         window.set_error_message(SharedString::new());
         window.set_setup_required(false);
-    });
+    }));
 }
 
 fn wire_pin_settings(window: &AppWindow, state: &SharedState) {
-    let (weak, shared) = (window.as_weak(), state.clone());
-    window.on_set_pin(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    window.on_set_pin(with_window(window, move |window| {
         let result = shared.borrow_mut().set_pin(&window.get_pin_new(), &window.get_pin_repeat());
-        after_pin_change(&window, &shared, result, Message::PinTurnedOn);
-    });
+        after_pin_change(window, &shared, result, Message::PinTurnedOn);
+    }));
 
-    let (weak, shared) = (window.as_weak(), state.clone());
-    window.on_change_pin(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    window.on_change_pin(with_window(window, move |window| {
         let result =
             shared.borrow_mut().change_pin(&window.get_pin_current(), &window.get_pin_new(), &window.get_pin_repeat());
-        after_pin_change(&window, &shared, result, Message::PinChanged);
-    });
+        after_pin_change(window, &shared, result, Message::PinChanged);
+    }));
 
-    let (weak, shared) = (window.as_weak(), state.clone());
-    window.on_remove_pin(move || {
-        let Some(window) = weak.upgrade() else { return };
+    let shared = state.clone();
+    window.on_remove_pin(with_window(window, move |window| {
         let result = shared.borrow_mut().remove_pin(&window.get_pin_current());
-        after_pin_change(&window, &shared, result, Message::PinTurnedOff);
-    });
+        after_pin_change(window, &shared, result, Message::PinTurnedOff);
+    }));
 }
 
 fn after_pin_change(window: &AppWindow, state: &SharedState, result: Result<()>, done: Message) {

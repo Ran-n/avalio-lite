@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.224094
-//+ Revised: 	2026/10/29 02:54:47.519860
+//+ Revised: 	2026/10/29 04:09:17.948710
 // -----------------------------------------------------------------------------
 
 mod callbacks;
@@ -29,6 +29,41 @@ use state::{AppState, Startup};
 
 pub type SharedState = Rc<RefCell<AppState>>;
 pub type SharedDialogs = Rc<dyn Dialogs>;
+
+/// Wraps a UI callback so it runs with the window, and only while the window is alive: the window
+/// is held weakly (a strong one inside its own callback would keep it alive forever). A callback
+/// that fires after the window is gone does nothing, and says so in the debug log.
+macro_rules! window_callbacks {
+    ($($name:ident($($argument:ident: $type:ident),*);)*) => {$(
+        pub fn $name<$($type),*>(
+            window: &AppWindow,
+            mut action: impl FnMut(&AppWindow $(, $type)*) + 'static,
+        ) -> impl FnMut($($type),*) + 'static {
+            let weak = window.as_weak();
+            move |$($argument),*| {
+                if let Some(window) = alive(&weak) {
+                    action(&window $(, $argument)*);
+                }
+            }
+        }
+    )*};
+}
+
+window_callbacks! {
+    with_window();
+    with_window1(a: A);
+    with_window2(a: A, b: B);
+    with_window3(a: A, b: B, c: C);
+    with_window5(a: A, b: B, c: C, d: D, e: E);
+}
+
+fn alive(weak: &slint::Weak<AppWindow>) -> Option<AppWindow> {
+    let window = weak.upgrade();
+    if window.is_none() {
+        log::debug!("callback after the window closed");
+    }
+    window
+}
 
 /// A window wired to its state and showing the screen startup chose, not yet running.
 pub struct Session {
