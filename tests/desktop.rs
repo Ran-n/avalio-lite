@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/10/29 01:00:47.089106
+//+ Revised: 	2026/10/29 02:54:48.129140
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -298,15 +298,29 @@ fn settings() {
         for control in ["Light", "Dark", "Galego", "English"] {
             assert_on_screen(image, located(app, control), control);
         }
-        // the page scrolls; in the smallest window the PIN card starts below the fold
+        // the page scrolls; in the smallest window the shortcuts card ends below the fold
         if size == NORMAL {
-            assert_on_screen(image, located(app, "Encrypt with this PIN"), "Encrypt with this PIN");
+            for row in ["Lock", "Switch between light and dark", "Previous class"] {
+                assert_on_screen(image, located(app, row), row);
+            }
         }
     });
     every_look_after(
         &mut app,
+        "settings-pin",
+        |app| {
+            app.scroll_main(40);
+            app.scroll_main(-8);
+        },
+        |app, image, _, _| {
+            assert_on_screen(image, located(app, "Encrypt with this PIN"), "Encrypt with this PIN");
+        },
+    );
+    app.scroll_main(40);
+    every_look_after(
+        &mut app,
         "settings-folders",
-        |app| app.scroll("Galego", -40),
+        |app| app.scroll_main(-40),
         |app, image, _, _| {
             assert_on_screen(image, located(app, "Open another database…"), "Open another database");
             for (index, what) in ["the database's Move", "the logs' Move"].into_iter().enumerate() {
@@ -331,7 +345,12 @@ fn settings() {
     for control in ["Claro", "Escuro", "Galego", "English"] {
         assert_on_screen(&image, located(&mut app, control), control);
     }
-    app.scroll("Galego", -40);
+    app.scroll("Galego", -3);
+    let image = galician_look(&mut app, "settings-shortcuts");
+    for row in ["Bloquear", "Cambiar entre claro e escuro", "Amosar ou agochar pesos e escalas", "Clase anterior"] {
+        assert_on_screen(&image, located(&mut app, row), row);
+    }
+    app.scroll_main(-40);
     let image = galician_look(&mut app, "settings-folders");
     assert_on_screen(&image, located(&mut app, "Abrir outra base de datos…"), "Abrir outra base de datos…");
     app.quit();

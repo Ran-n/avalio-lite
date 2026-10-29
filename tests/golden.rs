@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/10/29 00:10:41.633823
+//+ Revised: 	2026/10/29 02:54:48.252973
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -54,6 +54,7 @@ fn current_config() -> AppConfig {
             language: Some(Language::Galician),
             theme: Some(ThemeChoice::Dark),
         },
+        shortcuts: [("lock".to_owned(), "Ctrl+K".to_owned())].into(),
     }
 }
 

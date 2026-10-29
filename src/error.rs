@@ -1,11 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.190729
-//+ Revised: 	2026/10/28 22:23:16.879338
+//+ Revised: 	2026/10/29 02:54:47.745662
 // -----------------------------------------------------------------------------
 
 use std::io;
 use std::path::{Path, PathBuf};
+
+use crate::shortcuts::ShortcutProblem;
 
 pub type Result<T> = std::result::Result<T, AppError>;
 
@@ -89,6 +91,13 @@ pub enum AppError {
 
     #[error("too many wrong PINs; wait {seconds} s")]
     PinWait { seconds: u64 },
+
+    #[error("invalid keyboard shortcuts in config.toml, using their defaults: {}", list(.0))]
+    InvalidShortcuts(Vec<ShortcutProblem>),
+}
+
+fn list(problems: &[ShortcutProblem]) -> String {
+    problems.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
 }
 
 /// Builds a `map_err` adapter that tags an I/O error with the path it happened on.

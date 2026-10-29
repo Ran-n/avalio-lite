@@ -4,8 +4,10 @@ import { Section, Shell } from "shell.slint";
 import { LockPage } from "lock-page.slint";
 import { CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone } from "gradebook.slint";
 import { Theme } from "theme.slint";
+import { ShortcutAction, ShortcutItem, Shortcuts } from "shortcuts.slint";
 
 export { SetupNotice, Section, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone, Theme }
+export { ShortcutAction, ShortcutItem, Shortcuts }
 
 export component AppWindow inherits Window {
     in property <bool> setup-required: true;
@@ -20,6 +22,8 @@ export component AppWindow inherits Window {
     in property <string> language-code: "en";
 
     in property <bool> locked;
+    // the main area's page; the window switches it for the Settings and class shortcuts
+    in-out property <Section> section: Section.sheet;
     in property <bool> pin-set;
     in-out property <string> unlock-pin;
     in property <string> unlock-error;
@@ -66,8 +70,10 @@ export component AppWindow inherits Window {
     preferred-width: 1280px;
     preferred-height: 800px;
 
-    // Ctrl+L locks from anywhere, even while typing in a cell: the key is caught before the
-    // focused field sees it. Keys only arrive while something inside has focus, so the scope takes
+    // The keyboard shortcuts (Ctrl+L to lock and the others; see shortcuts.slint) work anywhere on
+    // the main screen, even while typing in a cell: the key is caught before the focused field sees
+    // it. On the first-run and lock screens they do nothing and the key goes on to the field, so a
+    // PIN is never hijacked. Keys only arrive while something inside has focus, so the scope takes
     // it back whenever the focused field goes away (unlocking, finishing setup, changing page);
     // the lock screen's PIN field keeps the focus it takes when it appears.
     changed locked => {
@@ -83,13 +89,26 @@ export component AppWindow inherits Window {
 
     shortcuts := FocusScope {
         capture-key-pressed(event) => {
-            if (event.modifiers.control && !event.modifiers.alt && (event.text == "l" || event.text == "L")) {
-                if (!root.setup-required && !root.locked) {
-                    root.lock-now();
-                }
-                return accept;
+            if (root.setup-required || root.locked) {
+                return reject;
             }
-            return reject;
+            let action = Shortcuts.find(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
+            if (action == ShortcutAction.none) {
+                return reject;
+            }
+            if (action == ShortcutAction.lock) {
+                root.lock-now();
+            } else if (action == ShortcutAction.toggle-theme) {
+                root.choose-theme(!Theme.dark);
+            } else if (action == ShortcutAction.toggle-column-settings) {
+                Gradebook.toggle-column-settings();
+            } else if (action == ShortcutAction.open-settings) {
+                root.section = root.section == Section.settings ? Section.sheet : Section.settings;
+            } else {
+                root.section = Section.sheet;
+                Gradebook.select-adjacent-class(action == ShortcutAction.next-class ? 1 : -1);
+            }
+            return accept;
         }
 
         if root.setup-required: SetupPage {
@@ -105,6 +124,7 @@ export component AppWindow inherits Window {
             back-to-lock => { root.back-to-lock(); }
         }
         if !root.setup-required && !root.locked: Shell {
+            section <=> root.section;
             database-path: root.database-path;
             log-folder: root.log-folder;
             error-message: root.error-message;

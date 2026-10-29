@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/10/29 02:27:42.233157 )
+[//]: # (+ Revised: 	2026/10/29 02:54:47.140638 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -14,7 +14,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ### Added
 
+- Keyboard shortcuts for the theme (Ctrl+Shift+D), weights and scales (Ctrl+H), Settings (Ctrl+,) and switching classes (Ctrl+PageDown/PageUp), alongside Ctrl+L to lock; listed in Settings and changeable in config.toml under `[shortcuts]`, with bad entries reported and replaced by their defaults
 - The avalio-lite logo (a marking tick on the accent tile) in the sidebar, first-run and lock screens, the window and taskbar, the program file, the installer and the README
+
+### Fixed
+
+- When the database had gone missing, finishing setup saved the default language and theme over the chosen ones; the settings file's preferences (and shortcuts) are now kept
 
 ## [0.2.1] - 2026-10-29
 

@@ -1,9 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.961496
-//+ Revised: 	2026/10/28 15:53:09.190732
+//+ Revised: 	2026/10/29 02:54:48.067162
 // -----------------------------------------------------------------------------
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -16,6 +17,7 @@ fn sample() -> AppConfig {
         database_path: PathBuf::from(r"D:\data\avalio-lite.db"),
         log_dir: PathBuf::from(r"D:\logs"),
         preferences: Preferences { show_column_settings: false, language: None, theme: None },
+        shortcuts: BTreeMap::new(),
     }
 }
 
@@ -80,6 +82,28 @@ fn settings_files_from_before_preferences_still_load_with_defaults() {
     let loaded = store.load().unwrap().unwrap();
     assert_eq!(loaded.preferences, Preferences::default());
     assert!(loaded.preferences.show_column_settings, "settings are shown until the user hides them");
+    assert!(loaded.shortcuts.is_empty(), "no [shortcuts] table means every default");
+}
+
+#[test]
+fn shortcuts_round_trip() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    let mut config = sample();
+    config.shortcuts.insert("lock".into(), "Ctrl+K".into());
+    config.shortcuts.insert("next-class".into(), "F8".into());
+    store.save(&config).unwrap();
+    let text = fs::read_to_string(store.path()).unwrap();
+    assert!(text.contains("[shortcuts]\nlock = \"Ctrl+K\"\nnext-class = \"F8\"\n"), "{text}");
+    assert_eq!(store.load().unwrap(), Some(config));
+}
+
+#[test]
+fn no_shortcuts_table_is_written_when_nothing_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    store.save(&sample()).unwrap();
+    assert!(!fs::read_to_string(store.path()).unwrap().contains("[shortcuts]"));
 }
 
 #[test]
@@ -149,6 +173,7 @@ proptest::proptest! {
         show in proptest::bool::ANY,
         language in any_language(),
         theme in any_theme(),
+        shortcuts in proptest::collection::btree_map("[a-z-]{1,22}", "[ -~]{0,16}", 0..4),
     ) {
         let dir = tempfile::tempdir().unwrap();
         let store = ConfigStore::in_dir(dir.path());
@@ -156,6 +181,7 @@ proptest::proptest! {
             database_path: PathBuf::from(database),
             log_dir: PathBuf::from(logs),
             preferences: Preferences { show_column_settings: show, language, theme },
+            shortcuts,
         };
         store.save(&config).unwrap();
         proptest::prop_assert_eq!(store.load().unwrap(), Some(config));

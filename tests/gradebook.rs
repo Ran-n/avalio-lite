@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/10/28 16:22:40.962246
+//+ Revised: 	2026/10/29 02:54:48.315479
 // -----------------------------------------------------------------------------
 
 use avalio_lite::db;
@@ -46,6 +46,21 @@ fn class_names_must_be_unique_and_non_empty() {
     assert!(matches!(classes::rename_class(&connection, other, "1A"), Err(AppError::DuplicateClassName(_))));
     classes::rename_class(&connection, id, "1A bis").unwrap();
     assert_eq!(classes::class_name(&connection, id).unwrap(), "1A bis");
+}
+
+#[test]
+fn adjacent_class_wraps_around() {
+    use classes::adjacent_index;
+    assert_eq!(adjacent_index(0, None, 1), None, "no classes, nothing to switch to");
+    assert_eq!(adjacent_index(0, None, -1), None);
+    assert_eq!(adjacent_index(1, Some(0), 1), Some(0), "one class stays selected");
+    assert_eq!(adjacent_index(1, Some(0), -1), Some(0));
+    assert_eq!(adjacent_index(3, Some(0), 1), Some(1));
+    assert_eq!(adjacent_index(3, Some(2), 1), Some(0), "past the last goes round to the first");
+    assert_eq!(adjacent_index(3, Some(0), -1), Some(2), "before the first goes round to the last");
+    assert_eq!(adjacent_index(3, Some(1), -1), Some(0));
+    assert_eq!(adjacent_index(3, None, 1), Some(0), "with none selected, next is the first");
+    assert_eq!(adjacent_index(3, None, -1), Some(2), "and previous the last");
 }
 
 #[test]

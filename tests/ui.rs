@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/10/29 01:58:37.957536
+//+ Revised: 	2026/10/29 02:54:48.502982
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -18,7 +18,7 @@ use avalio_lite::error::{AppError, Folder};
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{classes, columns, pupils};
 use avalio_lite::i18n::{self, Language, Message};
-use avalio_lite::ui::{Gradebook, SetupNotice, Theme, Tone};
+use avalio_lite::ui::{Gradebook, Section, SetupNotice, Theme, Tone};
 use common::controls;
 use common::{Fixture, Ui};
 use i_slint_backend_testing::ElementHandle;
@@ -206,6 +206,13 @@ fn unlock(ui: &Ui) {
 fn open_settings(ui: &Ui) {
     click(ui, "Settings");
     assert!(shows(ui, "Galego"), "the settings page is showing");
+}
+
+/// The settings page, scrolled down to the PIN card (the shortcuts card sits above it).
+fn open_pin_settings(ui: &Ui) {
+    open_settings(ui);
+    find(ui, "Galego").scroll(0.0, -320.0);
+    assert!(shows(ui, "Repeat PIN"), "scrolled to the PIN card");
 }
 
 /// The settings page, scrolled down to the database and log folders.
@@ -541,12 +548,124 @@ fn ctrl_l_without_a_pin_explains_how_to_lock() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Keyboard shortcuts
+
+/// Holds Ctrl (and Shift when asked) while pressing `text`.
+fn with_keys(ui: &Ui, shift: bool, text: impl Into<SharedString>) {
+    let window = ui.session.window.window();
+    let held: Vec<SharedString> =
+        [Some(Key::Control), shift.then_some(Key::Shift)].into_iter().flatten().map(Into::into).collect();
+    for modifier in &held {
+        window.dispatch_event(WindowEvent::KeyPressed { text: modifier.clone() });
+    }
+    key(ui, text);
+    for modifier in held.iter().rev() {
+        window.dispatch_event(WindowEvent::KeyReleased { text: modifier.clone() });
+    }
+}
+
+fn with_shortcut_config(fixture: &Fixture, entries: &[(&str, &str)]) {
+    let mut config = fixture.store().load().unwrap().unwrap();
+    for (name, keys) in entries {
+        config.shortcuts.insert((*name).to_owned(), (*keys).to_owned());
+    }
+    fixture.store().save(&config).unwrap();
+}
+
+#[test]
+fn every_shortcut_works_from_a_focused_cell() {
+    let ui = with_second_class();
+    let window = &ui.session.window;
+    click(&ui, "Pupil");
+    with_keys(&ui, true, "D");
+    assert!(window.global::<Theme>().get_dark(), "Ctrl+Shift+D switches to dark");
+    assert_eq!(saved_preferences(&ui.fixture).theme, Some(ThemeChoice::Dark), "and saves it");
+    with_keys(&ui, false, "h");
+    assert!(!gradebook(&ui).get_show_column_settings(), "Ctrl+H hides weights and scales");
+    with_keys(&ui, false, ",");
+    assert_eq!(window.get_section(), Section::Settings, "Ctrl+, opens Settings");
+    with_keys(&ui, false, ",");
+    assert_eq!(window.get_section(), Section::Sheet, "and closes it again");
+    assert_eq!(gradebook(&ui).get_class_name(), "1A");
+    with_keys(&ui, false, Key::PageDown);
+    assert_eq!(gradebook(&ui).get_class_name(), "2B", "Ctrl+PageDown: the next class");
+    with_keys(&ui, false, Key::PageDown);
+    assert_eq!(gradebook(&ui).get_class_name(), "1A", "round to the first again");
+    with_keys(&ui, false, ",");
+    with_keys(&ui, false, Key::PageUp);
+    assert_eq!(gradebook(&ui).get_class_name(), "2B", "Ctrl+PageUp from Settings: the previous class");
+    assert_eq!(window.get_section(), Section::Sheet, "shown on the sheet");
+}
+
+#[test]
+fn shortcuts_do_nothing_on_the_lock_and_first_run_screens() {
+    let ui = encrypted();
+    with_keys(&ui, false, ",");
+    with_keys(&ui, true, "D");
+    assert!(ui.session.window.get_locked());
+    assert!(!ui.session.window.global::<Theme>().get_dark());
+    type_text(&ui, "12");
+    assert_eq!(ui.session.window.get_unlock_pin(), "12", "the PIN field still takes digits");
+    drop(ui);
+
+    let ui = Ui::open(Fixture::new());
+    with_keys(&ui, false, ",");
+    assert!(ui.session.window.get_setup_required());
+    assert_eq!(ui.session.window.get_section(), Section::Sheet);
+}
+
+#[test]
+fn a_configured_lock_key_locks_and_shows_in_the_labels() {
+    let fixture = encrypted_fixture();
+    with_shortcut_config(&fixture, &[("lock", "Ctrl+K")]);
+    let ui = Ui::open(fixture);
+    unlock(&ui);
+    assert!(shows(&ui, "Lock (Ctrl+K)"));
+    open_settings(&ui);
+    let pin_text = "The database file is encrypted with your PIN. The app asks for it when it opens; lock it any time with the Lock button or Ctrl+K.";
+    assert!(shows_text(&ui, pin_text));
+    with_control(&ui, "l");
+    assert!(!ui.session.window.get_locked(), "Ctrl+L no longer locks");
+    with_control(&ui, "k");
+    assert!(ui.session.window.get_locked());
+}
+
+#[test]
+fn bad_shortcut_entries_are_reported_and_use_the_defaults() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    with_shortcut_config(&fixture, &[("lock", "Ctrl+"), ("toggle-theme", "Ctrl+L")]);
+    let ui = Ui::open(fixture);
+    let banner = gradebook(&ui).get_error_message().to_string();
+    assert!(banner.contains("lock = \"Ctrl+\"") && banner.contains("toggle-theme = \"Ctrl+L\""), "{banner}");
+    with_keys(&ui, true, "D");
+    assert!(ui.session.window.global::<Theme>().get_dark(), "the theme keeps its default");
+}
+
+#[test]
+fn settings_lists_the_shortcuts_in_the_current_language() {
+    let ui = seeded();
+    open_settings(&ui);
+    assert!(shows_text(&ui, "Keyboard shortcuts"));
+    let items = ui.session.window.global::<avalio_lite::ui::Shortcuts>().get_items();
+    assert_eq!(items.row_count(), 6);
+    let theme = items.row_data(1).unwrap();
+    assert_eq!(theme.label, "Switch between light and dark");
+    assert_eq!(theme.keys.iter().collect::<Vec<_>>(), ["Ctrl", "Shift", "D"]);
+    click(&ui, "Galego");
+    let theme = ui.session.window.global::<avalio_lite::ui::Shortcuts>().get_items().row_data(1).unwrap();
+    assert_eq!(theme.label, "Cambiar entre claro e escuro");
+    assert_eq!(theme.keys.iter().collect::<Vec<_>>(), ["Ctrl", "Maiús", "D"]);
+    assert!(shows_text(&ui, "Atallos de teclado"));
+}
+
+// ---------------------------------------------------------------------------------------------
 // Settings: PIN
 
 #[test]
 fn setting_a_pin_encrypts_the_database() {
     let ui = seeded();
-    open_settings(&ui);
+    open_pin_settings(&ui);
     type_into(&ui, "PIN", PIN);
     type_into(&ui, "Repeat PIN", PIN);
     click(&ui, "Encrypt with this PIN");
@@ -561,7 +680,7 @@ fn setting_a_pin_encrypts_the_database() {
 fn a_password_with_letters_and_spaces_locks_and_unlocks() {
     const PASSWORD: &str = "corvo azul 7";
     let ui = seeded();
-    open_settings(&ui);
+    open_pin_settings(&ui);
     type_into(&ui, "PIN", PASSWORD);
     type_into(&ui, "Repeat PIN", PASSWORD);
     click(&ui, "Encrypt with this PIN");
@@ -644,7 +763,7 @@ fn the_lock_screen_opens_on_the_number_keys_again() {
 #[test]
 fn mismatched_pins_are_refused() {
     let ui = seeded();
-    open_settings(&ui);
+    open_pin_settings(&ui);
     type_into(&ui, "PIN", PIN);
     type_into(&ui, "Repeat PIN", "1357");
     click(&ui, "Encrypt with this PIN");
@@ -657,7 +776,7 @@ fn mismatched_pins_are_refused() {
 fn the_pin_can_be_changed_and_removed() {
     let ui = encrypted();
     unlock(&ui);
-    open_settings(&ui);
+    open_pin_settings(&ui);
 
     type_into(&ui, "Current PIN", "0000");
     type_into(&ui, "New PIN", "13579");
@@ -1247,7 +1366,7 @@ fn regression_ctrl_l_locks_after_leaving_a_focused_settings_field() {
     unlock(&ui);
     type_into(&ui, "New class", "1A");
     press_enter(&ui);
-    open_settings(&ui);
+    open_pin_settings(&ui);
     type_into(&ui, "Current PIN", "1");
     click(&ui, "1A");
     with_control(&ui, "l");

@@ -218,8 +218,8 @@ msgstr "Claro"
 msgid "Light mode"
 msgstr "Modo claro"
 
-msgid "Lock (Ctrl+L)"
-msgstr "Bloquear (Ctrl+L)"
+msgid "Lock ({})"
+msgstr "Bloquear ({})"
 
 msgid "More actions"
 msgstr "Máis accións"
@@ -280,8 +280,8 @@ msgstr[1] "{n} suspensos"
 msgid "PIN and encryption"
 msgstr "PIN e cifrado"
 
-msgid "The database file is encrypted with your PIN. The app asks for it when it opens; lock it any time with Ctrl+L or the Lock button."
-msgstr "O ficheiro da base de datos está cifrado co teu PIN. A aplicación pídeo ao abrirse; bloquéaa cando queiras con Ctrl+L ou co botón Bloquear."
+msgid "The database file is encrypted with your PIN. The app asks for it when it opens; lock it any time with the Lock button or {}."
+msgstr "O ficheiro da base de datos está cifrado co teu PIN. A aplicación pídeo ao abrirse; bloquéaa cando queiras co botón Bloquear ou con {}."
 
 msgid "Encrypt the database file with a PIN of 4 or more characters, digits or letters. Someone with a copy of the file can try guesses without limit: a short PIN only stops a quick look, a long password with letters stops everyone. If you forget it, nobody can recover the data, so keep it somewhere safe."
 msgstr "Cifra o ficheiro da base de datos cun PIN de 4 ou máis caracteres, números ou letras. Quen teña unha copia do ficheiro pode probar sen límite: un PIN curto só frea unha ollada rápida, un contrasinal longo con letras frea a calquera. Se o esqueces, ninguén pode recuperar os datos, así que gárdao nun lugar seguro."
@@ -321,3 +321,9 @@ msgstr "Máis símbolos"
 
 msgid "Class name"
 msgstr "Nome da clase"
+
+msgid "Keyboard shortcuts"
+msgstr "Atallos de teclado"
+
+msgid "Shortcuts work anywhere on this screen, even while you type in a cell. You can change them in config.toml."
+msgstr "Os atallos funcionan en calquera parte desta pantalla, mesmo mentres escribes nunha cela. Podes cambialos en config.toml."

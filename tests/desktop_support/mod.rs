@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/10/29 02:27:42.046556
+//+ Revised: 	2026/10/29 02:54:48.191797
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -270,6 +270,15 @@ impl App {
     pub fn scroll(&mut self, label: &str, notches: i32) {
         let target = self.the(label, 0);
         self.window.scroll((target.x + target.width / 2) as i32, (target.y + target.height / 2) as i32, notches);
+        self.settle();
+    }
+
+    /// Scrolls the main area (right of the sidebar) by `notches`, whatever is on screen there; with
+    /// a big positive count first, it starts from the top every time.
+    pub fn scroll_main(&mut self, notches: i32) {
+        const MAIN_AREA: (f64, f64) = (600.0, 300.0);
+        let (x, y) = ((MAIN_AREA.0 * self.scale) as i32, (MAIN_AREA.1 * self.scale) as i32);
+        self.window.scroll(x, y, notches);
         self.settle();
     }
 

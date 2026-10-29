@@ -5,3 +5,6 @@ log_dir = 'D:\Marks\logs'
 show_column_settings = false
 language = "gl"
 theme = "dark"
+
+[shortcuts]
+lock = "Ctrl+K"

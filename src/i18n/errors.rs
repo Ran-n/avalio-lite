@@ -1,11 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.615582
-//+ Revised: 	2026/10/28 22:23:16.942256
+//+ Revised: 	2026/10/29 02:54:47.879462
 // -----------------------------------------------------------------------------
 
 use super::Language;
 use crate::error::{AppError, Folder, NumberField};
+use crate::shortcuts::ShortcutProblem;
 
 /// The error as shown to the user, in their language. Paths and the system's own
 /// error details are passed through as they are.
@@ -53,7 +54,16 @@ fn english(error: &AppError) -> String {
         AppError::PinMismatch => "The two PINs don't match. Type the same PIN twice.".to_owned(),
         AppError::WrongPin => "Wrong PIN.".to_owned(),
         AppError::PinWait { seconds } => format!("Too many wrong PINs. Try again in {seconds} s."),
+        AppError::InvalidShortcuts(problems) => format!(
+            "Some keyboard shortcuts in config.toml weren't valid and use their defaults: {}.",
+            entries(problems)
+        ),
     }
+}
+
+/// The ignored entries as written in `config.toml`, the same in every language.
+fn entries(problems: &[ShortcutProblem]) -> String {
+    problems.iter().map(|problem| problem.entry.as_str()).collect::<Vec<_>>().join(", ")
 }
 
 fn galician(error: &AppError) -> String {
@@ -94,5 +104,9 @@ fn galician(error: &AppError) -> String {
         AppError::PinMismatch => "Os dous PIN non coinciden. Escribe o mesmo PIN dúas veces.".to_owned(),
         AppError::WrongPin => "PIN incorrecto.".to_owned(),
         AppError::PinWait { seconds } => format!("Demasiados PIN incorrectos. Proba de novo en {seconds} s."),
+        AppError::InvalidShortcuts(problems) => format!(
+            "Algúns atallos de teclado de config.toml non eran válidos e usan os predeterminados: {}.",
+            entries(problems)
+        ),
     }
 }

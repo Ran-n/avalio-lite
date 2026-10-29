@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/28 10:26:46.388247 )
-[//]: # (+ Revised: 	2026/10/29 02:27:42.294974 )
+[//]: # (+ Revised: 	2026/10/29 02:54:47.264601 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # TODO
@@ -14,7 +14,6 @@ Next item number: 17
 
 ## Index
 
-2. [List the keyboard shortcuts in Settings and read them from config.toml](#2-list-the-keyboard-shortcuts-in-settings-and-read-them-from-configtoml)
 3. [Change keyboard shortcuts from Settings](#3-change-keyboard-shortcuts-from-settings)
 4. [Share one helper for "run this callback while the window is alive"](#4-share-one-helper-for-run-this-callback-while-the-window-is-alive)
 5. [Cover the rest of the code and raise the coverage gate](#5-cover-the-rest-of-the-code-and-raise-the-coverage-gate)
@@ -88,153 +87,6 @@ Next item number: 17
 ```
 
 ---
-
-## 2. List the keyboard shortcuts in Settings and read them from config.toml
-
-**Why:** the app has exactly one keyboard shortcut, Ctrl+L to lock, and it is hard-coded in three places: the key check in `ui/app-window.slint` (the `FocusScope`'s `capture-key-pressed`, around line 67), the sidebar label `@tr("Lock (Ctrl+L)")` in `ui/shell.slint` (around line 92) and the PIN card text in `ui/settings-page.slint` (around line 46, "…lock it any time with Ctrl+L or the Lock button."). Nothing in the app lists shortcuts, and they can't be changed. The user asked for "a config part that lists and allows to edit keybinds". This item is the first half: a set of shortcuts, a Settings card that lists them, and storage in `config.toml`. Item 3 adds editing in the app; it builds on this one, so do this first.
-**Goal:** Settings has a "Keyboard shortcuts" card listing every shortcut (what it does, and its keys, such as "Ctrl+L"). Six actions have shortcuts, all working from anywhere in the main screen, even while typing in a cell. A `[shortcuts]` table in `config.toml` can change any of them, and the card, the sidebar label and the PIN card text all show the keys actually in use.
-
-### Behaviour
-- **The actions and their default keys**, in this order (the card lists them in the same order):
-  - Lock: **Ctrl+L** (unchanged).
-  - Switch between light and dark: **Ctrl+Shift+D**. Not Ctrl+D, so that it's never hit by accident while typing.
-  - Show or hide weights and scales: **Ctrl+H**.
-  - Open Settings: **Ctrl+,** (the comma key). This is the usual Windows shortcut for settings (VS Code, Teams, Edge).
-  - Next class: **Ctrl+PageDown**.
-  - Previous class: **Ctrl+PageUp**. Excel uses these two keys to switch between sheets, and here each class is a sheet.
-- **Where they work:** only on the main screen (sheet or Settings), including while a cell or text field has focus. The key is caught before the focused field sees it, as Ctrl+L is today. On the first-run screen and on the lock screen, no shortcut does anything and the key goes on to the focused field, so typing a PIN is never hijacked.
-- **What each action does:**
-  - Lock: does exactly what the Lock button does today. Without a PIN it shows the existing `LockNeedsPin` message.
-  - Switch between light and dark: same as the sidebar's theme button, saved the same way.
-  - Show or hide weights and scales: same as the "⋯" menu entry (`Gradebook.toggle-column-settings`).
-  - Open Settings: switches the main area to Settings. Pressed again while Settings is open, it goes back to the sheet, so one shortcut both opens and closes Settings.
-  - Next and Previous class: switch the sheet to the class below or above the current one in the sidebar list, and show the sheet if Settings was open. At the last class, Next goes round to the first; at the first, Previous goes to the last. With no classes they do nothing. With one class they keep it selected.
-- **Key format** in `config.toml` and on screen:
-  - `Ctrl`, `Shift` and `Alt` joined with `+`, always in that order, then the key.
-  - Keys allowed: A–Z, 0–9, `,`, `.`, F1–F12, PageUp, PageDown, Home, End.
-  - Every shortcut needs Ctrl or Alt, except F1–F12, which may stand alone. Plain letters would break typing in cells.
-  - **Ctrl+Alt together is refused:** on Spanish and Galician keyboards AltGr sends Ctrl+Alt, and AltGr+2 types "@".
-  - Letters are case-insensitive when read (`ctrl+l` = `Ctrl+L`) and are always written and shown in upper case.
-- **On-screen names in Galician:** Shift is shown as "Maiús", as on Galician Windows keyboards. Ctrl, Alt and the key names stay the same in both languages. `config.toml` always uses the English names, so the file doesn't depend on the language.
-- **`config.toml`:** an optional table, holding only the actions changed from their defaults:
-  ```toml
-  [shortcuts]
-  lock = "Ctrl+K"
-  next-class = "F8"
-  ```
-  The action names are `lock`, `toggle-theme`, `toggle-column-settings`, `open-settings`, `next-class` and `previous-class`. A file without the table, or one written before this change, uses all the defaults.
-- **A bad entry is never silent:**
-  - Bad entries are: an unknown action name, a key that doesn't parse or isn't allowed, or two actions on the same keys.
-  - The app still starts, logs a warning naming the entry, and uses the default for that action.
-  - When the main screen opens, an error banner reads: "Some keyboard shortcuts in config.toml weren't valid and use their defaults: lock = "Ctrl+"." It lists each bad entry.
-  - **For a clash**, every action involved goes back to its default. This repeats until no two actions share keys. It always ends, because the defaults never clash with each other (a test checks this).
-- **Labels that mention Ctrl+L:**
-  - The sidebar Lock item reads "Lock (Ctrl+K)", with the actual keys.
-  - The PIN card text reads "…lock it any time with the Lock button or Ctrl+K."
-  - Both follow the language and the current shortcut.
-- **The Settings card:** placed after Language and before PIN and encryption. Each action is one row: the action name on the left in `Theme.text`, the keys on the right as a key-cap pill. The pill is a `Tag`-style rounded rectangle in `Theme.raised` with `Theme.muted` text and one pill per key ("Ctrl", "Shift", "L"), so the keys read like a keyboard. The card description says: "Shortcuts work anywhere on this screen, even while you type in a cell. You can change them in config.toml." Item 3 replaces the second sentence.
-
-### Out of scope
-- Changing shortcuts inside the app (item 3).
-- Shortcuts for "+ Add pupil", "+ Add column" or anything that opens a popup in `ui/sheet-page.slint`. Their popups are local to `SheetPage` and can't be opened from the window today; doing that is a separate change.
-- Moving around the sheet with the keyboard (arrow keys, Tab, Enter in cells).
-- Shortcuts on the lock and first-run screens.
-
-### Implementation
-1. **`src/shortcuts.rs` (new, declared `pub mod shortcuts;` in `src/lib.rs`):** the shortcut model, with no Slint or file access, so it can be tested on its own.
-   - `pub enum Action { Lock, ToggleTheme, ToggleColumnSettings, OpenSettings, NextClass, PreviousClass }` with `ALL: [Action; 6]` in the order above, `config_name()` and `from_config_name()`.
-   - `pub struct KeyCombo { ctrl: bool, shift: bool, alt: bool, key: Key }`. `Key` is an enum covering exactly the keys allowed in Behaviour, with `FromStr` and `Display` in the canonical English form ("Ctrl+Shift+D").
-   - The validity rules from Behaviour: Ctrl or Alt needed except for F-keys, Ctrl+Alt refused. Put them in one `KeyCombo::new(...) -> Result<KeyCombo, ShortcutError>`, used by both parsing and key presses, so the rules exist once.
-   - `pub struct Shortcuts` holds one `KeyCombo` per action. It has:
-     - `Shortcuts::defaults()`;
-     - `Shortcuts::from_config(&BTreeMap<String, String>) -> (Shortcuts, Vec<ShortcutProblem>)`, which applies the bad-entry and clash rules from Behaviour;
-     - `combo(Action)`;
-     - `action_for(&KeyCombo) -> Option<Action>`;
-     - `KeyCombo::from_key_press(text: &str, ctrl, shift, alt) -> Option<KeyCombo>`, which maps Slint's `event.text`. A letter arrives as typed: "l" or "L" with Shift, upper-cased here. `Key.PageDown` and the F-keys arrive as Slint's private-use characters; map them using Slint's `slint::platform::Key` values (`Key::PageDown`, `Key::F1`…), never hard-coded code points.
-   - `ShortcutProblem` holds the entry text and the reason (`UnknownAction`, `BadKeys`, `Clash`), for logging and the banner.
-2. **`src/error.rs`:** add `AppError::InvalidShortcuts(Vec<ShortcutProblem>)` for the banner, so it goes through the existing `error_message` path. Add both arms in `src/i18n/errors.rs`, English and Galician. The compiler enforces both, because each language is one `match`.
-3. **`src/i18n/shortcuts.rs` (new, `mod shortcuts;` in `src/i18n/mod.rs`):**
-   - `pub fn action_label(Language, Action) -> &'static str` (English: "Lock", "Switch between light and dark", "Show or hide weights and scales", "Open Settings", "Next class", "Previous class"; Galician: "Bloquear", "Cambiar entre claro e escuro", "Amosar ou agochar pesos e escalas", "Abrir os axustes", "Clase seguinte", "Clase anterior").
-   - `pub fn key_names(Language, &KeyCombo) -> Vec<String>`: the pill texts, with "Maiús" for Shift in Galician.
-   - `pub fn display(Language, &KeyCombo) -> String`: those names joined with "+", for the labels.
-   - One `match` per language, the same pattern as `errors.rs`.
-4. **`src/config.rs`:** add `#[serde(default, skip_serializing_if = "BTreeMap::is_empty")] pub shortcuts: BTreeMap<String, String>` to `AppConfig`, holding only the changes from the defaults. Keep it outside `Preferences`, so `Preferences` stays `Copy` (`AppState::preferences()` at `src/app/state/mod.rs:155` and `src/app/gradebook/mod.rs:58` copy it). Add `shortcuts: BTreeMap::new()` to the two `AppConfig` literals in `src/app/state/mod.rs` (lines 122 and 135, in `create_database` and `open_existing`); grep `AppConfig {` in `src` and `tests` for any others.
-5. **`src/app/state/mod.rs`:**
-   - `AppState` gets `shortcuts: Shortcuts` and `shortcut_problems: Vec<ShortcutProblem>`. They are built from the config in `start()` and in `choose()` (the same places `config` is set), using `Shortcuts::from_config`.
-   - Log each problem with `log::warn!` naming the entry.
-   - Add `pub fn shortcuts(&self) -> &Shortcuts` and `pub fn take_shortcut_problems(&mut self) -> Vec<ShortcutProblem>`, which empties the list so the banner shows once.
-6. **`ui/shortcuts.slint` (new):**
-   - `export enum ShortcutAction { none, lock, toggle-theme, toggle-column-settings, open-settings, next-class, previous-class }`.
-   - `export struct ShortcutItem { label: string, keys: [string] }`.
-   - `export global Shortcuts { in property <[ShortcutItem]> items; in property <string> lock-keys; pure callback find(string, bool, bool, bool) -> ShortcutAction; }`. This is a global so the settings card, the sidebar and the window read it without passing properties through `Shell`.
-   - Export all three from `ui/app-window.slint` next to the existing exports.
-7. **`ui/app-window.slint`:**
-   - Add `in-out property <Section> section` and bind it to `Shell`'s `section`, so the window can switch to Settings and back.
-   - Keep the `shortcuts` FocusScope taking focus back (the `changed locked` / `changed setup-required` handlers and Shell's `navigated`): keys only arrive while something has focus, and `tests/ui.rs` `regression_ctrl_l_*` check it.
-   - Replace the Ctrl+L check in `capture-key-pressed` with: reject when `setup-required` or `locked`; otherwise `action = Shortcuts.find(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt)`; return `reject` for `none`; run the action and return `accept`.
-   - The six actions:
-     - lock calls `root.lock-now()`;
-     - toggle-theme calls `root.choose-theme(!Theme.dark)`;
-     - toggle-column-settings calls `Gradebook.toggle-column-settings()`;
-     - open-settings flips `root.section` between `settings` and `sheet`;
-     - next-class and previous-class set `root.section = Section.sheet` and call `Gradebook.select-adjacent-class(1)` or `(-1)`.
-   - Update the comment above it.
-8. **`ui/gradebook.slint`:** add `callback select-adjacent-class(int);`. In `src/app/gradebook/classes.rs`, wire it next to `on_select_class`, as follows:
-   - read the class list with `classes::list_classes`, find `current-class-id` and step with wrap-around;
-   - call `run(…, "switch class", …)` with `Refresh::All { select: Some(id) }`;
-   - do nothing when the list is empty.
-
-   Put the index arithmetic in a small pure function, `adjacent_index(len, current, delta) -> Option<usize>` in `src/gradebook/classes.rs`, so it can be unit-tested.
-9. **`src/app/shortcuts.rs` (new, `mod shortcuts;` in `src/app/mod.rs`):**
-   - `wire(window, state)`: sets `Shortcuts.find`, which builds a `KeyCombo` with `KeyCombo::from_key_press` and looks it up in `state.borrow().shortcuts()`.
-   - `show(window, state)`: fills `items` and `lock-keys` in the current language.
-   - Call `wire` from `open` in `src/app/mod.rs`, next to the other `wire` calls. Call `show` from `gradebook::show_database` and after a language change in `wire_language` (`src/app/callbacks.rs`), so the labels follow the language. Show `take_shortcut_problems()` as an error banner with `view::show_error` when the main screen opens.
-10. **`ui/settings-page.slint`:** add the "Keyboard shortcuts" `Card` described in Behaviour. Put the key pill as `KeyCap` in `ui/components.slint`, next to `Tag`, so item 3 can reuse it.
-11. **The two labels:**
-    - In `ui/shell.slint`, the Lock item becomes `@tr("Lock ({})", Shortcuts.lock-keys)`.
-    - In `ui/settings-page.slint`, the PIN text becomes `@tr("The database file is encrypted with your PIN. The app asks for it when it opens; lock it any time with the Lock button or {}.", Shortcuts.lock-keys)`.
-    - Remove the two old msgids from `lang/gl/LC_MESSAGES/avalio-lite.po`.
-12. **`lang/gl/LC_MESSAGES/avalio-lite.po`:** add Galician for every new `@tr` string: the card title "Atallos de teclado", the card description, the two changed labels. `tests/i18n.rs` fails on missing or stale entries, so run it.
-13. **File headers:** run `metadata -c` on the new `.rs` files and `metadata -m` on every edited `.rs` and `.md` file. Skip `.slint`, `.po` and `.toml`, which `metadata` doesn't support.
-
-### Tests
-- **`tests/shortcuts.rs` (new):**
-  - `defaults_never_clash`: every pair of default combos differs. The clash rule depends on this.
-  - `combos_round_trip_through_text`: proptest over every allowed `KeyCombo`: `Display` then `FromStr` returns the same combo.
-  - `parsing_is_case_insensitive_and_canonical`: `"ctrl+shift+d"` parses and displays as `"Ctrl+Shift+D"`; `"Shift+Ctrl+D"` parses to the same combo.
-  - `plain_letters_and_altgr_are_refused`: `"L"`, `"Shift+L"` and `"Ctrl+Alt+2"` are errors, while `"F5"` and `"Alt+L"` are accepted.
-  - `unknown_keys_are_refused`: `"Ctrl+"`, `"Ctrl+Space"`, `"Ctrl+F13"` and `""` are errors.
-  - `config_overrides_replace_defaults`: `{lock = "Ctrl+K"}` gives Ctrl+K for Lock, the defaults for the rest, and no problems.
-  - `bad_entries_fall_back_and_are_reported`: an unknown action and a bad key each produce one problem, and the default stays for the action.
-  - `clashing_overrides_both_revert`: setting `toggle-theme = "Ctrl+L"` with `lock` unchanged reverts toggle-theme to Ctrl+Shift+D and reports a clash; two overrides on the same keys both revert.
-  - `key_presses_map_to_actions`: `from_key_press("l", true, false, false)` and `("L", true, true, false)` give Ctrl+L and Ctrl+Shift+L; Slint's PageDown text with Ctrl gives NextClass; `("2", true, false, true)` (AltGr) gives `None`.
-- **`tests/config.rs`:**
-  - `shortcuts_round_trip`: save then load keeps a `[shortcuts]` table.
-  - `settings_files_without_shortcuts_load_with_defaults`: extend the existing older-file test to also check that `shortcuts` is empty.
-  - `no_shortcuts_table_is_written_when_nothing_changed`: the saved text has no `[shortcuts]` line.
-- **`tests/state.rs`:** `bad_shortcuts_are_reported_once`: a config with one bad entry gives one problem from `take_shortcut_problems()`, then none.
-- **`tests/gradebook.rs`:** `adjacent_class_wraps_around`: `adjacent_index` for lengths 0, 1 and 3, both directions, at both ends.
-- **`tests/i18n.rs`:** `every_action_has_a_label_in_every_language` loops over `Action::ALL` and `Language` and checks no label is empty; `shift_is_maius_in_galician`.
-- **Manual, in the release build, light and dark, English and Galician:**
-  - screenshot the Settings card (Galician at the 1000 px minimum width, as it's the longer language);
-  - check that each of the six shortcuts works from a focused cell;
-  - check that Ctrl+L on the lock screen does nothing and the PIN field still takes digits;
-  - put `lock = "Ctrl+"` in `config.toml`, start the app and screenshot the banner;
-  - delete the test `config.toml` afterwards.
-
-### Docs
-- `README.md`, section "Using it": add a short "Keyboard shortcuts" list of the six defaults, and say they can be changed in `config.toml` under `[shortcuts]`, with the action names.
-- `README.md`, line 62 (PIN and encryption): "**Ctrl+L** (or your own shortcut) or **Lock** in the sidebar…".
-- `README.md`, Layout block: add `src/shortcuts.rs` and `ui/shortcuts.slint`.
-- `project_spec.md` (project memory): add a line on shortcuts. Only after the user confirms, per the spec rule.
-- `CHANGELOG.md` (when committing): "Added keyboard shortcuts for the theme, weights and scales, Settings and switching classes, listed in Settings and changeable in config.toml".
-
-### Done when
-- [ ] The six shortcuts work from a focused cell, and do nothing on the lock and first-run screens (noted per shortcut in the hand-off).
-- [ ] Settings lists them with key pills in both languages and both themes (screenshots).
-- [ ] The Lock label and PIN text show the configured keys (screenshot after setting `lock = "Ctrl+K"`).
-- [ ] A bad `config.toml` entry shows the banner and falls back (screenshot), and the log has the warning.
-- [ ] `cargo test`, `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` pass.
 
 ## 3. Change keyboard shortcuts from Settings
 

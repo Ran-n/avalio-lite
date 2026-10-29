@@ -1,9 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.062570
-//+ Revised: 	2026/10/28 15:53:08.128434
+//+ Revised: 	2026/10/29 02:54:47.680991
 // -----------------------------------------------------------------------------
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -28,6 +29,10 @@ pub struct AppConfig {
     /// Missing in settings files written before preferences existed; those get the defaults.
     #[serde(default)]
     pub preferences: Preferences,
+    /// Keyboard shortcuts changed from their defaults, by action name (`lock = "Ctrl+K"`); checked
+    /// by `shortcuts::Shortcuts::from_config`. Kept outside `Preferences` so that stays `Copy`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub shortcuts: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

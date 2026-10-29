@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/10/28 15:53:09.581440
+//+ Revised: 	2026/10/29 02:54:48.375601
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -10,7 +10,9 @@ use std::path::PathBuf;
 
 use avalio_lite::error::{AppError, Folder, NumberField};
 use avalio_lite::gradebook::model::ColumnType;
+use avalio_lite::i18n::shortcuts::{action_label, display, key_names};
 use avalio_lite::i18n::{LANGUAGES, Language, Message, default_column_title, error_message, localize_number, text};
+use avalio_lite::shortcuts::{Action, KeyCombo, ProblemKind, ShortcutError, ShortcutProblem};
 
 /// English language is the source text in the .slint files; every other language needs a .po file.
 const TRANSLATED: [Language; 1] = [Language::Galician];
@@ -189,6 +191,10 @@ fn every_error() -> Vec<AppError> {
         AppError::PinMismatch,
         AppError::WrongPin,
         AppError::PinWait { seconds: 3 },
+        AppError::InvalidShortcuts(vec![ShortcutProblem {
+            entry: "lock = \"x\"".into(),
+            kind: ProblemKind::BadKeys(ShortcutError::UnknownKey),
+        }]),
     ];
     for error in &all {
         match error {
@@ -211,7 +217,8 @@ fn every_error() -> Vec<AppError> {
             | AppError::InvalidPin
             | AppError::PinMismatch
             | AppError::WrongPin
-            | AppError::PinWait { .. } => {}
+            | AppError::PinWait { .. }
+            | AppError::InvalidShortcuts(_) => {}
         }
     }
     all
@@ -253,6 +260,24 @@ fn default_column_titles_exist_in_every_language() {
         }
         assert!(default_column_title(language, ColumnType::Test, 3).ends_with('3'));
     }
+}
+
+#[test]
+fn every_action_has_a_label_in_every_language() {
+    for language in LANGUAGES {
+        for action in Action::ALL {
+            assert!(!action_label(language, action).is_empty(), "{action:?} in {language:?}");
+        }
+    }
+    assert_ne!(action_label(Language::English, Action::Lock), action_label(Language::Galician, Action::Lock));
+}
+
+#[test]
+fn shift_is_maius_in_galician() {
+    let combo: KeyCombo = "Ctrl+Shift+D".parse().unwrap();
+    assert_eq!(key_names(Language::English, &combo), ["Ctrl", "Shift", "D"]);
+    assert_eq!(key_names(Language::Galician, &combo), ["Ctrl", "Maiús", "D"]);
+    assert_eq!(display(Language::Galician, &combo), "Ctrl+Maiús+D");
 }
 
 proptest::proptest! {

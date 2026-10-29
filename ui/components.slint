@@ -298,6 +298,26 @@ export component Tag inherits Rectangle {
     }
 }
 
+// One key of a keyboard shortcut ("Ctrl", "Shift", "L"), drawn like a key cap.
+export component KeyCap inherits Rectangle {
+    in property <string> text;
+
+    height: 24px;
+    width: max(24px, label.preferred-width + 14px);
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.line;
+    background: Theme.raised;
+    label := Text {
+        text: root.text;
+        font-size: 12px;
+        font-weight: 600;
+        color: Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
 // On/off switch.
 export component Toggle inherits Rectangle {
     in property <bool> checked;

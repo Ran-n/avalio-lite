@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.224094
-//+ Revised: 	2026/10/28 15:53:08.393258
+//+ Revised: 	2026/10/29 02:54:47.519860
 // -----------------------------------------------------------------------------
 
 mod callbacks;
@@ -9,6 +9,7 @@ pub mod dialogs;
 mod gradebook;
 mod language;
 mod lock_screen;
+mod shortcuts;
 pub mod state;
 mod theme;
 mod view;
@@ -80,6 +81,7 @@ pub fn open(
     callbacks::wire(&window, &state, &dialogs);
     gradebook::wire(&window, &state, &dialogs);
     lock_screen::wire(&window, &state);
+    shortcuts::wire(&window, &state);
     show_startup(&window, &state);
     Ok(Session { window, state })
 }
