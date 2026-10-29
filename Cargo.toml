@@ -1,6 +1,6 @@
 [package]
 name = "avalio-lite"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Lightweight, local edition of Avalio — a teacher-focused student evaluation app"
 authors = ["Ran# <ran.hash@proton.me>"]
