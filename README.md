@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/29 01:00:46.961481 )
+[//]: # (+ Revised: 	2026/10/29 01:58:37.893533 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite
@@ -37,7 +37,7 @@ Everything saves as you type. Scores accept `7.5` or `7,5`; a score that isn't a
 
 ## Install
 
-Each release ships two files; use either:
+Download a release from [GitHub](https://github.com/Ran-n/avalio-lite/releases), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/releases) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/releases) (the same files on each; the app isn't in any app store). Each release ships two files; use either:
 
 | File | What it is |
 |---|---|
@@ -134,7 +134,7 @@ Schema changes go in a new `migrations/NNN_*.sql` file added to the list in `src
 .\scripts\release.ps1
 ```
 
-Runs the default suite under its coverage gate and the desktop tests, builds the optimized exe, and writes both versioned files to `dist\`. The version comes from `Cargo.toml`.
+Runs the default suite under its coverage gate and the desktop tests, builds the optimized exe, and writes both versioned files to `dist\`. The version comes from `Cargo.toml`. Then tag the release commit `vX.Y.Z` and publish a release with both files and the version's CHANGELOG section on GitHub, GitLab and Codeberg.
 
 ## License
 

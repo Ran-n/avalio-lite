@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/10/29 01:08:51.667727 )
+[//]: # (+ Revised: 	2026/10/29 01:58:37.828872 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Fixed
+
+- Screen readers couldn't press the lock screen's on-screen keys (numbers, letters, symbols, erase, unlock)
+
+### Changed
+
+- The README links the release downloads on GitHub, GitLab and Codeberg and lists publishing them as a release step
 
 ## [0.2.0] - 2026-10-29
 
