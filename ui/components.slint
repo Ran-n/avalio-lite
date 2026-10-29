@@ -65,7 +65,12 @@ export component ActionButton inherits Rectangle {
         mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
         clicked => { root.clicked(); }
     }
-    accessible-action-default => { root.clicked(); }
+    // a disabled button can't be pressed through a screen reader either
+    accessible-action-default => {
+        if (root.enabled) {
+            root.clicked();
+        }
+    }
     keys := KeyboardPress {
         enabled: root.enabled;
         pressed => { root.clicked(); }
@@ -164,7 +169,12 @@ export component IconButton inherits Rectangle {
         mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
         clicked => { root.clicked(); }
     }
-    accessible-action-default => { root.clicked(); }
+    // a disabled button can't be pressed through a screen reader either
+    accessible-action-default => {
+        if (root.enabled) {
+            root.clicked();
+        }
+    }
     keys := KeyboardPress {
         enabled: root.enabled;
         pressed => { root.clicked(); }

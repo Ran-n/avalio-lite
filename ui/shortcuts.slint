@@ -1,6 +1,7 @@
 // Keyboard shortcuts: which action a key press runs (asked of the Rust side, which reads them from
-// config.toml), and what Settings and the labels show. A global, so the settings card, the sidebar
-// and the window all read it without passing it through Shell.
+// config.toml), what Settings and the labels show, and recording a new one from Settings. A
+// global, so the settings card, the sidebar and the window all read it without passing it through
+// Shell.
 
 export enum ShortcutAction { none, lock, toggle-theme, toggle-column-settings, open-settings, next-class, previous-class }
 
@@ -10,12 +11,22 @@ export struct ShortcutItem {
     keys: [string],
     // the keys as one text ("Ctrl+Shift+D"), what a screen reader says for the row
     spoken: string,
+    // still on its default keys (no Reset button)
+    is-default: bool,
 }
 
 export global Shortcuts {
     in property <[ShortcutItem]> items;
+    // every row is on its default keys, so "Reset all" has nothing to do
+    in property <bool> all-default: true;
     // the Lock shortcut as text ("Ctrl+L"), for the sidebar item and the PIN card
     in property <string> lock-keys: "Ctrl+L";
+    // the row waiting for its new keys, or -1; while it is set, every key press goes to the recorder
+    in-out property <int> recording: -1;
     // event text, Ctrl, Shift, Alt -> the action those keys run, or none
     pure callback find(string, bool, bool, bool) -> ShortcutAction;
+    // row, event text, Ctrl, Shift, Alt: the keys pressed while that row records
+    callback record(int, string, bool, bool, bool);
+    callback reset(int);
+    callback reset-all();
 }

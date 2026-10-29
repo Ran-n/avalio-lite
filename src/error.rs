@@ -1,13 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.190729
-//+ Revised: 	2026/10/29 02:54:47.745662
+//+ Revised: 	2026/10/29 03:07:05.635971
 // -----------------------------------------------------------------------------
 
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::shortcuts::ShortcutProblem;
+use crate::shortcuts::{ShortcutError, ShortcutProblem};
 
 pub type Result<T> = std::result::Result<T, AppError>;
 
@@ -94,6 +94,9 @@ pub enum AppError {
 
     #[error("invalid keyboard shortcuts in config.toml, using their defaults: {}", list(.0))]
     InvalidShortcuts(Vec<ShortcutProblem>),
+
+    #[error("that shortcut can't be used: {0}")]
+    Shortcut(ShortcutError),
 }
 
 fn list(problems: &[ShortcutProblem]) -> String {

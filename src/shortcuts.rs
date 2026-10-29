@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:46.632108
-//+ Revised: 	2026/10/29 02:54:48.720706
+//+ Revised: 	2026/10/29 03:07:05.820040
 // -----------------------------------------------------------------------------
 
 //! Keyboard shortcuts: which keys run which action, their text form in `config.toml`, and the
@@ -176,15 +176,25 @@ pub enum ShortcutError {
     NeedsCtrlOrAlt,
     /// AltGr sends Ctrl+Alt on Spanish and Galician keyboards (AltGr+2 types "@").
     CtrlAlt,
+    /// Ctrl+A, C, V, X, Y or Z (the letter given): text fields need them, and the window catches
+    /// shortcuts before the focused field sees them.
+    EditingKey(char),
+    /// Another action already has these keys; a change is refused rather than taking them over.
+    Clash { keys: KeyCombo, taken_by: Action },
 }
+
+/// The letters that edit text with Ctrl: select all, copy, paste, cut, redo, undo.
+const EDITING_LETTERS: [char; 6] = ['A', 'C', 'V', 'X', 'Y', 'Z'];
 
 impl fmt::Display for ShortcutError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::UnknownKey => "not a key a shortcut can use",
-            Self::NeedsCtrlOrAlt => "needs Ctrl or Alt (only F1 to F12 can be used alone)",
-            Self::CtrlAlt => "Ctrl and Alt together are what AltGr sends",
-        })
+        match self {
+            Self::UnknownKey => formatter.write_str("not a key a shortcut can use"),
+            Self::NeedsCtrlOrAlt => formatter.write_str("needs Ctrl or Alt (only F1 to F12 can be used alone)"),
+            Self::CtrlAlt => formatter.write_str("Ctrl and Alt together are what AltGr sends"),
+            Self::EditingKey(letter) => write!(formatter, "Ctrl+{letter} is used for editing text"),
+            Self::Clash { keys, taken_by } => write!(formatter, "{keys} is already used by {}", taken_by.config_name()),
+        }
     }
 }
 
@@ -206,13 +216,25 @@ impl KeyCombo {
         if !ctrl && !alt && !matches!(key, Key::Function(_)) {
             return Err(ShortcutError::NeedsCtrlOrAlt);
         }
+        if let Key::Letter(letter) = key
+            && ctrl
+            && !shift
+            && EDITING_LETTERS.contains(&letter)
+        {
+            return Err(ShortcutError::EditingKey(letter));
+        }
         Ok(Self { ctrl, shift, alt, key })
     }
 
     /// The combo a key press makes, from Slint's event text and modifiers; `None` when it can't be
     /// a shortcut (AltGr, a plain letter, a key no shortcut uses).
     pub fn from_key_press(text: &str, ctrl: bool, shift: bool, alt: bool) -> Option<Self> {
-        Self::new(ctrl, shift, alt, Key::from_event_text(text)?).ok()
+        Self::checked_key_press(text, ctrl, shift, alt).ok()
+    }
+
+    /// Like `from_key_press`, saying why the keys can't be a shortcut; for recording a new one.
+    pub fn checked_key_press(text: &str, ctrl: bool, shift: bool, alt: bool) -> Result<Self, ShortcutError> {
+        Self::new(ctrl, shift, alt, Key::from_event_text(text).ok_or(ShortcutError::UnknownKey)?)
     }
 
     pub fn ctrl(&self) -> bool {
@@ -364,5 +386,28 @@ impl Shortcuts {
 
     pub fn action_for(&self, combo: &KeyCombo) -> Option<Action> {
         Action::ALL.into_iter().find(|action| self.combo(*action) == *combo)
+    }
+
+    /// These shortcuts with `action` on `combo`, or `Clash` when another action has those keys.
+    pub fn with_change(&self, action: Action, combo: KeyCombo) -> Result<Shortcuts, ShortcutError> {
+        if let Some(other) = self.action_for(&combo).filter(|other| *other != action) {
+            return Err(ShortcutError::Clash { keys: combo, taken_by: other });
+        }
+        let mut changed = self.clone();
+        changed.combos[action.index()] = combo;
+        Ok(changed)
+    }
+
+    pub fn is_default(&self, action: Action) -> bool {
+        self.combo(action) == action.default_combo()
+    }
+
+    /// The `[shortcuts]` table for `config.toml`: only the actions that differ from their defaults.
+    pub fn to_config(&self) -> BTreeMap<String, String> {
+        Action::ALL
+            .into_iter()
+            .filter(|action| !self.is_default(*action))
+            .map(|action| (action.config_name().to_owned(), self.combo(action).to_string()))
+            .collect()
     }
 }

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.365284
-//+ Revised: 	2026/10/29 02:54:47.587862
+//+ Revised: 	2026/10/29 03:07:05.572332
 // -----------------------------------------------------------------------------
 
 mod protection;
@@ -17,7 +17,7 @@ use crate::error::{AppError, Folder, Result};
 use crate::i18n::{self, Language};
 use crate::lock::Pin;
 use crate::logging::FileLogger;
-use crate::shortcuts::{ShortcutProblem, Shortcuts};
+use crate::shortcuts::{Action, KeyCombo, ShortcutProblem, Shortcuts};
 use crate::storage;
 
 /// Why the first-run screen is being shown.
@@ -81,6 +81,31 @@ impl AppState {
 
     pub fn shortcuts(&self) -> &Shortcuts {
         &self.shortcuts
+    }
+
+    /// Puts `action` on `combo`; refused (`Shortcut(Clash)`) when another action has those keys.
+    pub fn set_shortcut(&mut self, action: Action, combo: KeyCombo) -> Result<()> {
+        let changed = self.shortcuts.with_change(action, combo).map_err(AppError::Shortcut)?;
+        self.save_shortcuts(changed)
+    }
+
+    /// Puts `action` back on its default keys, unless another action has them now.
+    pub fn reset_shortcut(&mut self, action: Action) -> Result<()> {
+        self.set_shortcut(action, Shortcuts::defaults().combo(action))
+    }
+
+    pub fn reset_all_shortcuts(&mut self) -> Result<()> {
+        self.save_shortcuts(Shortcuts::defaults())
+    }
+
+    /// Writes only the differences from the defaults, and takes the new shortcuts only once they are
+    /// saved, so a failed save changes nothing.
+    fn save_shortcuts(&mut self, shortcuts: Shortcuts) -> Result<()> {
+        let mut config = self.config.clone().ok_or(AppError::NoDatabaseOpen)?;
+        config.shortcuts = shortcuts.to_config();
+        self.save_config(config)?;
+        self.shortcuts = shortcuts;
+        Ok(())
     }
 
     /// The ignored shortcut entries, once: the list is empty afterwards, so the banner shows once.

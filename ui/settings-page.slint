@@ -156,23 +156,52 @@ export component SettingsPage inherits Rectangle {
                     }
                     Card {
                         title: @tr("Keyboard shortcuts");
-                        description: @tr("Shortcuts work anywhere on this screen, even while you type in a cell. You can change them in config.toml.");
-                        for item in Shortcuts.items: Rectangle {
+                        description: @tr("Shortcuts work anywhere on this screen, even while you type in a cell. Press Change and then the new keys.");
+                        for item[index] in Shortcuts.items: Rectangle {
                             accessible-role: list-item;
                             accessible-label: item.label;
                             accessible-description: item.spoken;
                             HorizontalLayout {
-                                spacing: 12px;
+                                spacing: 8px;
                                 Text {
                                     horizontal-stretch: 1;
                                     text: item.label;
                                     vertical-alignment: center;
                                     color: Theme.text;
                                 }
-                                HorizontalLayout {
-                                    spacing: 4px;
-                                    for key in item.keys: KeyCap { text: key; }
+                                if Shortcuts.recording == index: Text {
+                                    text: @tr("Press the new keys…");
+                                    vertical-alignment: center;
+                                    color: Theme.accent;
                                 }
+                                if Shortcuts.recording != index: HorizontalLayout {
+                                    spacing: 4px;
+                                    alignment: end;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        HorizontalLayout {
+                                            spacing: 4px;
+                                            for key in item.keys: KeyCap { text: key; }
+                                        }
+                                    }
+                                }
+                                if !item.is-default: ActionButton {
+                                    text: @tr("Reset");
+                                    kind: ButtonKind.ghost;
+                                    clicked => { Shortcuts.reset(index); }
+                                }
+                                ActionButton {
+                                    text: Shortcuts.recording == index ? @tr("Cancel") : @tr("Change");
+                                    clicked => { Shortcuts.recording = Shortcuts.recording == index ? -1 : index; }
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            ActionButton {
+                                text: @tr("Reset all");
+                                enabled: !Shortcuts.all-default;
+                                clicked => { Shortcuts.reset-all(); }
                             }
                         }
                     }

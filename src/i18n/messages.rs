@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.721797
-//+ Revised: 	2026/10/28 10:52:45.590526
+//+ Revised: 	2026/10/29 03:07:05.758360
 // -----------------------------------------------------------------------------
 
 use super::Language;
@@ -21,6 +21,8 @@ pub enum Message<'a> {
     PinTurnedOn,
     PinChanged,
     PinTurnedOff,
+    ShortcutChanged { action: &'a str, keys: &'a str },
+    ShortcutsReset,
 }
 
 pub fn text(language: Language, message: &Message) -> String {
@@ -53,6 +55,8 @@ fn english(message: &Message) -> String {
         Message::PinTurnedOn => "The database is now encrypted with your PIN.".to_owned(),
         Message::PinChanged => "PIN changed; the database is re-encrypted with it.".to_owned(),
         Message::PinTurnedOff => "PIN removed; the database is no longer encrypted.".to_owned(),
+        Message::ShortcutChanged { action, keys } => format!("{action} is now {keys}."),
+        Message::ShortcutsReset => "All keyboard shortcuts are back to their defaults.".to_owned(),
     }
 }
 
@@ -77,6 +81,8 @@ fn galician(message: &Message) -> String {
         Message::PinTurnedOn => "A base de datos xa está cifrada co teu PIN.".to_owned(),
         Message::PinChanged => "PIN cambiado; a base de datos cifrouse de novo con el.".to_owned(),
         Message::PinTurnedOff => "PIN eliminado; a base de datos xa non está cifrada.".to_owned(),
+        Message::ShortcutChanged { action, keys } => format!("{action} agora é {keys}."),
+        Message::ShortcutsReset => "Todos os atallos de teclado volven ser os de orixe.".to_owned(),
     }
 }
 

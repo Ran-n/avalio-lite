@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/10/29 02:54:48.129140
+//+ Revised: 	2026/10/29 03:07:05.883979
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -310,7 +310,7 @@ fn settings() {
         "settings-pin",
         |app| {
             app.scroll_main(40);
-            app.scroll_main(-8);
+            app.scroll_main(-10);
         },
         |app, image, _, _| {
             assert_on_screen(image, located(app, "Encrypt with this PIN"), "Encrypt with this PIN");
@@ -350,6 +350,11 @@ fn settings() {
     for row in ["Bloquear", "Cambiar entre claro e escuro", "Amosar ou agochar pesos e escalas", "Clase anterior"] {
         assert_on_screen(&image, located(&mut app, row), row);
     }
+    // a row recording its new keys: the prompt and Cancel, in the longer language at the minimum size
+    app.click_nth("Cambiar", 1);
+    let image = galician_look(&mut app, "settings-recording");
+    assert_on_screen(&image, located(&mut app, "Cancelar"), "Cancelar");
+    app.click("Cancelar");
     app.scroll_main(-40);
     let image = galician_look(&mut app, "settings-folders");
     assert_on_screen(&image, located(&mut app, "Abrir outra base de datos…"), "Abrir outra base de datos…");

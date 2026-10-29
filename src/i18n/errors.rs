@@ -1,12 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.615582
-//+ Revised: 	2026/10/29 02:54:47.879462
+//+ Revised: 	2026/10/29 03:07:05.697080
 // -----------------------------------------------------------------------------
 
 use super::Language;
+use super::shortcuts::{action_label, display};
 use crate::error::{AppError, Folder, NumberField};
-use crate::shortcuts::ShortcutProblem;
+use crate::shortcuts::{ShortcutError, ShortcutProblem};
 
 /// The error as shown to the user, in their language. Paths and the system's own
 /// error details are passed through as they are.
@@ -58,6 +59,19 @@ fn english(error: &AppError) -> String {
             "Some keyboard shortcuts in config.toml weren't valid and use their defaults: {}.",
             entries(problems)
         ),
+        AppError::Shortcut(ShortcutError::UnknownKey) => "That key can't be used for a shortcut.".to_owned(),
+        AppError::Shortcut(ShortcutError::NeedsCtrlOrAlt) => {
+            "Add Ctrl or Alt: a plain letter would type into the cell.".to_owned()
+        }
+        AppError::Shortcut(ShortcutError::CtrlAlt) => {
+            "Ctrl+Alt is the AltGr key on many keyboards, so it can't be used.".to_owned()
+        }
+        AppError::Shortcut(ShortcutError::EditingKey(letter)) => format!("Ctrl+{letter} is used for editing text."),
+        AppError::Shortcut(ShortcutError::Clash { keys, taken_by }) => format!(
+            "{} is already used by {}.",
+            display(Language::English, keys),
+            action_label(Language::English, *taken_by)
+        ),
     }
 }
 
@@ -107,6 +121,19 @@ fn galician(error: &AppError) -> String {
         AppError::InvalidShortcuts(problems) => format!(
             "Algúns atallos de teclado de config.toml non eran válidos e usan os predeterminados: {}.",
             entries(problems)
+        ),
+        AppError::Shortcut(ShortcutError::UnknownKey) => "Esa tecla non se pode usar nun atallo.".to_owned(),
+        AppError::Shortcut(ShortcutError::NeedsCtrlOrAlt) => {
+            "Engade Ctrl ou Alt: unha letra soa escribiríase na cela.".to_owned()
+        }
+        AppError::Shortcut(ShortcutError::CtrlAlt) => {
+            "Ctrl+Alt é a tecla AltGr en moitos teclados, así que non se pode usar.".to_owned()
+        }
+        AppError::Shortcut(ShortcutError::EditingKey(letter)) => format!("Ctrl+{letter} úsase para editar texto."),
+        AppError::Shortcut(ShortcutError::Clash { keys, taken_by }) => format!(
+            "{} xa se usa para {}.",
+            display(Language::Galician, keys),
+            action_label(Language::Galician, *taken_by)
         ),
     }
 }

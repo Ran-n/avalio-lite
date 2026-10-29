@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/28 10:26:46.388247 )
-[//]: # (+ Revised: 	2026/10/29 02:54:47.264601 )
+[//]: # (+ Revised: 	2026/10/29 03:07:05.440786 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # TODO
@@ -14,7 +14,6 @@ Next item number: 17
 
 ## Index
 
-3. [Change keyboard shortcuts from Settings](#3-change-keyboard-shortcuts-from-settings)
 4. [Share one helper for "run this callback while the window is alive"](#4-share-one-helper-for-run-this-callback-while-the-window-is-alive)
 5. [Cover the rest of the code and raise the coverage gate](#5-cover-the-rest-of-the-code-and-raise-the-coverage-gate)
 6. [Gate branch coverage too](#6-gate-branch-coverage-too)
@@ -87,96 +86,6 @@ Next item number: 17
 ```
 
 ---
-
-## 3. Change keyboard shortcuts from Settings
-
-**Why:** after item 2, Settings lists the six keyboard shortcuts, but changing one means editing `config.toml` by hand while the app is closed. The user asked to be able to edit them in the app. Do this after item 2: it uses item 2's `Shortcuts` model, the `[shortcuts]` table and the `KeyCap` pill.
-**Goal:** each row of the "Keyboard shortcuts" card has a "Change" button. You press it, press the new keys, and the shortcut is saved at once. Each row has its own reset, and there's one "Reset all" for every row.
-
-### Behaviour
-- **Changing one:**
-  - Pressing "Change" puts that row into recording: the pills are replaced by "Press the new keys…" in `Theme.accent`, and the button becomes "Cancel".
-  - Only one row records at a time. Pressing "Change" on another row moves the recording there.
-- **While recording:**
-  - Every key press goes to the recorder, not to the shortcuts or the focused field.
-  - A press of only Ctrl, Shift or Alt waits for the actual key.
-  - Esc cancels and leaves the shortcut unchanged.
-  - Any other combination is checked with item 2's rules.
-- **A valid new combination:**
-  - It is saved to `config.toml` immediately, as with other settings, with no Save button (inline editing).
-  - The row shows the new pills and the recording ends.
-  - The status banner reads "Lock is now Ctrl+K."
-- **An invalid combination:** the row keeps recording, and an error banner says why, then the user tries again or presses Esc. Why the combination is refused:
-  - a plain letter: "Add Ctrl or Alt: a plain letter would type into the cell.";
-  - Ctrl+Alt: "Ctrl+Alt is the AltGr key on many keyboards, so it can't be used.";
-  - a key that isn't allowed: "That key can't be used for a shortcut.".
-- **A clash:**
-  - Refused with "Ctrl+H is already used by Show or hide weights and scales.", and the row keeps recording.
-  - Refused rather than swapped, so a shortcut never moves silently from another action.
-- **Text-editing keys are refused:** Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X, Ctrl+Y and Ctrl+Z, with "Ctrl+C is used for editing text." Text fields need these keys, and item 2's capture would take them before the field. Add this rule to `KeyCombo` validation, so a hand-edited `config.toml` can't set them either.
-- **Resetting:**
-  - A row whose shortcut differs from its default shows a small "Reset" ghost button. It restores the default, unless that would clash, in which case the clash message names the action that has those keys now.
-  - "Reset all" at the bottom of the card removes the whole `[shortcuts]` table and restores all six defaults. It's greyed out (disabled style, per the UI rule) when nothing differs from the defaults.
-- **Leaving Settings or locking while recording** cancels the recording.
-- **What gets saved:** only differences from the defaults are written (a shortcut set back to its default removes its line), the same format as item 2.
-
-### Out of scope
-- Several shortcuts for one action, or shortcuts for new actions.
-- Chord shortcuts (two key presses in a row, such as Ctrl+K then Ctrl+S).
-
-### Implementation
-1. **`src/shortcuts.rs`:**
-   - Add the text-editing refusal to `KeyCombo::new`, with its own `ShortcutError` variant.
-   - Add `Shortcuts::with_change(Action, KeyCombo) -> Result<Shortcuts, ShortcutError>`, which returns `Clash(other_action)` when another action has the combo.
-   - Add `Shortcuts::to_config() -> BTreeMap<String, String>`, holding only the non-defaults.
-   - Add `is_default(Action)`.
-
-   Keeping these pure keeps the rules testable without the UI.
-2. **`src/error.rs` and `src/i18n/errors.rs`:** add `AppError::Shortcut(ShortcutError)`, with English and Galician text for every variant (wording in Behaviour; Galician e.g. "Ctrl+H xa se usa para Amosar ou agochar pesos e escalas.").
-3. **`src/i18n/messages.rs`:** add `Message::ShortcutChanged { action, keys }` ("Lock is now Ctrl+K." / "Bloquear agora é Ctrl+K.") and `Message::ShortcutsReset` ("All keyboard shortcuts are back to their defaults." / "Todos os atallos de teclado volven ser os de orixe.").
-4. **`src/app/state/mod.rs`:**
-   - Add `set_shortcut(Action, KeyCombo) -> Result<()>`, `reset_shortcut(Action) -> Result<()>` and `reset_all_shortcuts() -> Result<()>`.
-   - Each builds the new `Shortcuts` with `with_change`, writes `to_config()` into a cloned config, saves it with `save_config` and only then replaces `self.shortcuts`, so a failed save changes nothing. This is the same pattern as `set_theme`.
-5. **`ui/shortcuts.slint`:**
-   - Add `in-out property <int> recording: -1` (the row index) to the global.
-   - Add `callback record(int, string, bool, bool, bool)`, `callback reset(int)` and `callback reset-all()`.
-   - Add `is-default: bool` to `ShortcutItem`.
-6. **`ui/app-window.slint`, `capture-key-pressed`:**
-   - Before the shortcut lookup, when `Shortcuts.recording >= 0`: Esc sets `recording = -1`; a press of only modifiers is ignored; anything else calls `Shortcuts.record(recording, event.text, …)`. Always return `accept`, so the focused field never gets the keys.
-   - Set `recording = -1` when `section` changes away from Settings and in `lock-now`.
-7. **`ui/settings-page.slint`:** add the Change/Cancel button, the recording text, the per-row Reset ghost button (only when `!is-default`) and "Reset all" (disabled style when every row `is-default`), all as described in Behaviour.
-8. **`src/app/shortcuts.rs`:**
-   - Wire `record`: build the combo, call `set_shortcut`. On success, end recording, refresh `items` and `lock-keys` and show `ShortcutChanged`. On error, keep recording and show the error banner with `view::show_error`, logging at `warn`.
-   - Wire `reset` and `reset-all` the same way.
-9. **`lang/gl/LC_MESSAGES/avalio-lite.po`:** add Galician for "Change" (Cambiar), "Cancel" (Cancelar), "Reset" (Restablecer), "Reset all" (Restablecer todo) and "Press the new keys…" (Preme as novas teclas…). Change the card description's second sentence to "Press Change and then the new keys." Run `tests/i18n.rs`.
-10. **File headers:** run `metadata -m` on every edited `.rs` and `.md` file.
-
-### Tests
-- **`tests/shortcuts.rs`:**
-  - `editing_keys_are_refused`: each of Ctrl+A/C/V/X/Y/Z is an error, also when read from config (`from_config` reports it and keeps the default).
-  - `a_change_that_clashes_names_the_other_action`: `with_change(ToggleTheme, Ctrl+L)` returns `Clash(Lock)`.
-  - `only_differences_are_saved`: change one shortcut and change it back, and `to_config()` is empty.
-  - `reset_restores_the_default`.
-- **`tests/state.rs`:**
-  - `a_changed_shortcut_survives_a_restart`: set Lock to Ctrl+K, restart the state from the same config folder, and `shortcuts().combo(Lock)` is Ctrl+K.
-  - `a_failed_change_leaves_everything_as_it_was`: a clash returns the error, and both the config file and `shortcuts()` are unchanged.
-  - `reset_all_removes_the_table`: the saved file has no `[shortcuts]` line.
-- **`tests/i18n.rs`:** every `ShortcutError` variant and both new messages have text in both languages. This comes free with `match`, but check that none is empty.
-- **Manual, in the release build, light and dark, Galician at 1000 px width:**
-  - screenshot a row while recording, after a refused clash (banner), after a successful change, and with "Reset all" both enabled and greyed;
-  - check that while recording, typing in no field happens and Ctrl+L doesn't lock;
-  - check that Esc cancels;
-  - check that leaving Settings cancels.
-
-### Docs
-- `README.md`, "Keyboard shortcuts" (added by item 2): say they're changed in Settings → Keyboard shortcuts; keep the `config.toml` note as the alternative; list the keys that can't be used (plain letters, Ctrl+Alt, Ctrl+A/C/V/X/Y/Z).
-- `CHANGELOG.md` (when committing): "Keyboard shortcuts can be changed and reset in Settings".
-
-### Done when
-- [ ] Changing, cancelling (Esc and leaving Settings), resetting one and resetting all work in the app (screenshots of each state).
-- [ ] Clashes, plain letters, Ctrl+Alt and editing keys are refused with their message, and the row keeps recording.
-- [ ] A change survives restarting the app.
-- [ ] `cargo test`, `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` pass.
 
 ## 4. Share one helper for "run this callback while the window is alive"
 
