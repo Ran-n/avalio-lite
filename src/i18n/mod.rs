@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.826999
-//+ Revised: 	2026/10/28 10:52:45.713666
+//+ Revised: 	2026/10/29 02:54:47.944079
 // -----------------------------------------------------------------------------
 
 //! Interface language. Slint strings are translated from `lang/<code>/LC_MESSAGES/avalio-lite.po`;
@@ -10,6 +10,7 @@
 
 mod errors;
 mod messages;
+pub mod shortcuts;
 
 use std::sync::atomic::{AtomicU8, Ordering};
 

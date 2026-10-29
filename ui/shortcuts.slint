@@ -1,0 +1,21 @@
+// Keyboard shortcuts: which action a key press runs (asked of the Rust side, which reads them from
+// config.toml), and what Settings and the labels show. A global, so the settings card, the sidebar
+// and the window all read it without passing it through Shell.
+
+export enum ShortcutAction { none, lock, toggle-theme, toggle-column-settings, open-settings, next-class, previous-class }
+
+// One row of the Settings card: what the shortcut does, and its keys as key-cap pills.
+export struct ShortcutItem {
+    label: string,
+    keys: [string],
+    // the keys as one text ("Ctrl+Shift+D"), what a screen reader says for the row
+    spoken: string,
+}
+
+export global Shortcuts {
+    in property <[ShortcutItem]> items;
+    // the Lock shortcut as text ("Ctrl+L"), for the sidebar item and the PIN card
+    in property <string> lock-keys: "Ctrl+L";
+    // event text, Ctrl, Shift, Alt -> the action those keys run, or none
+    pure callback find(string, bool, bool, bool) -> ShortcutAction;
+}

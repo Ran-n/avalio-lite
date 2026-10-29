@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/10/28 16:22:40.398544
+//+ Revised: 	2026/10/29 02:54:47.812710
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, ErrorCode, params};
@@ -45,6 +45,18 @@ pub fn rename_class(connection: &Connection, class_id: i64, name: &str) -> Resul
         return Err(AppError::NotEditable);
     }
     Ok(())
+}
+
+/// The position `delta` steps from `current` in a list of `len` classes, going round at either end;
+/// with nothing selected, the first (forwards) or last (backwards). `None` when there are none.
+pub fn adjacent_index(len: usize, current: Option<usize>, delta: i32) -> Option<usize> {
+    let len_signed = i64::try_from(len).ok().filter(|len| *len > 0)?;
+    let start = match current {
+        Some(index) => i64::try_from(index).ok()?,
+        None if delta > 0 => -1,
+        None => len_signed,
+    };
+    usize::try_from((start + i64::from(delta)).rem_euclid(len_signed)).ok()
 }
 
 pub fn delete_class(connection: &Connection, class_id: i64) -> Result<()> {

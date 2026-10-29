@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/10/28 15:53:09.060231
+//+ Revised: 	2026/10/29 02:54:48.438797
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -37,6 +37,7 @@ fn create_database_saves_choice_and_next_start_is_ready() {
         database_path: fixture.path("data").join(DATABASE_FILE_NAME),
         log_dir: fixture.path("logs"),
         preferences: Preferences::default(),
+        shortcuts: Default::default(),
     };
     assert_eq!(state.config(), Some(&expected));
     assert_eq!(fixture.store().load().unwrap(), Some(expected));
@@ -112,6 +113,67 @@ fn missing_database_is_reported_and_not_recreated() {
     let mut restarted = fixture.state();
     assert_eq!(restarted.start(), Startup::NeedsSetup(SetupReason::DatabaseMissing(database_path.clone())));
     assert!(!database_path.exists());
+}
+
+/// Was: with its database gone, the settings file's preferences were dropped, so finishing setup
+/// saved the defaults over the chosen language and theme.
+#[test]
+fn regression_setup_after_a_missing_database_keeps_the_preferences_and_shortcuts() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_language(Language::Galician).unwrap();
+    state.set_theme(ThemeChoice::Dark).unwrap();
+    let mut config = fixture.store().load().unwrap().unwrap();
+    config.shortcuts.insert("lock".into(), "Ctrl+K".into());
+    fixture.store().save(&config).unwrap();
+    state.shutdown();
+    avalio_lite::db::remove_files(&fixture.database()).unwrap();
+
+    let mut restarted = fixture.state();
+    assert!(matches!(restarted.start(), Startup::NeedsSetup(SetupReason::DatabaseMissing(_))));
+    restarted.create_database(&fixture.path("fresh"), &fixture.path("logs")).unwrap();
+    let saved = fixture.store().load().unwrap().unwrap();
+    assert_eq!(saved.preferences.language, Some(Language::Galician));
+    assert_eq!(saved.preferences.theme, Some(ThemeChoice::Dark));
+    assert_eq!(saved.shortcuts.get("lock").map(String::as_str), Some("Ctrl+K"));
+    restarted.shutdown();
+}
+
+#[test]
+fn bad_shortcuts_are_reported_once() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let mut config = fixture.store().load().unwrap().unwrap();
+    config.shortcuts.insert("lock".into(), "Ctrl+".into());
+    config.shortcuts.insert("next-class".into(), "F8".into());
+    fixture.store().save(&config).unwrap();
+
+    let mut state = fixture.state();
+    assert_eq!(state.start(), Startup::Ready);
+    let problems = state.take_shortcut_problems();
+    assert_eq!(problems.len(), 1);
+    assert_eq!(problems[0].entry, "lock = \"Ctrl+\"");
+    assert!(state.take_shortcut_problems().is_empty(), "shown once");
+    let next = state.shortcuts().combo(avalio_lite::shortcuts::Action::NextClass);
+    assert_eq!(next.to_string(), "F8", "the good entry is used");
+    state.shutdown();
+}
+
+#[test]
+fn custom_shortcuts_survive_opening_another_database() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let mut config = fixture.store().load().unwrap().unwrap();
+    config.shortcuts.insert("lock".into(), "Ctrl+K".into());
+    fixture.store().save(&config).unwrap();
+    state.shutdown();
+    let mut state = fixture.state();
+    assert_eq!(state.start(), Startup::Ready);
+    let other = fixture.path("other.db");
+    avalio_lite::db::close(avalio_lite::db::open(&other, None).unwrap()).unwrap();
+    state.open_existing(&other, &fixture.path("logs")).unwrap();
+    assert_eq!(fixture.store().load().unwrap().unwrap().shortcuts.get("lock").map(String::as_str), Some("Ctrl+K"));
+    state.shutdown();
 }
 
 #[test]

@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/29 02:27:42.168172 )
+[//]: # (+ Revised: 	2026/10/29 02:54:47.202823 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite
@@ -33,7 +33,20 @@ A single native Windows app: no server, no accounts, no internet. Each class get
 
 The app speaks **Galician** and **English**. It follows the Windows language until you pick one in **Settings → Language**; in Galician, calculated marks use a decimal comma (8,5).
 
-**Keyboard:** Tab moves between fields and buttons, Enter or Space presses the focused button, and Ctrl+L locks.
+**Keyboard:** Tab moves between fields and buttons, and Enter or Space presses the focused button.
+
+**Keyboard shortcuts** work anywhere on the main screen, even while you type in a cell (not on the lock or first-run screens), and Settings lists them:
+
+| Shortcut | Does | Name in `config.toml` |
+|---|---|---|
+| Ctrl+L | Lock | `lock` |
+| Ctrl+Shift+D | Switch between light and dark | `toggle-theme` |
+| Ctrl+H | Show or hide weights and scales | `toggle-column-settings` |
+| Ctrl+, | Open Settings (again: back to the sheet) | `open-settings` |
+| Ctrl+PageDown | Next class | `next-class` |
+| Ctrl+PageUp | Previous class | `previous-class` |
+
+To change one, add it to `config.toml` under `[shortcuts]`, e.g. `lock = "Ctrl+K"`. A shortcut is Ctrl, Shift and Alt (not Ctrl and Alt together, which is AltGr) with A–Z, 0–9, `,`, `.`, PageUp, PageDown, Home or End; F1–F12 can also be used alone. An entry that isn't valid, or that two actions share, is reported when the app opens and the default is used.
 
 Everything saves as you type. Scores accept `7.5` or `7,5`; a score that isn't a number within the test's range is shaded red and left out of the calculations. Calculated marks show as green pills at half their maximum or above (5 out of 10) and rose below it; failing test scores are shown in rose too.
 
@@ -63,7 +76,7 @@ To back up, copy `avalio-lite.db` while the app is closed.
 
 ### PIN and encryption
 
-In **Settings → PIN and encryption** you can set a PIN of 4 to 128 characters: digits, letters, spaces or symbols. The database file is then encrypted with it ([SQLCipher](https://www.zetetic.net/sqlcipher/): every page of the file is encrypted with AES-256 and checked for tampering), so the file can't be read without the PIN. The app asks for the PIN when it opens: type it, or click it on the on-screen keys (**ABC** switches them to letters, with ⇧ for capitals and a space bar; **#+=** to two pages of symbols, switched with **1/2**; **123** goes back to numbers); **Ctrl+L** or **Lock** in the sidebar closes the database and shows the lock screen. After five wrong PINs, each further try waits 30 seconds.
+In **Settings → PIN and encryption** you can set a PIN of 4 to 128 characters: digits, letters, spaces or symbols. The database file is then encrypted with it ([SQLCipher](https://www.zetetic.net/sqlcipher/): every page of the file is encrypted with AES-256 and checked for tampering), so the file can't be read without the PIN. The app asks for the PIN when it opens: type it, or click it on the on-screen keys (**ABC** switches them to letters, with ⇧ for capitals and a space bar; **#+=** to two pages of symbols, switched with **1/2**; **123** goes back to numbers); **Ctrl+L** (or your own shortcut) or **Lock** in the sidebar closes the database and shows the lock screen. After five wrong PINs, each further try waits 30 seconds.
 
 How strong the PIN is, is your call. The 30-second wait only applies inside the app: someone with a copy of the file can try guesses as fast as their computer allows (each guess is deliberately slow, but not slow enough for short PINs). A 4-digit PIN can be found in minutes, 8 digits in about a day on a gaming graphics card; a password of 12 or more characters with letters, or four random words, would take far longer than anyone can wait.
 
@@ -111,9 +124,10 @@ src/
   error.rs      the app's error type
   lock.rs       PIN rules and guess limiting
   logging.rs    file logger whose folder can change at runtime
+  shortcuts.rs  keyboard shortcuts: the actions, their keys and the rules for config.toml
   storage.rs    safe cross-drive file moves
   i18n/         interface language: Rust-side texts and error messages per language
-ui/             Slint UI with its own light and dark theme (theme.slint); gradebook.slint holds the sheet's data and actions
+ui/             Slint UI with its own light and dark theme (theme.slint); gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts
 lang/           translations of the UI strings, lang/<code>/LC_MESSAGES/avalio-lite.po, bundled into the exe
 assets/         logo (SVG source, generated .ico/.png; regenerate with cargo run --example render_logo -- <preview folder>)
 examples/       demo_data: builds a sample database; app_driver: runs the app for the desktop tests; render_logo: the icon files

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:52.882316
-//+ Revised: 	2026/10/29 00:10:40.956555
+//+ Revised: 	2026/10/29 02:54:47.393780
 // -----------------------------------------------------------------------------
 
 use slint::ComponentHandle;
@@ -20,6 +20,20 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
     gradebook.on_select_class(move |class_id| {
         let Some(window) = weak.upgrade() else { return };
         run(&window, &shared, "open class", |_| Ok(Refresh::All { select: Some(i64::from(class_id)) }));
+    });
+
+    let (weak, shared) = (window.as_weak(), state.clone());
+    gradebook.on_select_adjacent_class(move |delta| {
+        let Some(window) = weak.upgrade() else { return };
+        let current = current_class_id(&window);
+        run(&window, &shared, "switch class", |connection| {
+            let list = classes::list_classes(connection)?;
+            let here = list.iter().position(|class| class.id == current);
+            match classes::adjacent_index(list.len(), here, delta) {
+                Some(index) => Ok(Refresh::All { select: Some(list[index].id) }),
+                None => Ok(Refresh::Nothing),
+            }
+        });
     });
 
     let (weak, shared) = (window.as_weak(), state.clone());

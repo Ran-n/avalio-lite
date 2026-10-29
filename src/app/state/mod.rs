@@ -1,11 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.365284
-//+ Revised: 	2026/10/29 00:32:02.028392
+//+ Revised: 	2026/10/29 02:54:47.587862
 // -----------------------------------------------------------------------------
 
 mod protection;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
@@ -16,6 +17,7 @@ use crate::error::{AppError, Folder, Result};
 use crate::i18n::{self, Language};
 use crate::lock::Pin;
 use crate::logging::FileLogger;
+use crate::shortcuts::{ShortcutProblem, Shortcuts};
 use crate::storage;
 
 /// Why the first-run screen is being shown.
@@ -55,11 +57,35 @@ pub struct AppState {
     /// The PIN the open database is encrypted with; `None` when it isn't encrypted or is locked.
     /// Wiped from memory as soon as it is dropped.
     key: Option<Pin>,
+    /// The settings file as last read, even when it pointed at a database that is gone: its
+    /// preferences and shortcuts carry over to whatever database is chosen next.
+    read: Option<AppConfig>,
+    shortcuts: Shortcuts,
+    /// Shortcut entries from the settings file that were ignored, until they have been shown.
+    shortcut_problems: Vec<ShortcutProblem>,
 }
 
 impl AppState {
     pub fn new(store: ConfigStore, logger: &'static FileLogger) -> Self {
-        Self { store, logger, config: None, connection: None, key: None }
+        Self {
+            store,
+            logger,
+            config: None,
+            connection: None,
+            key: None,
+            read: None,
+            shortcuts: Shortcuts::defaults(),
+            shortcut_problems: Vec::new(),
+        }
+    }
+
+    pub fn shortcuts(&self) -> &Shortcuts {
+        &self.shortcuts
+    }
+
+    /// The ignored shortcut entries, once: the list is empty afterwards, so the banner shows once.
+    pub fn take_shortcut_problems(&mut self) -> Vec<ShortcutProblem> {
+        std::mem::take(&mut self.shortcut_problems)
     }
 
     pub fn config(&self) -> Option<&AppConfig> {
@@ -82,6 +108,8 @@ impl AppState {
                 )));
             }
         };
+        self.adopt_shortcuts(&config);
+        self.read = Some(config.clone());
         if let Err(error) = self.logger.open(&config.log_dir) {
             log::warn!("could not open the log folder, logging to stderr: {error}");
         }
@@ -124,6 +152,7 @@ impl AppState {
             database_path: database_dir.join(DATABASE_FILE_NAME),
             log_dir: log_dir.to_path_buf(),
             preferences: self.preferences(),
+            shortcuts: self.shortcut_overrides(),
         };
         self.choose(config)
     }
@@ -137,6 +166,7 @@ impl AppState {
             database_path: database_path.to_path_buf(),
             log_dir: log_dir.to_path_buf(),
             preferences: self.preferences(),
+            shortcuts: self.shortcut_overrides(),
         };
         self.choose(config)
     }
@@ -144,6 +174,7 @@ impl AppState {
     /// Switches to the database in `config`: opens it, or, when it is encrypted, closes the
     /// current one and waits for its PIN.
     fn choose(&mut self, config: AppConfig) -> Result<Opened> {
+        self.adopt_shortcuts(&config);
         if db::is_encrypted(&config.database_path)? {
             self.reopen_logger(&config.log_dir);
             self.save_config(config)?;
@@ -155,9 +186,29 @@ impl AppState {
         Ok(Opened::Ready)
     }
 
-    /// The current view preferences; defaults until a database has been chosen.
+    /// The current view preferences: those of the chosen database's settings, else those last read
+    /// from the settings file (e.g. when its database went missing), else the defaults.
     pub fn preferences(&self) -> Preferences {
-        self.config.as_ref().map(|config| config.preferences).unwrap_or_default()
+        self.settings().map(|config| config.preferences).unwrap_or_default()
+    }
+
+    /// The `[shortcuts]` entries to keep when the settings are written for a newly chosen database.
+    fn shortcut_overrides(&self) -> BTreeMap<String, String> {
+        self.settings().map(|config| config.shortcuts.clone()).unwrap_or_default()
+    }
+
+    fn settings(&self) -> Option<&AppConfig> {
+        self.config.as_ref().or(self.read.as_ref())
+    }
+
+    /// Takes the shortcuts from `config`, logging and keeping (for the banner) each ignored entry.
+    fn adopt_shortcuts(&mut self, config: &AppConfig) {
+        let (shortcuts, problems) = Shortcuts::from_config(&config.shortcuts);
+        for problem in &problems {
+            log::warn!("ignored keyboard shortcut in the settings file, using the default: {problem}");
+        }
+        self.shortcuts = shortcuts;
+        self.shortcut_problems = problems;
     }
 
     pub fn set_show_column_settings(&mut self, show: bool) -> Result<()> {

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.946623
-//+ Revised: 	2026/10/28 16:22:40.715421
+//+ Revised: 	2026/10/29 02:54:47.330732
 // -----------------------------------------------------------------------------
 
 use std::path::{Path, PathBuf};
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use slint::{ComponentHandle, SharedString};
 
 use crate::app::state::Opened;
-use crate::app::{SharedDialogs, SharedState, gradebook, language, lock_screen, theme, view};
+use crate::app::{SharedDialogs, SharedState, gradebook, language, lock_screen, shortcuts, theme, view};
 use crate::error::Result;
 use crate::i18n::{self, Language, Message};
 use crate::ui::AppWindow;
@@ -108,6 +108,7 @@ fn wire_language(window: &AppWindow, state: &SharedState) {
         }
         language::apply(&window, language);
         view::clear_messages(&window);
+        shortcuts::show(&window, &shared);
         // numbers in the sheet carry the language's decimal separator, so redraw it
         gradebook::redraw(&window, &shared);
     });

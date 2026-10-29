@@ -4,6 +4,7 @@ import { Gradebook } from "gradebook.slint";
 import { BrandMark, IconKind, IconNavItem, NavItem, TextField } from "components.slint";
 import { NoClassPage, SheetPage } from "sheet-page.slint";
 import { SettingsPage } from "settings-page.slint";
+import { Shortcuts } from "shortcuts.slint";
 
 export enum Section { sheet, settings }
 
@@ -89,7 +90,7 @@ component Sidebar inherits Rectangle {
         }
         if root.pin-set: IconNavItem {
             icon: IconKind.lock;
-            label: @tr("Lock (Ctrl+L)");
+            label: @tr("Lock ({})", Shortcuts.lock-keys);
             clicked => { root.lock-now(); }
         }
         IconNavItem {

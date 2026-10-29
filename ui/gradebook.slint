@@ -67,6 +67,8 @@ export global Gradebook {
     callback open-column-panel(int);
     callback close-column-panel();
     callback select-class(int);
+    // the class below (1) or above (-1) the current one in the sidebar, wrapping round at the ends
+    callback select-adjacent-class(int);
     callback create-class(string);
     callback rename-class(string);
     callback delete-class();

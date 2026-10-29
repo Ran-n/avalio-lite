@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.139186
-//+ Revised: 	2026/10/28 15:53:08.652785
+//+ Revised: 	2026/10/29 02:54:47.458617
 // -----------------------------------------------------------------------------
 
 mod cells;
@@ -14,7 +14,7 @@ pub mod view;
 use rusqlite::Connection;
 use slint::{ComponentHandle, SharedString};
 
-use crate::app::{SharedDialogs, SharedState};
+use crate::app::{SharedDialogs, SharedState, shortcuts};
 use crate::error::{AppError, Result};
 use crate::i18n;
 use crate::ui::{AppWindow, Gradebook};
@@ -61,6 +61,9 @@ pub fn show_database(window: &AppWindow, state: &SharedState) {
         view::show_new_database(window, connection)?;
         Ok(Refresh::Nothing)
     });
+    shortcuts::show(window, state);
+    // after the load, whose success clears the banner
+    shortcuts::report_problems(window, state);
 }
 
 /// Runs one database action, redraws what it changed, and shows or clears the error banner.
