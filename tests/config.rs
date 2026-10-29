@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.961496
-//+ Revised: 	2026/10/29 02:54:48.067162
+//+ Revised: 	2026/10/29 04:09:18.328287
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
@@ -112,6 +112,14 @@ fn unreadable_file_is_reported_not_ignored() {
     let store = ConfigStore::in_dir(dir.path());
     fs::write(store.path(), "this is = = not toml").unwrap();
     assert!(matches!(store.load(), Err(AppError::ConfigParse { .. })));
+}
+
+#[test]
+fn a_settings_file_that_cannot_be_read_is_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    fs::create_dir(store.path()).unwrap();
+    assert!(matches!(store.load(), Err(AppError::Io { .. })), "a folder where the file should be");
 }
 
 #[test]

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/10/29 02:54:48.315479
+//+ Revised: 	2026/10/29 04:09:18.726268
 // -----------------------------------------------------------------------------
 
 use avalio_lite::db;
@@ -293,6 +293,35 @@ fn removing_a_pupil_from_one_class_keeps_them_and_their_other_marks() {
     assert_eq!(other.rows[0].values, ["9"]);
     let marks_left: i64 = connection.query_row("SELECT COUNT(*) FROM cells", [], |row| row.get(0)).unwrap();
     assert_eq!(marks_left, 1, "only the 1A mark went");
+}
+
+/// A file without the app's tables: every query fails, and the failure comes back as a database
+/// error instead of an empty list or a silent no-op.
+#[test]
+fn queries_on_a_file_without_the_tables_are_database_errors() {
+    let connection = Connection::open_in_memory().unwrap();
+    assert!(matches!(classes::list_classes(&connection), Err(AppError::Database(_))));
+    assert!(matches!(classes::create_class(&connection, "1A"), Err(AppError::Database(_))));
+    assert!(matches!(columns::list_columns(&connection, 1), Err(AppError::Database(_))));
+    assert!(matches!(columns::set_round_source(&connection, 1, None), Err(AppError::Database(_))));
+}
+
+#[test]
+fn a_column_for_a_class_that_is_gone_is_refused_and_nothing_is_added() {
+    let (_dir, connection) = open();
+    let result = columns::add_column(&connection, 999, ColumnType::Test, Language::English);
+    assert!(matches!(result, Err(AppError::Database(_))), "{result:?}");
+    let columns: i64 = connection.query_row("SELECT COUNT(*) FROM sheet_columns", [], |row| row.get(0)).unwrap();
+    assert_eq!(columns, 0);
+}
+
+#[test]
+fn a_sheet_whose_cells_table_is_damaged_is_a_database_error() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    pupils::add_new_pupil(&connection, class, "Ana").unwrap();
+    connection.execute_batch("DROP TABLE cells").unwrap();
+    assert!(matches!(sheet::load_sheet(&connection, class), Err(AppError::Database(_))));
 }
 
 #[test]

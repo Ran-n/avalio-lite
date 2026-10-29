@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:46.632108
-//+ Revised: 	2026/10/29 03:07:05.820040
+//+ Revised: 	2026/10/29 04:09:18.202980
 // -----------------------------------------------------------------------------
 
 //! Keyboard shortcuts: which keys run which action, their text form in `config.toml`, and the
@@ -321,12 +321,6 @@ impl fmt::Display for ShortcutProblem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shortcuts {
     combos: [KeyCombo; Action::ALL.len()],
-}
-
-impl Default for Shortcuts {
-    fn default() -> Self {
-        Self::defaults()
-    }
 }
 
 impl Shortcuts {

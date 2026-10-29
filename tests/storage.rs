@@ -1,13 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.532831
-//+ Revised: 	2026/10/28 15:53:09.256227
+//+ Revised: 	2026/10/29 04:09:18.914660
 // -----------------------------------------------------------------------------
 
 use std::fs;
 
 use avalio_lite::error::AppError;
-use avalio_lite::storage::{move_file, same_location};
+use avalio_lite::storage::{ensure_parent, move_file, same_location};
 
 mod common;
 
@@ -71,6 +71,16 @@ fn move_file_reports_an_original_it_cannot_remove() {
     let result = move_file(&source, &destination);
     assert!(matches!(result, Err(AppError::Io { ref path, .. }) if *path == source), "{result:?}");
     assert_eq!(fs::read(&destination).unwrap(), b"hello", "the complete copy is kept");
+}
+
+#[test]
+fn ensure_parent_creates_the_folder_and_skips_paths_without_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("a").join("b").join("x.db");
+    ensure_parent(&file).unwrap();
+    assert!(dir.path().join("a").join("b").is_dir());
+    ensure_parent(std::path::Path::new(r"C:\")).unwrap();
+    ensure_parent(std::path::Path::new("")).unwrap();
 }
 
 #[test]

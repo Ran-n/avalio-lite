@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.116536
-//+ Revised: 	2026/10/29 00:10:41.430443
+//+ Revised: 	2026/10/29 04:09:18.397207
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -191,6 +191,41 @@ fn an_encrypted_export_needs_its_key() {
     assert!(matches!(db::verify(&copy, None), Err(AppError::WrongPin)));
     assert!(matches!(db::verify(&copy, Some("111111")), Err(AppError::WrongPin)));
     db::verify(&copy, Some("246810")).unwrap();
+}
+
+#[test]
+fn an_export_to_a_name_windows_refuses_is_reported_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let connection = db::open(&dir.path().join("x.db"), None).unwrap();
+    let destination = dir.path().join("copies").join("bad|name.db");
+    let result = db::export(&connection, &destination, None);
+    assert!(matches!(result, Err(AppError::Database(_))), "{result:?}");
+    assert!(!destination.exists());
+    let attached: i64 =
+        connection.query_row("SELECT COUNT(*) FROM pragma_database_list", [], |row| row.get(0)).unwrap();
+    assert_eq!(attached, 1, "nothing is left attached");
+}
+
+#[test]
+fn a_database_that_cannot_be_read_is_a_database_error_not_a_wrong_pin() {
+    let dir = tempfile::tempdir().unwrap();
+    // a folder in the file's place: opening may work, reading it can't, and that isn't a wrong PIN
+    let result = db::verify(dir.path(), Some("2468"));
+    assert!(matches!(result, Err(AppError::Database(_))), "{result:?}");
+}
+
+/// Another program writing to the file (an exclusive lock) makes the first read fail as "busy":
+/// a database error, never mistaken for a wrong PIN.
+#[test]
+fn a_database_locked_by_another_writer_is_a_database_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("x.db");
+    db::close(db::open(&path, None).unwrap()).unwrap();
+    let other = Connection::open(&path).unwrap();
+    other.execute_batch("PRAGMA journal_mode = DELETE; PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE;").unwrap();
+    let result = db::open(&path, None);
+    assert!(matches!(result, Err(AppError::Database(_))), "{result:?}");
+    other.execute_batch("ROLLBACK").unwrap();
 }
 
 #[test]

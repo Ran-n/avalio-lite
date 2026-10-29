@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.640367
-//+ Revised: 	2026/10/28 17:08:59.283582
+//+ Revised: 	2026/10/29 04:09:18.598818
 // -----------------------------------------------------------------------------
 
 //! The app's real window, through Win32: found by its process, captured with `PrintWindow`, and
@@ -19,8 +19,8 @@ use windows_sys::Win32::Graphics::Gdi::{
 use windows_sys::Win32::Storage::Xps::PrintWindow;
 use windows_sys::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClientRect, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CHAR,
-    WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    EnumWindows, GetClassNameW, GetClientRect, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
+    WM_CHAR, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
 };
 
 use super::pixels::Image;
@@ -132,6 +132,11 @@ impl AppWindow {
         }
     }
 
+    /// Closes the window as its close button would.
+    pub fn close(&self) {
+        self.post(WM_CLOSE, 0, 0);
+    }
+
     /// Presses and releases one key, by its virtual-key code.
     pub fn press(&self, virtual_key: u16) {
         self.post(WM_KEYDOWN, WPARAM::from(virtual_key), 1);
@@ -169,8 +174,14 @@ fn title(hwnd: HWND) -> String {
 }
 
 fn visible_window_of(pid: u32) -> Option<HWND> {
-    struct Search {
+    find_window(pid, &|hwnd| title(hwnd) == APP_TITLE)
+}
+
+/// The first visible top-level window of process `pid` that `accept` takes.
+fn find_window(pid: u32, accept: &dyn Fn(HWND) -> bool) -> Option<HWND> {
+    struct Search<'a> {
         pid: u32,
+        accept: &'a dyn Fn(HWND) -> bool,
         found: HWND,
     }
     unsafe extern "system" fn visit(hwnd: HWND, data: LPARAM) -> i32 {
@@ -180,14 +191,52 @@ fn visible_window_of(pid: u32) -> Option<HWND> {
         // SAFETY: a window handle from EnumWindows and a u32 to fill.
         unsafe { GetWindowThreadProcessId(hwnd, &mut owner) };
         // SAFETY: as above.
-        if owner == search.pid && unsafe { IsWindowVisible(hwnd) } != 0 && title(hwnd) == APP_TITLE {
+        if owner == search.pid && unsafe { IsWindowVisible(hwnd) } != 0 && (search.accept)(hwnd) {
             search.found = hwnd;
             return 0;
         }
         1
     }
-    let mut search = Search { pid, found: std::ptr::null_mut() };
+    let mut search = Search { pid, accept, found: std::ptr::null_mut() };
     // SAFETY: the callback only touches `search`, which outlives the call.
     unsafe { EnumWindows(Some(visit), &mut search as *mut Search as LPARAM) };
     (!search.found.is_null()).then_some(search.found)
+}
+
+/// The window class of every standard Windows dialog, the file and folder pickers included.
+const DIALOG_CLASS: &str = "#32770";
+
+fn class_name(hwnd: HWND) -> String {
+    let mut buffer = [0u16; 64];
+    // SAFETY: a valid window handle and a buffer of the stated length.
+    let length = unsafe { GetClassNameW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32) };
+    String::from_utf16_lossy(&buffer[..length.max(0) as usize])
+}
+
+/// A native dialog the same process opened (not its main window, nor its helper windows). Waits up
+/// to `timeout`.
+pub fn dialog_of(pid: u32, main: &AppWindow, timeout: Duration) -> Option<OtherWindow> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(hwnd) = find_window(pid, &|hwnd| hwnd != main.hwnd && class_name(hwnd) == DIALOG_CLASS) {
+            return Some(OtherWindow { hwnd });
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// A window of the app other than its main one, such as a native file dialog.
+pub struct OtherWindow {
+    hwnd: HWND,
+}
+
+impl OtherWindow {
+    /// Closes it as its close button would; a dialog closed so is cancelled.
+    pub fn close(&self) {
+        // SAFETY: posting a message to a window handle from EnumWindows.
+        unsafe { PostMessageW(self.hwnd, WM_CLOSE, 0, 0) };
+    }
 }

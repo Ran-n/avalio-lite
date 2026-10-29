@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/10/29 00:10:41.502268
+//+ Revised: 	2026/10/29 04:09:18.662337
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -220,6 +220,26 @@ fn regression_a_pin_change_that_cannot_clear_the_sidecars_puts_the_database_back
     assert_eq!(reopened.start(), Startup::Locked);
     reopened.unlock("246810").unwrap();
     assert_eq!(pupil_names(&reopened), [SECRET]);
+}
+
+#[test]
+fn a_pin_change_whose_new_copy_cannot_be_written_keeps_the_old_pin() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    state.set_pin("246810", "246810").unwrap();
+    // another program holds the new copy's journal, so writing the copy fails part way
+    let journal = fixture.path("data").join(format!("{DATABASE_FILE_NAME}.rekey-journal"));
+    fs::write(&journal, b"").unwrap();
+    let held = common::hold_exclusively(&journal);
+    let result = state.change_pin("246810", "135790", "135790");
+    assert!(result.is_err(), "the change fails");
+    assert!(!fixture.path("data").join(format!("{DATABASE_FILE_NAME}.rekey")).exists(), "the copy is removed");
+    assert_eq!(pupil_names(&state), [SECRET], "the database stays open with the old PIN");
+    drop(held);
+    state.shutdown();
+    let mut reopened = fixture.state();
+    assert_eq!(reopened.start(), Startup::Locked);
+    reopened.unlock("246810").unwrap();
 }
 
 #[test]

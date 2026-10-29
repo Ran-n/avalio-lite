@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/28 10:26:46.388247 )
-[//]: # (+ Revised: 	2026/10/29 03:07:05.440786 )
+[//]: # (+ Revised: 	2026/10/29 04:09:17.326373 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # TODO
@@ -14,8 +14,6 @@ Next item number: 17
 
 ## Index
 
-4. [Share one helper for "run this callback while the window is alive"](#4-share-one-helper-for-run-this-callback-while-the-window-is-alive)
-5. [Cover the rest of the code and raise the coverage gate](#5-cover-the-rest-of-the-code-and-raise-the-coverage-gate)
 6. [Gate branch coverage too](#6-gate-branch-coverage-too)
 7. [Run mutation testing on the core logic and strengthen weak tests](#7-run-mutation-testing-on-the-core-logic-and-strengthen-weak-tests)
 8. [Make the desktop baselines work on other displays](#8-make-the-desktop-baselines-work-on-other-displays)
@@ -86,73 +84,6 @@ Next item number: 17
 ```
 
 ---
-
-## 4. Share one helper for "run this callback while the window is alive"
-
-**Why:** every UI callback in `src/app` starts with `let Some(window) = weak.upgrade() else { return };`. That line is repeated 34 times (`callbacks.rs` 9, `gradebook/columns.rs` 9, `lock_screen.rs` 5, `gradebook/classes.rs` 4, `gradebook/pupils.rs` 4, `gradebook/cells.rs` 1, `gradebook/mod.rs` 1, plus an `if let` form in `gradebook/panel.rs:35`). Its `else { return }` branch only runs if a callback fires after the window is dropped, which never happens while the app runs. So it is 34 uncovered regions in the coverage report (`.\scripts\coverage.ps1`) and 34 copies of the same rule, against the DRY rule. Do this before item 5, which raises the coverage gate.
-**Goal:** one helper owns the rule. The coverage report no longer lists the `else` regions, and each callback reads as just what it does.
-
-### Behaviour
-- Every button, field and menu behaves exactly as before; the UI tests (`tests/ui.rs`, 69 tests) and the desktop tests prove it.
-- If a callback ever does run after the window is gone, the helper logs it at `debug` (`log::debug!("callback after the window closed")`) and does nothing, instead of returning silently.
-
-### Out of scope
-- What any callback does. This is a pure refactor.
-
-### Implementation
-1. `src/app/mod.rs`: add `pub(crate) fn with_window<F: Fn(&AppWindow) + 'static>(window: &AppWindow, action: F) -> impl Fn() + 'static`. It captures `window.as_weak()` and calls `action` with the upgraded window, logging at `debug` when it can't upgrade. Add variants for the argument shapes that are actually used: grep `window.on_` and `.on_` on `Gradebook` in `src/app` to list them (`()`, `(SharedString)`, `(i32)`, `(bool)`, `(i32, SharedString)`, `(i32, i32)`, `(i32, i32, SharedString)`, `(ColumnType)`, `(i32, bool)`). Prefer one generic helper over many if it type-checks cleanly with Slint's `on_*` signatures; check by compiling.
-2. `src/app/callbacks.rs`, `src/app/lock_screen.rs` and each file in `src/app/gradebook/`: replace each `let (weak, shared) = (window.as_weak(), state.clone()); x.on_y(move |…| { let Some(window) = weak.upgrade() else { return }; … })` with the helper. `on_erase_last` in `lock_screen.rs` returns a value and doesn't need the window, so leave it as it is.
-3. Run `cargo fmt` and `cargo clippy --all-targets -- -D warnings`, and update file headers with `metadata -m` on every edited file.
-
-### Tests
-- `tests/ui.rs`: all 69 tests must pass unchanged; together they click every callback.
-- `tests/desktop.rs` (`cargo test --test desktop -- --ignored --test-threads=1`): passes against the existing baselines.
-- `tests/error_logging.rs`: add `a_callback_after_the_window_closed_is_logged_at_debug`. Keep a `Weak` to a `Ui` window, drop the `Ui`, invoke the callback through the stored closure, and assert the `debug` line appears. Raise the logger's level for that test with `FileLogger::new(LevelFilter::Debug)`.
-
-### Docs
-- None besides the changelog: "Callbacks share one window-lifetime helper."
-
-### Done when
-- [ ] `grep -rn "weak.upgrade() else" src/app` finds nothing.
-- [ ] `.\scripts\coverage.ps1` passes and no longer lists those lines.
-- [ ] The default and desktop suites pass.
-
-## 5. Cover the rest of the code and raise the coverage gate
-
-**Why:** since the toolchain was pinned to Rust 1.99.0 (`rust-toolchain.toml`, 2026-10-28), line coverage is 97.0 % and the gate in `scripts/coverage.ps1` is `$MinLines = 96`. (The earlier 84.8 % came from Rust 1.95, whose coverage data cargo-llvm-cov 0.9 misreads.) Apart from the callback `else` branches (item 4, do it first), the uncovered lines are:
-- SQL `?` error arms in `src/gradebook/*.rs` and `src/db/mod.rs`: for example `columns.rs` 28, 44, 47–52, 69, 80, 91, 105, 117; `classes.rs` 18, 56; `pupils.rs` 19, 30; `sheet.rs` 35; `cells.rs` 27; `db/mod.rs` 31, 70, 75, 126.
-- `NativeDialogs` in `src/app/dialogs.rs`: the real Windows dialogs, which every test replaces with `FakeDialogs`.
-- `app::run` (`src/app/mod.rs` 38–40) and `main` (`src/main.rs`).
-- Logs that only run when a cleanup fails after an earlier failure: `src/app/state/mod.rs` 205, 252, 272, 279; `src/app/state/protection.rs` 98–99, 110, 123, 137–138, 151.
-- Small leftovers: `src/config.rs` 95, 104; `src/db/migrations.rs` 28–29; `src/i18n/errors.rs` 33, 73; `src/i18n/messages.rs` 37, 42, 63; `src/storage.rs` 23; `src/app/gradebook/view.rs` 122, 142, 193, 202; `src/app/language.rs` 15; `src/app/theme.rs` 14.
-
-Line numbers are from before the toolchain pin, and some of these lines no longer count; rerun `.\scripts\coverage.ps1` for the current list. The testing rules allow only the `main` guard and dev-only fallbacks to stay uncovered.
-**Goal:** every uncovered line is either covered by a test or deleted because nothing calls it. The few that can't be reached from a test are listed, with the reason, at the top of `scripts/coverage.ps1`. The gate goes up to the new whole-number total.
-
-### Behaviour
-- No visible change to the app.
-
-### Out of scope
-- Branch coverage (item 6) and mutation testing (item 7).
-
-### Implementation
-1. Run `.\scripts\coverage.ps1` and copy the uncovered lines into a scratch list.
-2. SQL error arms: make them fail for real. Close the connection's underlying tables (`DROP TABLE` in a test connection), open the database read-only (`OpenFlags::SQLITE_OPEN_READ_ONLY`) for write paths, or bypass CHECK constraints with `PRAGMA ignore_check_constraints = ON` (as `tests/gradebook.rs` `an_unknown_column_kind_in_the_file_is_reported` does). Add one test per function in that module's test file. Each asserts the error is `AppError::Database` and that nothing was half-written.
-3. Double-fault logs: drive them with the Windows file locks in `tests/common/mod.rs` (`hold_exclusively`, `hold_against_removal`) at the moment of cleanup. For example, hold the `.rekey` copy against removal while `export` fails, then assert the ERROR line with the `logged` helper in `tests/error_logging.rs`. If a path truly can't be reached, delete it when nothing calls it (grep first); otherwise list it in step 5.
-4. `app::run` and `NativeDialogs`: `run` only wires in `NativeDialogs`, and every rfd call opens a modal OS dialog. Cover `run` with a desktop test (`tests/desktop.rs`) that starts the release-style exe (`target\debug\avalio-lite.exe`) with `AVALIO_LITE_CONFIG_DIR` set to a scratch folder, clicks "Browse…" for real, finds the native folder dialog by its owner window with Win32 (`EnumWindows` plus `GetWindow(GW_OWNER)`) and closes it with `WM_CLOSE`. That desktop run isn't part of line coverage, so list `dialogs.rs` and `main.rs` in step 5 as covered by desktop tests only.
-5. `scripts/coverage.ps1`: add a comment block listing the lines left uncovered on purpose, each with its reason. Set `$MinLines` to the new whole-number total.
-
-### Tests
-- One test per covered error path, in the module's own test file (`tests/gradebook.rs`, `tests/db.rs`, `tests/state.rs`, `tests/encryption.rs`). Each names the failure and asserts both the returned error and the state left behind.
-- `tests/desktop.rs`: `the_real_dialogs_open_and_close`, from step 4.
-
-### Docs
-- `README.md`, *Tests* section: mention that `scripts/coverage.ps1` lists the lines left uncovered on purpose. Changelog: "Test coverage raised to <n> %; the gate follows."
-
-### Done when
-- [ ] `.\scripts\coverage.ps1` passes with the raised `$MinLines`.
-- [ ] Every line it still reports is listed with a reason in `scripts/coverage.ps1`.
-- [ ] The default and desktop suites, `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` pass.
 
 ## 6. Gate branch coverage too
 

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.062570
-//+ Revised: 	2026/10/29 02:54:47.680991
+//+ Revised: 	2026/10/29 04:09:18.078504
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result, io_at};
 use crate::i18n::Language;
+use crate::storage;
 
 pub const APP_DIR_NAME: &str = "avalio-lite";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
@@ -104,9 +105,7 @@ impl ConfigStore {
 
     /// Writes to a temporary file first so a crash mid-write never leaves a truncated settings file.
     pub fn save(&self, config: &AppConfig) -> Result<()> {
-        if let Some(dir) = self.path.parent() {
-            fs::create_dir_all(dir).map_err(io_at(dir))?;
-        }
+        storage::ensure_parent(&self.path)?;
         let temporary = self.path.with_extension("toml.tmp");
         fs::write(&temporary, toml::to_string_pretty(config)?).map_err(io_at(&temporary))?;
         fs::rename(&temporary, &self.path).map_err(io_at(&self.path))
