@@ -7,3 +7,9 @@
 
 # golden samples of saved formats are checked in
 !tests/golden/*.db
+
+# cargo-mutants output
+mutants.out*/
+
+# Claude Code's local state (worktrees, scratch copies), which cargo-mutants would otherwise copy
+/.claude/

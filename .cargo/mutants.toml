@@ -1,0 +1,14 @@
+# cargo-mutants settings (cargo install cargo-mutants; run with cargo mutants).
+
+# the profile in Cargo.toml without debug info, for quicker rebuilds per mutant
+profile = "mutants"
+
+# The UI wiring is checked by tests/ui.rs and the desktop tests, not by mutation testing.
+exclude_globs = ["src/app/**", "src/main.rs"]
+
+# Mutants that cannot change what the app does, so no test can catch them:
+exclude_re = [
+    # < and <= differ only when the weights miss 100 % by exactly the tolerance, which float sums
+    # never land on
+    "replace < with <= in weights_add_up",
+]

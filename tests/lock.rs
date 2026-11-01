@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.536666
-//+ Revised: 	2026/10/28 22:23:17.200355
+//+ Revised: 	2026/10/29 09:43:35.192835
 // -----------------------------------------------------------------------------
 
 use std::time::{Duration, Instant};
@@ -74,5 +74,6 @@ fn a_pin_keeps_its_digits_but_never_prints_them() {
     assert_eq!(pin.as_str(), "583920");
     assert_eq!(pin.clone().as_str(), "583920");
     let shown = format!("{pin:?} {:?}", Some(pin.clone()));
-    assert!(!shown.contains("583920"), "{shown}");
+    // exact, so a Debug that prints nothing (a surviving mutant) fails too
+    assert_eq!(shown, "Pin(hidden) Some(Pin(hidden))");
 }
