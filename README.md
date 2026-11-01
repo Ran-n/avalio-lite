@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/29 04:36:58.594861 )
+[//]: # (+ Revised: 	2026/10/29 15:46:51.066887 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite
@@ -28,6 +28,10 @@ A single native Windows app: no server, no accounts, no internet. Each class get
 | Rounded | Another numeric column rounded to 0–3 decimals (half up: 7.45 → 7.5) |
 
 **⋯ → Hide weights & scales** hides the tags in the column headers; the choice is remembered.
+
+**⋯ → Export to Excel…** saves the sheet as an .xlsx file: the marks as numbers, and a second tab with each column's settings.
+
+**⋯ → Import from Excel…** adds the pupils in column A of a workbook (.xlsx, .xls or .ods) and fills the marks under columns with the same titles; it asks before replacing marks already there.
 
 **Light and dark:** the moon / sun button at the bottom of the sidebar (or **Settings → Appearance**). The app follows the Windows setting until you pick one.
 
@@ -70,11 +74,11 @@ On first launch the app asks where to keep:
 - **the database** — `avalio-lite.db`, everything you enter
 - **the logs** — `avalio-lite.log`, for diagnosing problems
 
-Both default to `Documents\avalio-lite`. Either can be moved later from **Settings**; the app copies, verifies, switches over, and only then deletes the original. **Open another database…** switches to an existing file (a backup, or one from another PC).
+Both default to `Documents\avalio-lite`. Either can be moved later from **Settings**; the app copies, verifies, switches over, and only then deletes the original. **Open another database…** switches to working in an existing database file (one from another PC, say); to bring a backup's data into the app instead, use the Backup card below.
 
 The only thing stored in a fixed place is `%APPDATA%\avalio-lite\config.toml`, which holds those two locations. Uninstalling never deletes your database or logs.
 
-To back up, copy `avalio-lite.db` while the app is closed.
+To back up, use **Settings → Backup → Export everything…**: it saves one `.avalio` file (encrypted with your PIN, if you set one) while the app stays open. **Restore from a backup…** replaces everything in the app with a backup (it asks first, and keeps your current PIN). **Add classes from a backup…** copies a backup's classes, pupils and marks into the app without changing what's already there; pupils with the same name are joined.
 
 ### PIN and encryption
 
@@ -104,24 +108,28 @@ Set `LOG_LEVEL` (`error`, `warn`, `info`, `debug`, `trace`) to change log verbos
 cargo test                       # the default suite: logic, database, files, the UI headless
 .\scripts\coverage.ps1           # the same under coverage; fails below the line-coverage gate
 .\scripts\coverage.ps1 -Branches # plus the branch-coverage gate (nightly toolchain); what release.ps1 runs
+cargo mutants --gitignore true --jobserver false --in-place --file src/lock.rs -- --test lock   # mutation testing, one module and its tests at a time
 cargo test --test desktop -- --ignored --test-threads=1   # the real app in its real window
 cargo test regression            # only the regression tests, one per fixed bug
 ```
 
 - **Default suite** (`tests/`, one file per module): unit and property tests (proptest) for the logic; integration tests on real databases and folders; golden files for every saved format (`tests/golden/`); a step-by-step migration walk; the entry point and quit path; error logging; the version; and the UI (`tests/ui.rs`), the real window on Slint's headless backend, clicked and typed into through its controls' accessible labels, with dialogs answered by a fake.
-- **Desktop tests** (`tests/desktop.rs`) open real windows, so they are left out of `cargo test`. They start the app through `examples/app_driver.rs` on scratch data, click and type through Windows messages, check colours and positions pixel by pixel, and compare every screen in light and dark, at the normal and the minimum window size, and in Galician at the minimum size, with reviewed baselines in `tests/desktop/baselines/`. After a deliberate change to the look, rewrite them with `$env:AVALIO_UPDATE_BASELINES = "1"`, open every changed image and check nothing is clipped, wrapped or cut off before committing; a failure saves the screen and a marked diff in `target\desktop-failures\` (for a screen that never stops changing, its last two frames and what still changes).
+- **Desktop tests** (`tests/desktop.rs`) open real windows, so they are left out of `cargo test`. They start the app through `examples/app_driver.rs` on scratch data, click and type through Windows messages, check colours and positions pixel by pixel, and compare every screen in light and dark, at the normal and the minimum window size, and in Galician at the minimum size, with reviewed baselines in `tests/desktop/baselines/`. Baselines are per Windows display scale (`<screen>-<look>@<scale>.png`), and the pixel checks measure in logical pixels, so they hold at any scale; at a scale with no baselines, or on another machine whose fonts render differently, the snapshots fail with the command that records them. Record them the same way, at that scale. After a deliberate change to the look, rewrite them with `$env:AVALIO_UPDATE_BASELINES = "1"`, open every changed image and check nothing is clipped, wrapped or cut off before committing; a failure saves the screen and a marked diff in `target\desktop-failures\` (for a screen that never stops changing, its last two frames and what still changes).
 - **Golden files** change only with a format: `$env:AVALIO_UPDATE_GOLDEN = "1"; cargo test --test golden` rewrites the current-format samples. Samples of older formats are never rewritten.
 - **Coverage** needs `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview`. Raise the gates in `scripts\coverage.ps1` (`$MinLines`, and `$MinBranches` for `-Branches`) as coverage grows; never lower them. Branch data needs the nightly toolchain (`rustup toolchain install nightly --component llvm-tools-preview`); `-Branches` without it fails with that hint rather than skipping the check. The script lists, with the reason for each, the few lines left uncovered on purpose (the real exe and its Windows dialogs, which a desktop test covers instead, and double faults); any other uncovered line needs a test. If the coverage build kept stale code from an earlier build (a file then reports more executable lines than it has), the script says so, cleans it and measures again.
+- **Mutation testing** (`cargo install cargo-mutants`) changes the code one small edit at a time and checks that some test fails; run it now and then on the logic modules (not `src/app/`), with `--in-place` so it reuses the already built `target\` instead of rebuilding OpenSSL in a copy. Don't edit sources while it runs. Every mutant it reports as missed needs a test, unless it can't change behaviour; those are listed with the reason in `.cargo/mutants.toml`.
 
 ### Layout
 
 ```
 src/
   gradebook/    classes, pupils, columns, cells (SQL) and grade calculation (compute.rs); no UI code
-  app/          window startup, UI callbacks, lock screen, theme and language switching
+  app/          window startup, UI callbacks, lock screen, theme and language switching, the Backup card (backup.rs)
     state/      data locations, the open database and its PIN (protection.rs)
     gradebook/  connects the sheet UI to src/gradebook
   db/           SQLite connection, copy/verify, schema migrations
+  backup.rs     .avalio backup files
+  spreadsheet/  Excel export and import of a class sheet
   config.rs     config.toml: data locations and view preferences
   error.rs      the app's error type
   lock.rs       PIN rules and guess limiting
@@ -129,7 +137,7 @@ src/
   shortcuts.rs  keyboard shortcuts: the actions, their keys and the rules for config.toml
   storage.rs    safe cross-drive file moves
   i18n/         interface language: Rust-side texts and error messages per language
-ui/             Slint UI with its own light and dark theme (theme.slint); gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts
+ui/             Slint UI with its own light and dark theme (theme.slint); gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts, backup.slint the Backup card's actions
 lang/           translations of the UI strings, lang/<code>/LC_MESSAGES/avalio-lite.po, bundled into the exe
 assets/         logo (SVG source, generated .ico/.png; regenerate with cargo run --example render_logo -- <preview folder>)
 examples/       demo_data: builds a sample database; app_driver: runs the app for the desktop tests; render_logo: the icon files

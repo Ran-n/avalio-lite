@@ -1,0 +1,17 @@
+// The Backup card in Settings: saving everything to one .avalio file, restoring one, and adding
+// the classes of one. A global, like Shortcuts, so the card reaches the Rust side without passing
+// each callback through AppWindow and Shell.
+
+export global Backup {
+    // the chosen backup is encrypted with a PIN other than the app's: the card asks for it inline
+    in property <bool> pin-needed;
+    in-out property <string> pin;
+    in property <string> pin-error;
+    callback export-everything();
+    callback restore();
+    callback add-classes();
+    // Continue (or Enter) in the backup PIN field
+    callback pin-entered();
+    // Cancel, leaving Settings or locking: the prompt closes and the waiting backup is dropped
+    callback pin-cancelled();
+}

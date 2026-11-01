@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/10/29 04:09:18.534424
+//+ Revised: 	2026/10/29 15:46:52.042517
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -150,35 +150,50 @@ impl App {
         self.send(json!({ "cmd": "dialogs", "folders": folders, "files": files, "answers": answers }));
     }
 
+    /// Answers for the next Save dialogs, in order.
+    pub fn answer_saves(&mut self, saves: &[&Path]) {
+        self.send(json!({ "cmd": "dialogs", "saves": saves }));
+    }
+
+    /// The next save dialog is cancelled.
+    pub fn cancel_next_save(&mut self) {
+        self.send(json!({ "cmd": "dialogs", "saves": [null] }));
+    }
+
     /// Where the controls labelled `label` are, in physical pixels.
     pub fn locate(&mut self, label: &str) -> Vec<Rect> {
-        self.locate_from(label, false)
+        self.locate_from(label, false, false)
     }
 
     /// Where the options labelled `label` of the open popup menu are, in physical pixels. Every menu
     /// option has a hint (its accessible description), which tells it apart from other controls.
     pub fn locate_in_menu(&mut self, label: &str) -> Vec<Rect> {
-        self.locate_from(label, true)
+        self.locate_from(label, true, true)
     }
 
-    fn locate_from(&mut self, label: &str, in_menu: bool) -> Vec<Rect> {
+    /// Where the controls labelled `label` of the open popup are, in physical pixels, hint or not:
+    /// for a menu whose options have none, such as the sheet's "⋯" menu.
+    pub fn locate_in_popup(&mut self, label: &str) -> Vec<Rect> {
+        self.locate_from(label, true, false)
+    }
+
+    fn locate_from(&mut self, label: &str, in_popup: bool, hinted: bool) -> Vec<Rect> {
         let reply = self.send(json!({ "cmd": "locate", "label": label }));
         // a popup's controls are placed relative to the popup
-        let (left, top) = if in_menu {
+        let (left, top) = if in_popup {
             let popup = &reply["popup"];
             assert!(popup.is_object(), "no popup menu is open");
             (popup["x"].as_f64().unwrap(), popup["y"].as_f64().unwrap())
         } else {
             (0.0, 0.0)
         };
-        let scale = self.scale;
-        let physical = |value: f64| (value * scale).round() as u32;
+        let physical = |value: f64| self.px(value);
         reply["found"]
             .as_array()
             .unwrap()
             .iter()
             // menu options carry their hint as a description; a header with the same title doesn't
-            .filter(|found| !in_menu || found["description"].as_str().is_some_and(|hint| !hint.is_empty()))
+            .filter(|found| !hinted || found["description"].as_str().is_some_and(|hint| !hint.is_empty()))
             .map(|found| Rect {
                 x: physical(left + found["x"].as_f64().unwrap()),
                 y: physical(top + found["y"].as_f64().unwrap()),
@@ -192,6 +207,13 @@ impl App {
     pub fn click_in_menu(&mut self, label: &str) {
         let found = self.locate_in_menu(label);
         assert_eq!(found.len(), 1, "expected one menu option {label:?}, found {found:?}");
+        self.click_at(found[0]);
+    }
+
+    /// A real click on the control labelled `label` of the open popup, hint or not.
+    pub fn click_in_popup(&mut self, label: &str) {
+        let found = self.locate_in_popup(label);
+        assert_eq!(found.len(), 1, "expected one popup control {label:?}, found {found:?}");
         self.click_at(found[0]);
     }
 
@@ -322,6 +344,16 @@ impl App {
         panic!("the window never stopped changing ({changed} pixels still changing); see {}", failures.display());
     }
 
+    /// `logical` pixels (as the .slint files measure) in physical pixels at the display's scale.
+    pub fn px(&self, logical: f64) -> u32 {
+        (logical * self.scale).round() as u32
+    }
+
+    /// An area of `logical` square pixels in physical ones, for the minimum size of a blob.
+    pub fn area(&self, logical: f64) -> u32 {
+        (logical * self.scale * self.scale).round() as u32
+    }
+
     /// Compares the window with `baselines/<name>@<scale>.png`. On a difference, the capture and a
     /// marked diff are written next to the target folder for review. With `AVALIO_UPDATE_BASELINES=1`
     /// the baseline is rewritten instead (open and review each one before committing it).
@@ -333,8 +365,15 @@ impl App {
             image.save(&baseline);
             return image;
         }
-        let expected = Image::load(&baseline)
-            .unwrap_or_else(|| panic!("no baseline {file}; create it with {UPDATE_ENV}=1 and review it"));
+        // baselines are per display scale; a scale without them is a failure, never a skip
+        let expected = Image::load(&baseline).unwrap_or_else(|| {
+            panic!(
+                "no baseline {file} for {} % display scaling; record this scale's baselines with \
+                 `$env:{UPDATE_ENV} = \"1\"; cargo test --test desktop -- --ignored --test-threads=1` and \
+                 open and review every new image before committing it",
+                (self.scale * 100.0).round()
+            )
+        });
         let failures = manifest_dir().join("target").join("desktop-failures");
         if (expected.width, expected.height) != (image.width, image.height) {
             image.save(&failures.join(file.replace(".png", "-actual.png")));

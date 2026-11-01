@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/10/29 02:27:41.984380
+//+ Revised: 	2026/10/29 15:46:51.906468
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
@@ -19,7 +19,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use slint::ComponentHandle;
 
-use avalio_lite::app::dialogs::Dialogs;
+use avalio_lite::app::dialogs::{Dialogs, FileKind};
 use avalio_lite::app::state::AppState;
 use avalio_lite::app::{self, Session};
 use avalio_lite::config::{ConfigStore, DATABASE_FILE_NAME};
@@ -136,6 +136,11 @@ pub fn leaked_logger() -> &'static FileLogger {
 pub struct FakeDialogs {
     pub folders: RefCell<VecDeque<Option<PathBuf>>>,
     pub files: RefCell<VecDeque<Option<PathBuf>>>,
+    /// the kind of each Open dialog, in order
+    pub file_kinds: RefCell<Vec<FileKind>>,
+    pub saves: RefCell<VecDeque<Option<PathBuf>>>,
+    /// the kind, start folder and proposed name of each Save dialog, in order
+    pub save_requests: RefCell<Vec<(FileKind, PathBuf, String)>>,
     pub answers: RefCell<VecDeque<bool>>,
     pub questions: RefCell<Vec<String>>,
     pub folder_starts: RefCell<Vec<PathBuf>>,
@@ -151,6 +156,10 @@ impl FakeDialogs {
         self.files.borrow_mut().push_back(file.map(Path::to_path_buf));
     }
 
+    pub fn save_file_next(&self, file: Option<&Path>) {
+        self.saves.borrow_mut().push_back(file.map(Path::to_path_buf));
+    }
+
     pub fn answer_next(&self, yes: bool) {
         self.answers.borrow_mut().push_back(yes);
     }
@@ -162,8 +171,14 @@ impl Dialogs for FakeDialogs {
         self.folders.borrow_mut().pop_front().expect("the test didn't script a folder picker")
     }
 
-    fn pick_database_file(&self) -> Option<PathBuf> {
+    fn pick_file(&self, kind: FileKind) -> Option<PathBuf> {
+        self.file_kinds.borrow_mut().push(kind);
         self.files.borrow_mut().pop_front().expect("the test didn't script a file picker")
+    }
+
+    fn save_file(&self, kind: FileKind, start: &Path, file_name: &str) -> Option<PathBuf> {
+        self.save_requests.borrow_mut().push((kind, start.to_path_buf(), file_name.to_owned()));
+        self.saves.borrow_mut().pop_front().expect("the test didn't script a save dialog")
     }
 
     fn confirm(&self, question: &str) -> bool {

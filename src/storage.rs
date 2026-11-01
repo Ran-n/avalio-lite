@@ -1,11 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.812932
-//+ Revised: 	2026/10/29 04:09:18.265917
+//+ Revised: 	2026/10/29 15:46:51.718282
 // -----------------------------------------------------------------------------
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, Result, io_at};
 
@@ -37,4 +37,20 @@ pub fn same_location(first: &Path, second: &Path) -> bool {
         (Ok(first), Ok(second)) => first == second,
         _ => first == second,
     }
+}
+
+/// Added to a file's name while it is being written, before it takes its place.
+const PARTIAL_SUFFIX: &str = ".partial";
+
+/// Where a file is written before it is moved over `path`, so a failure never leaves half a
+/// file there: `1A.xlsx` gives `1A.xlsx.partial`.
+pub fn partial_path(path: &Path) -> PathBuf {
+    with_suffix(path, PARTIAL_SUFFIX)
+}
+
+/// `path` with `suffix` added to its file name: `a.db` and `.partial` give `a.db.partial`.
+pub fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
 }

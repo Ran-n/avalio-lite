@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.917995
-//+ Revised: 	2026/10/28 16:22:40.335541
+//+ Revised: 	2026/10/29 14:13:31.951507
 // -----------------------------------------------------------------------------
 
 use rusqlite::types::Type;
@@ -35,24 +35,29 @@ pub fn list_columns(connection: &Connection, class_id: i64) -> Result<Vec<Column
 /// a rounded column rounds the last numeric column. The title is in `language` and can be renamed.
 pub fn add_column(connection: &Connection, class_id: i64, column_type: ColumnType, language: Language) -> Result<i64> {
     let existing = list_columns(connection, class_id)?;
-    let kind = default_kind(column_type, &existing);
+    insert_column(
+        connection,
+        class_id,
+        &default_title(column_type, &existing, language),
+        default_kind(column_type, &existing),
+    )
+}
+
+/// Adds a column at the end with exactly these title and settings.
+pub fn insert_column(connection: &Connection, class_id: i64, title: &str, kind: ColumnKind) -> Result<i64> {
+    let title = clean_name(title)?;
     let (weight, max_score, source, decimals) = kind_fields(kind);
+    let bonus = matches!(kind, ColumnKind::Test { bonus: true, .. });
+    let code = kind.column_type().code();
     connection.execute(
-        "INSERT INTO sheet_columns (class_id, position, title, kind, weight, max_score, source_column_id, decimals)
+        "INSERT INTO sheet_columns
+             (class_id, position, title, kind, weight, max_score, source_column_id, decimals, bonus)
          VALUES (?1, (SELECT COALESCE(MAX(position), 0) + 1 FROM sheet_columns WHERE class_id = ?1),
-                 ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![
-            class_id,
-            default_title(column_type, &existing, language),
-            column_type.code(),
-            weight,
-            max_score,
-            source,
-            decimals
-        ],
+                 ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![class_id, title, code, weight, max_score, source, decimals, bonus],
     )?;
     let id = connection.last_insert_rowid();
-    log::info!("added {} column {id} to class {class_id}", column_type.code());
+    log::info!("added {code} column {id} to class {class_id}");
     Ok(id)
 }
 

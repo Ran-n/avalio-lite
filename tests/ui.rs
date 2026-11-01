@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/10/29 04:09:18.977366
+//+ Revised: 	2026/10/29 15:46:52.165960
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -12,6 +12,8 @@ mod common;
 
 use std::fs;
 
+use avalio_lite::app::dialogs::FileKind;
+use avalio_lite::backup;
 use avalio_lite::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::db;
 use avalio_lite::error::{AppError, Folder};
@@ -1070,6 +1072,349 @@ fn switching_to_an_encrypted_database_locks() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Settings: backup
+
+/// The settings page, scrolled down to the Backup card.
+fn open_backup_settings(ui: &Ui) {
+    open_settings(ui);
+    find(ui, "Galego").scroll(0.0, -1200.0);
+    assert!(shows(ui, "Export everything…"), "scrolled to the Backup card");
+}
+
+#[test]
+fn export_everything_saves_a_backup_and_says_where() {
+    let ui = seeded();
+    open_backup_settings(&ui);
+    let destination = ui.fixture.path("backups").join("mine.avalio");
+    fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    ui.dialogs.save_file_next(Some(&destination));
+    click(&ui, "Export everything…");
+
+    let copy = db::open_existing(&destination, None).unwrap();
+    assert_eq!(classes::list_classes(&copy).unwrap().len(), 1);
+    let path = destination.display().to_string();
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::BackupExported { path: &path }));
+    let requests = ui.dialogs.save_requests.borrow();
+    let (kind, _, name) = &requests[0];
+    assert_eq!(*kind, FileKind::Backup);
+    assert_eq!(*name, backup::default_file_name(chrono::Local::now().date_naive()));
+}
+
+#[test]
+fn the_next_backup_opens_where_the_last_one_went() {
+    let ui = seeded();
+    open_backup_settings(&ui);
+    let folder = ui.fixture.path("backups");
+    fs::create_dir_all(&folder).unwrap();
+    ui.dialogs.save_file_next(Some(&folder.join("first.avalio")));
+    click(&ui, "Export everything…");
+    ui.dialogs.save_file_next(None);
+    click(&ui, "Export everything…");
+    assert_eq!(ui.dialogs.save_requests.borrow()[1].1, folder);
+}
+
+#[test]
+fn a_cancelled_backup_does_nothing() {
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.save_file_next(None);
+    click(&ui, "Export everything…");
+    assert!(ui.session.window.get_status_message().is_empty());
+    assert!(ui.session.window.get_error_message().is_empty());
+    assert_eq!(fs::read_dir(ui.fixture.root.path()).unwrap().count(), 3, "only config, data and logs");
+}
+
+#[test]
+fn a_failed_backup_shows_the_error() {
+    let ui = seeded();
+    open_backup_settings(&ui);
+    // a folder already has the chosen name, so the backup can't be put there
+    let taken = ui.fixture.path("taken.avalio");
+    fs::create_dir_all(&taken).unwrap();
+    ui.dialogs.save_file_next(Some(&taken));
+    click(&ui, "Export everything…");
+    assert!(ui.session.window.get_error_message().contains("taken.avalio"));
+    assert!(ui.session.window.get_status_message().is_empty());
+    assert!(taken.is_dir());
+}
+
+/// A backup of another database with classes 7A (two pupils) and 7B, encrypted with `pin` if given.
+fn backup_file(pin: Option<&str>) -> (Fixture, std::path::PathBuf) {
+    let other = Fixture::new();
+    let mut state = other.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let class = classes::create_class(connection, "7A").unwrap();
+        pupils::add_new_pupil(connection, class, "Xoán").unwrap();
+        pupils::add_new_pupil(connection, class, "Iria").unwrap();
+        classes::create_class(connection, "7B").unwrap();
+    }
+    if let Some(pin) = pin {
+        state.set_pin(pin, pin).unwrap();
+    }
+    let file = other.path("avalio-lite-backup-2026-10-28.avalio");
+    state.export_backup(&file).unwrap();
+    state.shutdown();
+    (other, file)
+}
+
+fn backup_global(ui: &Ui) -> avalio_lite::ui::Backup<'_> {
+    ui.session.window.global::<avalio_lite::ui::Backup>()
+}
+
+fn restore_copy(ui: &Ui) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("{}.restore", ui.fixture.database().display()))
+}
+
+fn sidebar_classes(ui: &Ui) -> Vec<String> {
+    gradebook(ui).get_classes().iter().map(|class| class.name.to_string()).collect()
+}
+
+#[test]
+fn restore_asks_once_and_replaces_the_sheet() {
+    let (_other, file) = backup_file(None);
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    ui.dialogs.answer_next(true);
+    click(&ui, "Restore from a backup…");
+
+    let question =
+        english(&Message::ConfirmRestore { file: "avalio-lite-backup-2026-10-28.avalio", classes: 2, pupils: 2 });
+    assert_eq!(*ui.dialogs.questions.borrow(), [question]);
+    assert_eq!(*ui.dialogs.file_kinds.borrow(), [FileKind::Backup]);
+    assert_eq!(sidebar_classes(&ui), ["7A", "7B"]);
+    assert_eq!(gradebook(&ui).get_class_name(), "7A", "the first class is selected");
+    let status = english(&Message::BackupRestored { file: "avalio-lite-backup-2026-10-28.avalio" });
+    assert_eq!(ui.session.window.get_status_message(), status);
+    assert!(!restore_copy(&ui).exists());
+}
+
+#[test]
+fn no_to_the_restore_question_changes_nothing() {
+    let (_other, file) = backup_file(None);
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    ui.dialogs.answer_next(false);
+    click(&ui, "Restore from a backup…");
+    assert_eq!(sidebar_classes(&ui), ["1A"]);
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2);
+    assert!(ui.session.window.get_status_message().is_empty());
+    assert!(!restore_copy(&ui).exists());
+}
+
+#[test]
+fn a_cancelled_restore_picker_does_nothing() {
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(None);
+    click(&ui, "Restore from a backup…");
+    assert!(ui.dialogs.questions.borrow().is_empty());
+    assert_eq!(sidebar_classes(&ui), ["1A"]);
+}
+
+#[test]
+fn a_file_that_is_not_a_backup_shows_the_error() {
+    let ui = seeded();
+    open_backup_settings(&ui);
+    let file = ui.fixture.path("notes.avalio");
+    fs::write(&file, b"hello").unwrap();
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Restore from a backup…");
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::NotADatabase(file)));
+    assert!(!backup_global(&ui).get_pin_needed());
+    assert!(ui.dialogs.questions.borrow().is_empty());
+}
+
+#[test]
+fn an_encrypted_backup_asks_for_its_pin_inline() {
+    let (_other, file) = backup_file(Some("9753"));
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Restore from a backup…");
+    assert!(backup_global(&ui).get_pin_needed());
+    assert!(shows_text(&ui, "This backup is encrypted. Type the PIN it was made with."));
+    assert!(backup_global(&ui).get_pin_error().is_empty(), "no error before a PIN is typed");
+    assert!(ui.dialogs.questions.borrow().is_empty(), "no question before the backup opens");
+
+    ui.dialogs.answer_next(true);
+    type_into(&ui, "Backup PIN", "9753");
+    press_enter(&ui);
+    assert!(!backup_global(&ui).get_pin_needed(), "the prompt closes");
+    assert_eq!(ui.dialogs.questions.borrow().len(), 1);
+    assert_eq!(sidebar_classes(&ui), ["7A", "7B"]);
+    assert!(!ui.session.state.borrow().is_protected(), "the app keeps having no PIN");
+}
+
+#[test]
+fn a_wrong_backup_pin_keeps_the_prompt() {
+    let (_other, file) = backup_file(Some("9753"));
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Restore from a backup…");
+    type_into(&ui, "Backup PIN", "1111");
+    click(&ui, "Continue");
+    assert!(backup_global(&ui).get_pin_needed());
+    assert_eq!(backup_global(&ui).get_pin_error(), error_text(&AppError::WrongPin));
+    assert!(backup_global(&ui).get_pin().is_empty(), "the wrong PIN is cleared");
+    assert!(!restore_copy(&ui).exists());
+
+    click(&ui, "Cancel");
+    assert!(!backup_global(&ui).get_pin_needed());
+    assert_eq!(sidebar_classes(&ui), ["1A"]);
+}
+
+#[test]
+fn leaving_settings_closes_the_backup_prompt() {
+    let (_other, file) = backup_file(Some("9753"));
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Restore from a backup…");
+    assert!(backup_global(&ui).get_pin_needed());
+    click(&ui, "1A");
+    assert!(!backup_global(&ui).get_pin_needed());
+    // nothing is left waiting: a stray Continue does nothing
+    backup_global(&ui).invoke_pin_entered();
+    assert_eq!(sidebar_classes(&ui), ["1A"]);
+}
+
+#[test]
+fn locking_closes_the_backup_prompt() {
+    let (_other, file) = backup_file(Some("9753"));
+    let ui = encrypted();
+    unlock(&ui);
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Restore from a backup…");
+    assert!(backup_global(&ui).get_pin_needed());
+    with_control(&ui, "l");
+    assert!(ui.session.window.get_locked());
+    assert!(!backup_global(&ui).get_pin_needed());
+    assert!(!restore_copy(&ui).exists());
+}
+
+#[test]
+fn a_backup_of_this_database_restores_without_asking_for_its_pin() {
+    let ui = encrypted();
+    unlock(&ui);
+    open_backup_settings(&ui);
+    let file = ui.fixture.path("mine.avalio");
+    ui.dialogs.save_file_next(Some(&file));
+    click(&ui, "Export everything…");
+    ui.dialogs.pick_file_next(Some(&file));
+    ui.dialogs.answer_next(true);
+    click(&ui, "Restore from a backup…");
+    assert!(!backup_global(&ui).get_pin_needed());
+    assert_eq!(ui.dialogs.questions.borrow().len(), 1);
+    assert!(ui.session.state.borrow().is_protected(), "still encrypted with the app's PIN");
+}
+
+#[test]
+fn a_failed_restore_shows_the_error_and_keeps_the_sheet() {
+    let (_other, file) = backup_file(None);
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    ui.dialogs.answer_next(true);
+    let held = common::hold_against_removal(&ui.fixture.database());
+    click(&ui, "Restore from a backup…");
+    drop(held);
+    assert!(!ui.session.window.get_error_message().is_empty());
+    assert!(ui.session.window.get_status_message().is_empty());
+    assert_eq!(sidebar_classes(&ui), ["1A"]);
+    assert!(!ui.session.window.get_locked());
+}
+
+#[test]
+fn add_classes_from_a_backup_lists_them_and_reports() {
+    let (other, file) = backup_file(None);
+    // the backup also has a 1A, so the one added is renamed; and Ana, who is already here
+    {
+        let mut state = other.state();
+        state.start();
+        let connection = state.connection().unwrap();
+        let class = classes::create_class(connection, "1A").unwrap();
+        pupils::add_new_pupil(connection, class, "Ana").unwrap();
+        fs::remove_file(&file).unwrap();
+        state.export_backup(&file).unwrap();
+        state.shutdown();
+    }
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Add classes from a backup…");
+
+    assert!(ui.dialogs.questions.borrow().is_empty(), "nothing is replaced, so nothing is asked");
+    assert_eq!(sidebar_classes(&ui), ["1A", "1A (2)", "7A", "7B"]);
+    assert_eq!(gradebook(&ui).get_class_name(), "1A (2)", "the first class added is open");
+    let added = english(&Message::BackupClassesAdded {
+        classes: 3,
+        pupils: 3,
+        existing: 1,
+        file: "avalio-lite-backup-2026-10-28.avalio",
+    });
+    let renamed = english(&Message::BackupClassesRenamed { pairs: &[("1A".to_owned(), "1A (2)".to_owned())] });
+    assert_eq!(ui.session.window.get_status_message(), format!("{added} {renamed}"));
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 4, "Ana joins; Xoán and Iria are new");
+    assert!(!restore_copy(&ui).exists());
+}
+
+#[test]
+fn adding_from_an_encrypted_backup_asks_for_its_pin() {
+    let (_other, file) = backup_file(Some("9753"));
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Add classes from a backup…");
+    assert!(backup_global(&ui).get_pin_needed());
+    type_into(&ui, "Backup PIN", "9753");
+    click(&ui, "Continue");
+    assert!(!backup_global(&ui).get_pin_needed());
+    assert_eq!(sidebar_classes(&ui), ["1A", "7A", "7B"]);
+    assert!(!ui.session.state.borrow().is_protected(), "the app's own encryption doesn't change");
+}
+
+#[test]
+fn adding_from_an_empty_backup_says_so() {
+    let other = Fixture::new();
+    let file = other.path("empty.avalio");
+    let mut state = other.set_up();
+    state.export_backup(&file).unwrap();
+    state.shutdown();
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Add classes from a backup…");
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::BackupHasNoClasses));
+    assert!(ui.session.window.get_error_message().is_empty());
+    assert_eq!(sidebar_classes(&ui), ["1A"]);
+}
+
+#[test]
+fn a_failed_add_shows_the_error_and_adds_nothing() {
+    let (_other, file) = backup_file(None);
+    let ui = seeded();
+    open_backup_settings(&ui);
+    // the open database refuses new classes from here on
+    ui.session
+        .state
+        .borrow()
+        .connection()
+        .unwrap()
+        .execute_batch("CREATE TEMP TRIGGER refuse BEFORE INSERT ON classes BEGIN SELECT RAISE(ABORT, 'test'); END")
+        .unwrap();
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Add classes from a backup…");
+    assert!(!ui.session.window.get_error_message().is_empty());
+    assert_eq!(sidebar_classes(&ui), ["1A"]);
+    assert!(!restore_copy(&ui).exists());
+}
+
+// ---------------------------------------------------------------------------------------------
 // Settings: language and theme
 
 #[test]
@@ -1235,6 +1580,203 @@ fn deleting_a_class_asks_first() {
     click(&ui, "Delete class");
     assert_eq!(count(&ui, "SELECT COUNT(*) FROM classes"), 1);
     assert_eq!(gradebook(&ui).get_class_name(), "2B", "the next class opens");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Excel
+
+fn export_through_the_menu(ui: &Ui, destination: Option<&std::path::Path>) {
+    click(ui, "More actions");
+    ui.dialogs.save_file_next(destination);
+    click(ui, "Export to Excel…");
+}
+
+#[test]
+fn export_to_excel_saves_the_sheet_and_says_where() {
+    let ui = seeded();
+    let destination = ui.fixture.path("1A.xlsx");
+    export_through_the_menu(&ui, Some(&destination));
+    assert!(destination.is_file());
+    let shown = destination.display().to_string();
+    assert_eq!(gradebook(&ui).get_status_message(), english(&Message::SheetExported { class: "1A", path: &shown }));
+    assert!(gradebook(&ui).get_error_message().is_empty());
+    let documents = dirs::document_dir().unwrap_or_default();
+    assert_eq!(
+        ui.dialogs.save_requests.borrow()[0],
+        (FileKind::Spreadsheet, documents, "1A.xlsx".to_owned()),
+        "Documents, the first time"
+    );
+
+    export_through_the_menu(&ui, Some(&ui.fixture.path("again.xlsx")));
+    assert_eq!(ui.dialogs.save_requests.borrow()[1].1, ui.fixture.root.path(), "then where the last one went");
+}
+
+#[test]
+fn the_proposed_file_name_leaves_out_what_windows_refuses() {
+    let ui = seeded();
+    type_into(&ui, "Class name", "1A/1B: maths");
+    export_through_the_menu(&ui, None);
+    assert_eq!(ui.dialogs.save_requests.borrow()[0].2, "1A-1B- maths.xlsx");
+}
+
+#[test]
+fn a_cancelled_export_does_nothing() {
+    let ui = seeded();
+    export_through_the_menu(&ui, None);
+    assert!(gradebook(&ui).get_status_message().is_empty());
+    assert!(gradebook(&ui).get_error_message().is_empty());
+    assert_eq!(
+        fs::read_dir(ui.fixture.root.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "xlsx"))
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn a_failed_export_shows_the_error() {
+    let ui = seeded();
+    let destination = ui.fixture.path("no such folder").join("1A.xlsx");
+    export_through_the_menu(&ui, Some(&destination));
+    let banner = gradebook(&ui).get_error_message().to_string();
+    assert!(banner.starts_with(&format!("Couldn't save {}: ", destination.display())), "{banner}");
+    assert!(gradebook(&ui).get_status_message().is_empty());
+
+    export_through_the_menu(&ui, Some(&ui.fixture.path("1A.xlsx")));
+    assert!(gradebook(&ui).get_error_message().is_empty(), "a later export that works clears it");
+    assert!(!gradebook(&ui).get_status_message().is_empty());
+    assert_eq!(
+        ui.dialogs.save_requests.borrow()[1].1,
+        dirs::document_dir().unwrap_or_default(),
+        "a failed export's folder isn't remembered"
+    );
+}
+
+/// Was: nothing cleared the green banner, so "Saved 1A to …" stayed next to later work.
+#[test]
+fn regression_the_export_status_clears_on_the_next_action() {
+    let ui = seeded();
+    export_through_the_menu(&ui, Some(&ui.fixture.path("1A.xlsx")));
+    assert!(!gradebook(&ui).get_status_message().is_empty());
+    type_into(&ui, "Class name", "1A bis");
+    assert!(gradebook(&ui).get_status_message().is_empty(), "a sheet action clears it");
+
+    export_through_the_menu(&ui, Some(&ui.fixture.path("1A.xlsx")));
+    click(&ui, "More actions");
+    click(&ui, "Hide weights & scales");
+    assert!(gradebook(&ui).get_status_message().is_empty(), "so does a preference");
+}
+
+/// A workbook in the fixture folder whose first tab holds `rows`, every cell written as text
+/// except numbers, which are written as numbers.
+fn import_file(ui: &Ui, rows: &[&[&str]]) -> std::path::PathBuf {
+    let path = ui.fixture.path("import.xlsx");
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    let tab = workbook.add_worksheet();
+    for (row, cells) in (0u32..).zip(rows) {
+        for (column, cell) in (0u16..).zip(*cells) {
+            match cell.parse::<f64>() {
+                Ok(number) => tab.write_number(row, column, number).unwrap(),
+                Err(_) if cell.starts_with('#') => {
+                    tab.write_formula(row, column, rust_xlsxwriter::Formula::new("=1/0").set_result(*cell)).unwrap()
+                }
+                Err(_) => tab.write_string(row, column, *cell).unwrap(),
+            };
+        }
+    }
+    workbook.save(&path).unwrap();
+    path
+}
+
+fn import_through_the_menu(ui: &Ui, file: Option<&std::path::Path>) {
+    click(ui, "More actions");
+    ui.dialogs.pick_file_next(file);
+    click(ui, "Import from Excel…");
+}
+
+#[test]
+fn import_from_excel_fills_the_sheet_and_reports() {
+    let ui = seeded();
+    let file = import_file(
+        &ui,
+        &[&["Pupil", "Exam", "Phone", "", "Final grade"], &["Ana", "7", "600", "", "9"], &["Carla", "8", "", "x", ""]],
+    );
+    import_through_the_menu(&ui, Some(&file));
+    assert_eq!(*ui.dialogs.file_kinds.borrow(), [FileKind::Spreadsheet]);
+    assert!(gradebook(&ui).get_error_message().is_empty(), "{}", gradebook(&ui).get_error_message());
+    assert_eq!(
+        gradebook(&ui).get_status_message(),
+        "Imported 2 pupils (1 new) and 2 marks or notes into 1A. Left out: Phone, column D (no title), Final grade."
+    );
+    assert!(ui.dialogs.questions.borrow().is_empty(), "nothing to replace, so nothing to ask");
+    assert_eq!(gradebook(&ui).get_rows().row_count(), 3, "Carla joins the sheet");
+    assert_eq!(cell_text(&ui, 0, 0), "7");
+    assert_eq!(cell_text(&ui, 2, 0), "8");
+    assert_eq!(gradebook(&ui).get_classes().row_data(0).unwrap().pupil_count, 3, "the class list counts her too");
+}
+
+#[test]
+fn import_reports_skipped_error_cells_and_singulars() {
+    let ui = seeded();
+    let file = import_file(&ui, &[&["Pupil", "Exam"], &["Ana", "#DIV/0!"]]);
+    import_through_the_menu(&ui, Some(&file));
+    assert_eq!(
+        gradebook(&ui).get_status_message(),
+        "Imported 1 pupil and 0 marks or notes into 1A. 1 cell with an Excel error was skipped."
+    );
+}
+
+#[test]
+fn overwriting_asks_first_and_no_changes_nothing() {
+    let ui = seeded();
+    type_into(&ui, "Ana, Exam", "3");
+    let file = import_file(&ui, &[&["Pupil", "Exam"], &["Ana", "9"], &["Bea", "6"]]);
+    ui.dialogs.answer_next(false);
+    import_through_the_menu(&ui, Some(&file));
+    assert_eq!(
+        *ui.dialogs.questions.borrow(),
+        [english(&Message::ConfirmImportOverwrite { count: 1, class: "1A" })],
+        "only Ana's 3 is replaced; Bea's empty cell isn't"
+    );
+    assert_eq!(cell_text(&ui, 0, 0), "3");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM cells"), 1, "no change at all");
+    assert!(gradebook(&ui).get_status_message().is_empty());
+
+    ui.dialogs.answer_next(true);
+    import_through_the_menu(&ui, Some(&file));
+    assert_eq!((cell_text(&ui, 0, 0), cell_text(&ui, 1, 0)), ("9".to_owned(), "6".to_owned()));
+    assert_eq!(gradebook(&ui).get_status_message(), "Imported 2 pupils and 2 marks or notes into 1A.");
+}
+
+#[test]
+fn a_cancelled_import_does_nothing() {
+    let ui = seeded();
+    import_through_the_menu(&ui, None);
+    assert!(gradebook(&ui).get_status_message().is_empty());
+    assert!(gradebook(&ui).get_error_message().is_empty());
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2);
+}
+
+#[test]
+fn an_unreadable_file_shows_the_error() {
+    let ui = seeded();
+    let file = ui.fixture.path("notes.xlsx");
+    fs::write(&file, "not a workbook").unwrap();
+    import_through_the_menu(&ui, Some(&file));
+    let banner = gradebook(&ui).get_error_message().to_string();
+    assert!(banner.starts_with(&format!("Couldn't read {}: ", file.display())), "{banner}");
+    assert!(gradebook(&ui).get_status_message().is_empty());
+
+    let header_only = import_file(&ui, &[&["Pupil", "Exam"]]);
+    import_through_the_menu(&ui, Some(&header_only));
+    assert_eq!(gradebook(&ui).get_error_message(), error_text(&AppError::NoPupilsInFile(header_only)));
+
+    let twice = import_file(&ui, &[&["Pupil"], &["Eva"], &["eva"]]);
+    import_through_the_menu(&ui, Some(&twice));
+    assert_eq!(gradebook(&ui).get_error_message(), error_text(&AppError::DuplicatePupilInFile("eva".into())));
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2, "nothing was added");
 }
 
 // ---------------------------------------------------------------------------------------------

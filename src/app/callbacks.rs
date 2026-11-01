@@ -1,13 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.946623
-//+ Revised: 	2026/10/29 04:09:17.394948
+//+ Revised: 	2026/10/29 15:46:51.199595
 // -----------------------------------------------------------------------------
 
 use std::path::{Path, PathBuf};
 
 use slint::SharedString;
 
+use crate::app::dialogs::FileKind;
 use crate::app::state::Opened;
 use crate::app::{
     SharedDialogs, SharedState, gradebook, language, lock_screen, shortcuts, theme, view, with_window, with_window1,
@@ -48,7 +49,7 @@ fn wire_setup_actions(window: &AppWindow, state: &SharedState, dialogs: &SharedD
     }));
     let (shared, dialogs) = (state.clone(), dialogs.clone());
     window.on_open_existing_database(with_window(window, move |window| {
-        let Some(database_path) = dialogs.pick_database_file() else { return };
+        let Some(database_path) = dialogs.pick_file(FileKind::Database) else { return };
         let log_dir = as_path(&window.get_setup_log_folder());
         let result = shared.borrow_mut().open_existing(&database_path, &log_dir);
         after_database_opened(window, &shared, "open database", result);
@@ -80,7 +81,7 @@ fn wire_settings(window: &AppWindow, state: &SharedState, dialogs: &SharedDialog
     }));
     let (shared, dialogs) = (state.clone(), dialogs.clone());
     window.on_switch_database(with_window(window, move |window| {
-        let Some(database_path) = dialogs.pick_database_file() else { return };
+        let Some(database_path) = dialogs.pick_file(FileKind::Database) else { return };
         let log_dir = as_path(&window.get_log_folder());
         let result = shared.borrow_mut().open_existing(&database_path, &log_dir);
         after_database_opened(window, &shared, "open database", result);

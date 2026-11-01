@@ -8,6 +8,8 @@ license-file = "LICENSE"
 publish = false
 
 [dependencies]
+# reads the workbooks the sheet imports (.xlsx, .xls, .ods); pure Rust
+calamine = "0.37.0"
 chrono = "0.4"
 dirs = "7"
 log = { version = "0.4", features = ["std"] }
@@ -15,6 +17,8 @@ rfd = "0.17"
 # SQLCipher: SQLite with page-level encryption. Building it compiles OpenSSL, which needs a full Perl
 # (Strawberry Perl on Windows) at build time only; nothing of Perl or the build ends up in the exe.
 rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl"] }
+# writes the .xlsx export; pure Rust
+rust_xlsxwriter = "0.102.0"
 serde = { version = "1", features = ["derive"] }
 slint = "1.18"
 sys-locale = "0.3"
@@ -48,6 +52,17 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_HiDpi",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+# Dependencies without debug info: far less to write per build (Slint, SQLCipher and OpenSSL are
+# large), so builds and test runs are quicker. The app's own code keeps full debug info.
+[profile.dev.package."*"]
+debug = false
+
+# What cargo-mutants builds with (.cargo/mutants.toml): no debug info anywhere, so each mutant's
+# rebuild and link is as quick as it gets. Its own target folder; normal builds are untouched.
+[profile.mutants]
+inherits = "test"
+debug = "none"
 
 [profile.release]
 lto = true

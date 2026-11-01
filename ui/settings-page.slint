@@ -2,6 +2,7 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { ActionButton, ButtonKind, Card, KeyCap, MessageBanner, TextField } from "components.slint";
 import { Shortcuts } from "shortcuts.slint";
+import { Backup } from "backup.slint";
 
 component PathBox inherits Rectangle {
     in property <string> path;
@@ -23,14 +24,18 @@ component PathBox inherits Rectangle {
 component PinField inherits VerticalLayout {
     in property <string> label;
     in-out property <string> value;
+    callback accepted();
 
     spacing: 6px;
+    // in a taller parent the label stays on the field instead of drifting apart from it
+    alignment: start;
     Text { text: root.label; font-size: Theme.text-s; font-weight: 600; color: Theme.muted; }
     TextField {
         width: 180px;
         input-type: InputType.password;
         spoken-label: root.label;
         text <=> root.value;
+        accepted => { root.accepted(); }
     }
 }
 
@@ -216,7 +221,7 @@ export component SettingsPage inherits Rectangle {
                     }
                     Card {
                         title: @tr("Database");
-                        description: @tr("Every class, pupil and mark is in this file. Copy it while the app is closed to make a backup.");
+                        description: @tr("Every class, pupil and mark is in this file.");
                         PathBox { path: root.database-path; }
                         HorizontalLayout {
                             spacing: 8px;
@@ -229,6 +234,62 @@ export component SettingsPage inherits Rectangle {
                                 text: @tr("Open another database…");
                                 kind: ButtonKind.ghost;
                                 clicked => { root.switch-database(); }
+                            }
+                        }
+                    }
+                    Card {
+                        title: @tr("Backup");
+                        description: @tr("Save everything (every class, pupil, column and mark) in one .avalio file, to keep it safe or take it to another computer. With a PIN, the file is encrypted with it.");
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            ActionButton {
+                                text: @tr("Export everything…");
+                                kind: ButtonKind.primary;
+                                clicked => { Backup.export-everything(); }
+                            }
+                            ActionButton {
+                                text: @tr("Restore from a backup…");
+                                kind: ButtonKind.ghost;
+                                clicked => { Backup.restore(); }
+                            }
+                            ActionButton {
+                                text: @tr("Add classes from a backup…");
+                                kind: ButtonKind.ghost;
+                                clicked => { Backup.add-classes(); }
+                            }
+                        }
+                        if Backup.pin-needed: VerticalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            Text {
+                                // one line, which fits at the minimum window width in every language: a wrapped
+                                // Text in this nested layout asks for the height of several lines
+                                text: @tr("This backup is encrypted. Type the PIN it was made with.");
+                                color: Theme.text;
+                            }
+                            PinField {
+                                label: @tr("Backup PIN");
+                                value <=> Backup.pin;
+                                accepted => { Backup.pin-entered(); }
+                            }
+                            if Backup.pin-error != "": Text {
+                                text: Backup.pin-error;
+                                color: Theme.fail;
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                ActionButton {
+                                    text: @tr("Continue");
+                                    kind: ButtonKind.primary;
+                                    clicked => { Backup.pin-entered(); }
+                                }
+                                ActionButton {
+                                    text: @tr("Cancel");
+                                    kind: ButtonKind.ghost;
+                                    clicked => { Backup.pin-cancelled(); }
+                                }
                             }
                         }
                     }

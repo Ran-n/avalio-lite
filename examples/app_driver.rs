@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.921715
-//+ Revised: 	2026/10/28 21:18:53.041199
+//+ Revised: 	2026/10/29 15:46:51.134795
 // -----------------------------------------------------------------------------
 
 //! Runs the real app, in its real window, for the desktop tests (`tests/desktop.rs`), against a
@@ -18,7 +18,8 @@
 //!   {"cmd":"locate","label":"Create database"}       where the controls with that label are (and a
 //!                                                    field's text), and where an open popup menu
 //!                                                    sits (its controls' positions are relative to it)
-//!   {"cmd":"dialogs","folders":[...],"files":[...],"answers":[true]}  answers for the next dialogs
+//!   {"cmd":"dialogs","folders":[...],"files":[...],"saves":[...],"answers":[true]}  answers for the
+//!                                                    next dialogs (each list may be left out; null cancels)
 //!   {"cmd":"state"}                                  what the window shows, read-only
 //!   {"cmd":"quit"}                                   closes the window; the app shuts down
 
@@ -155,6 +156,9 @@ fn handle(line: &str) -> Result<Value, String> {
                 for file in command["files"].as_array().into_iter().flatten() {
                     dialogs.pick_file_next(file.as_str().map(std::path::Path::new));
                 }
+                for save in command["saves"].as_array().into_iter().flatten() {
+                    dialogs.save_file_next(save.as_str().map(std::path::Path::new));
+                }
                 for answer in command["answers"].as_array().into_iter().flatten() {
                     dialogs.answer_next(answer.as_bool().ok_or("answers are true or false")?);
                 }
@@ -204,6 +208,7 @@ fn state(session: &Session) -> Value {
         "error": window.get_error_message().as_str(),
         "status": window.get_status_message().as_str(),
         "sheet_error": gradebook.get_error_message().as_str(),
+        "sheet_status": gradebook.get_status_message().as_str(),
         "classes": classes,
         "class_name": gradebook.get_class_name().as_str(),
         "columns": columns,

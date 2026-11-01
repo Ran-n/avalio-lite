@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/10/29 04:09:18.470462
+//+ Revised: 	2026/10/29 15:46:51.974061
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -18,7 +18,7 @@
 mod common;
 mod desktop_support;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use common::Fixture;
 use desktop_support::pixels::{Image, Rect};
@@ -136,9 +136,9 @@ fn first_run_setup() {
             every_look(&mut app, "setup", |app, image, dark, _| {
                 // the brand tile and the primary button are the accent colour, both whole
                 let accent: Vec<Rect> = image
-                    .blobs(colours.get("accent", dark), 6, 200)
+                    .blobs(colours.get("accent", dark), 6, app.area(200.0))
                     .into_iter()
-                    .filter(|blob| blob.height > 20)
+                    .filter(|blob| blob.height > app.px(20.0))
                     .collect();
                 assert_eq!(accent.len(), 2, "brand tile and Create button: {accent:?}");
                 assert_on_screen(image, located(app, "Create database"), "Create database");
@@ -169,8 +169,9 @@ fn the_first_class() {
     every_look(&mut app, "no-class", |app, image, dark, _| {
         let create = located(app, "Create class");
         assert_on_screen(image, create, "Create class");
-        let accent = image.blobs(colours.get("accent", dark), 6, 200);
-        assert!(accent.iter().any(|blob| blob.x.abs_diff(create.x) < 4), "Create class is the primary button");
+        let accent = image.blobs(colours.get("accent", dark), 6, app.area(200.0));
+        let near = app.px(4.0);
+        assert!(accent.iter().any(|blob| blob.x.abs_diff(create.x) < near), "Create class is the primary button");
     });
     app.type_into("Class name, e.g. 2º ESO A", "1A");
     app.click("Create class");
@@ -210,8 +211,8 @@ fn the_sheet() {
         assert_on_screen(image, located(app, "More actions"), "More actions");
         if size == NORMAL {
             // every final grade and its rounding is a pill: pass pills green, fail pills rose
-            let green = image.blobs(colours.get("pass-soft", dark), 4, 300);
-            let rose = image.blobs(colours.get("fail-soft", dark), 4, 300);
+            let green = image.blobs(colours.get("pass-soft", dark), 4, app.area(300.0));
+            let rose = image.blobs(colours.get("fail-soft", dark), 4, app.area(300.0));
             assert_eq!(green.len(), passing, "pass pills: {green:?}");
             assert_eq!(rose.len(), failing, "fail pills: {rose:?}");
             for pill in green.iter().chain(&rose) {
@@ -220,7 +221,8 @@ fn the_sheet() {
             // pills of one row line up, give or take a pixel or two
             let mut tops: Vec<u32> = green.iter().chain(&rose).map(|pill| pill.y).collect();
             tops.sort_unstable();
-            let rows = 1 + tops.windows(2).filter(|pair| pair[1] - pair[0] > 4).count();
+            let gap = app.px(4.0);
+            let rows = 1 + tops.windows(2).filter(|pair| pair[1] - pair[0] > gap).count();
             assert_eq!(rows, 5, "pills sit on the five pupil rows: {tops:?}");
         }
     });
@@ -284,6 +286,89 @@ fn the_column_panel_and_menus() {
         assert_eq!(found.len(), 1, "{label}");
         assert_on_screen(&image, found[0], &label);
     }
+    app.quit();
+}
+
+/// A workbook for the sample class: Ana's exam as it already is, a new pupil, and a column the
+/// class doesn't have, so the report has every part.
+fn sample_import(fixture: &Fixture) -> PathBuf {
+    let path = fixture.path("marks.xlsx");
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    let tab = workbook.add_worksheet();
+    for (column, title) in (0u16..).zip(["Pupil", "Exam 1", "Phone"]) {
+        tab.write_string(0, column, title).unwrap();
+    }
+    tab.write_string(1, 0, "Ana Pérez").unwrap();
+    tab.write_number(1, 1, 8).unwrap();
+    tab.write_string(2, 0, "Xoán Vidal").unwrap();
+    tab.write_number(2, 1, 7).unwrap();
+    tab.write_string(2, 2, "600 000 000").unwrap();
+    workbook.save(&path).unwrap();
+    path
+}
+
+/// The sheet's green status banner: the one wide patch of the pass colour (grade pills are small).
+fn green_banner(colours: &ThemeColours, image: &Image, dark: bool) -> Rect {
+    let wide = image.blobs(colours.get("pass-soft", dark), 4, 300).into_iter().find(|blob| blob.width > 400);
+    wide.expect("no green banner on screen")
+}
+
+/// Closes the open sheet menu without changing anything: its export, cancelled.
+fn close_with_a_cancelled_export(app: &mut App, export: &str) {
+    app.cancel_next_save();
+    app.click_in_popup(export);
+}
+
+/// The sheet's "⋯" menu while every pupil is already in the class.
+const SHEET_MENU: [&str; 4] = ["Hide weights & scales", "Export to Excel…", "Import from Excel…", "Delete class"];
+
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_sheet_menu_and_an_import() {
+    let _turn = desktop_support::turn();
+    let colours = ThemeColours::load();
+    let fixture = with_sample_class();
+    let workbook = sample_import(&fixture);
+    let mut app = App::start(&config(&fixture), "en");
+    // an open popup keeps its place when the window is resized, so it opens again at each size
+    let open_menu = |app: &mut App| app.click("More actions");
+    every_look_after(&mut app, "sheet-menu", open_menu, |app, image, _, _| {
+        for option in SHEET_MENU {
+            let found = app.locate_in_popup(option);
+            assert_eq!(found.len(), 1, "{option}");
+            assert_on_screen(image, found[0], option);
+        }
+        close_with_a_cancelled_export(app, "Export to Excel…");
+    });
+    assert!(app.state()["sheet_status"].as_str().unwrap().is_empty(), "a cancelled export says nothing");
+    app.click("More actions");
+    app.answer_dialogs(&[], &[&workbook], &[]);
+    app.click_in_popup("Import from Excel…");
+    let state = app.state();
+    let report = "Imported 2 pupils (1 new) and 1 mark or note into 2º ESO A. Left out: Phone.";
+    assert_eq!(state["sheet_status"], report, "{state}");
+    assert_eq!(state["rows"].as_array().unwrap().len(), 6, "a real click imported Xoán");
+    every_look(&mut app, "sheet-imported", |_, image, dark, _| {
+        assert_on_screen(image, green_banner(&colours, image, dark), "the import report");
+    });
+    app.quit();
+
+    let mut app = App::start(&config(&fixture), "gl");
+    app.resize(MINIMUM.0, MINIMUM.1);
+    app.click(&common::galician("More actions"));
+    let image = galician_look(&mut app, "sheet-menu");
+    for english in SHEET_MENU {
+        let label = common::galician(english);
+        let found = app.locate_in_popup(&label);
+        assert_eq!(found.len(), 1, "{label}");
+        assert_on_screen(&image, found[0], &label);
+    }
+    app.answer_dialogs(&[], &[&workbook], &[]);
+    app.click_in_popup(&common::galician("Import from Excel…"));
+    let report = "Importáronse 2 alumnos e 0 notas ou observacións en 2º ESO A. Quedou fóra: Phone.";
+    assert_eq!(app.state()["sheet_status"], report);
+    let image = galician_look(&mut app, "sheet-imported");
+    assert_on_screen(&image, green_banner(&colours, &image, false), "the import report");
     app.quit();
 }
 
@@ -358,6 +443,70 @@ fn settings() {
     app.scroll_main(-40);
     let image = galician_look(&mut app, "settings-folders");
     assert_on_screen(&image, located(&mut app, "Abrir outra base de datos…"), "Abrir outra base de datos…");
+    app.quit();
+}
+
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_backup_card() {
+    let _turn = desktop_support::turn();
+    let fixture = with_sample_class();
+    // a backup made elsewhere with another PIN, so the card asks for it
+    let other = Fixture::new();
+    let mut state = other.set_up();
+    common::sample_class(state.connection().unwrap());
+    state.set_pin(PIN, PIN).unwrap();
+    let backup = other.path("avalio-lite-backup-2026-10-28.avalio");
+    state.export_backup(&backup).unwrap();
+    state.shutdown();
+
+    let mut app = App::start(&config(&fixture), "en");
+    app.click("Settings");
+    app.scroll_main(-40);
+    // relative to the scratch folder the app runs in, so the banner shows a stable path
+    app.answer_saves(&[Path::new("saved.avalio")]);
+    app.click("Export everything…");
+    let state = app.state();
+    assert_eq!(state["status"], "Backup saved to saved.avalio", "{state}");
+    assert!(fixture.path("saved.avalio").is_file());
+    every_look_after(
+        &mut app,
+        "settings-backup",
+        |app| app.scroll_main(-40),
+        |app, image, _, _| {
+            for button in ["Export everything…", "Restore from a backup…", "Add classes from a backup…"] {
+                assert_on_screen(image, located(app, button), button);
+            }
+        },
+    );
+    app.answer_dialogs(&[], &[&backup], &[]);
+    app.click("Restore from a backup…");
+    every_look_after(
+        &mut app,
+        "settings-backup-pin",
+        |app| app.scroll_main(-40),
+        |app, image, _, _| {
+            for control in ["Backup PIN", "Continue", "Cancel"] {
+                assert_on_screen(image, located(app, control), control);
+            }
+        },
+    );
+    app.click("Cancel");
+    app.quit();
+
+    let mut app = App::start(&config(&fixture), "gl");
+    app.click("Axustes");
+    app.scroll_main(-40);
+    app.answer_dialogs(&[], &[&backup], &[]);
+    app.click("Restaurar unha copia…");
+    // the prompt opens below the buttons: at the minimum size it needs the page scrolled down
+    app.resize(MINIMUM.0, MINIMUM.1);
+    app.scroll_main(-40);
+    let image = galician_look(&mut app, "settings-backup-pin");
+    for control in ["Engadir clases dunha copia…", "PIN da copia", "Continuar", "Cancelar"] {
+        assert_on_screen(&image, located(&mut app, control), control);
+    }
+    app.click("Cancelar");
     app.quit();
 }
 

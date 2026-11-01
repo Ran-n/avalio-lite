@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/10/29 02:54:47.812710
+//+ Revised: 	2026/10/29 14:13:31.264522
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, ErrorCode, params};
@@ -34,6 +34,27 @@ pub fn create_class(connection: &Connection, name: &str) -> Result<i64> {
     let id = connection.last_insert_rowid();
     log::info!("created class {id} \"{name}\"");
     Ok(id)
+}
+
+/// `name` if no class has it yet, else `name (n)` with the lowest free n from 2 up.
+pub fn free_class_name(connection: &Connection, name: &str) -> Result<String> {
+    let name = clean_name(name)?;
+    let taken = |candidate: &str| -> Result<bool> {
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM classes WHERE name = ?1", [candidate], |row| row.get(0))?;
+        Ok(count > 0)
+    };
+    if !taken(&name)? {
+        return Ok(name);
+    }
+    let mut number = 2;
+    loop {
+        let candidate = format!("{name} ({number})");
+        if !taken(&candidate)? {
+            return Ok(candidate);
+        }
+        number += 1;
+    }
 }
 
 pub fn rename_class(connection: &Connection, class_id: i64, name: &str) -> Result<()> {

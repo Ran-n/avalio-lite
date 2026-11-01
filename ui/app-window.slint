@@ -5,9 +5,10 @@ import { LockPage } from "lock-page.slint";
 import { CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone } from "gradebook.slint";
 import { Theme } from "theme.slint";
 import { ShortcutAction, ShortcutItem, Shortcuts } from "shortcuts.slint";
+import { Backup } from "backup.slint";
 
 export { SetupNotice, Section, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone, Theme }
-export { ShortcutAction, ShortcutItem, Shortcuts }
+export { ShortcutAction, ShortcutItem, Shortcuts, Backup }
 
 export component AppWindow inherits Window {
     in property <bool> setup-required: true;
@@ -87,6 +88,9 @@ export component AppWindow inherits Window {
     changed section => {
         if (root.section != Section.settings) {
             Shortcuts.recording = -1;
+            if (Backup.pin-needed) {
+                Backup.pin-cancelled();
+            }
         }
     }
     property <int> recording: Shortcuts.recording;

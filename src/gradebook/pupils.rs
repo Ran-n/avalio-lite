@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.468773
-//+ Revised: 	2026/10/29 00:10:41.359937
+//+ Revised: 	2026/10/29 15:46:51.461785
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, params};
@@ -32,14 +32,30 @@ pub fn pupils_not_in_class(connection: &Connection, class_id: i64) -> Result<Vec
 }
 
 pub fn add_new_pupil(connection: &Connection, class_id: i64, name: &str) -> Result<i64> {
-    let name = clean_name(name)?;
     let transaction = connection.unchecked_transaction()?;
-    transaction.execute("INSERT INTO pupils (name) VALUES (?1)", [&name])?;
-    let pupil_id = transaction.last_insert_rowid();
-    enroll(&transaction, class_id, pupil_id)?;
+    let pupil_id = insert_new_pupil(&transaction, class_id, name)?;
     transaction.commit()?;
+    Ok(pupil_id)
+}
+
+/// `add_new_pupil` without a transaction of its own, for callers already inside one: SQLite
+/// can't nest them.
+pub fn insert_new_pupil(connection: &Connection, class_id: i64, name: &str) -> Result<i64> {
+    let name = clean_name(name)?;
+    connection.execute("INSERT INTO pupils (name) VALUES (?1)", [&name])?;
+    let pupil_id = connection.last_insert_rowid();
+    enroll(connection, class_id, pupil_id)?;
     log::info!("added new pupil {pupil_id} to class {class_id}");
     Ok(pupil_id)
+}
+
+/// Every pupil called `name`, ignoring case and outer spaces.
+pub fn pupils_named(connection: &Connection, name: &str) -> Result<Vec<Pupil>> {
+    let mut statement = connection.prepare("SELECT id, name FROM pupils WHERE name = ?1 COLLATE NOCASE ORDER BY id")?;
+    let pupils = statement
+        .query_map([name.trim()], |row| Ok(Pupil { id: row.get(0)?, name: row.get(1)? }))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(pupils)
 }
 
 pub fn add_existing_pupil(connection: &Connection, class_id: i64, pupil_id: i64) -> Result<()> {
