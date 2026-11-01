@@ -11,13 +11,15 @@
 #       desktop test the_real_dialogs_open_and_close, which isn't part of this measurement.
 #   src\app\language.rs, the error log of select_bundled_translation
 #       the translations are compiled into the exe for every language the picker offers.
-#   src\app\state\mod.rs, "did not close cleanly" (twice)
+#   src\app\state\mod.rs, "did not close cleanly" (twice); src\backup.rs, "the backup copy did not
+#   close cleanly"
 #       SQLite only refuses to close with statements still open, and the app never keeps one.
-#   src\app\state\mod.rs "could not remove the incomplete copy", protection.rs "could not remove"
+#   src\db\mod.rs discard, "could not remove"; src\spreadsheet\export.rs "could not remove the
+#   incomplete export"
 #       a cleanup failing right after an earlier failure (a double fault), on a file the app
 #       created a moment before.
 #   src\app\state\protection.rs, reopening fails after the files were swapped (and the
-#   lock_screen.rs branch that then asks for the PIN again)
+#   lock_screen.rs and src\app\backup.rs restore branches that then ask for the PIN again)
 #       the swapped-in file passed its check a moment earlier; only another program grabbing it in
 #       between can make it fail.
 param([switch]$Branches)

@@ -1,11 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/10/29 02:54:48.252973
+//+ Revised: 	2026/10/29 14:12:18.060333
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
-//! file and the database, in every format a user may still have. Each is built from fixed data,
+//! file and the database, in every format a user may still have, and the Excel export. Each is built from fixed data,
 //! so the samples only change when the format does.
 //!
 //! `AVALIO_UPDATE_GOLDEN=1 cargo test --test golden` rewrites the samples of the *current* formats
@@ -200,6 +200,51 @@ fn a_version_3_database_upgrades_with_all_its_data() {
     let connection = db::open(&path, None).unwrap();
     assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
     assert_current_sheet(&connection);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Excel export
+
+/// Every tab of a workbook as tab-separated text: a `# name` line per tab, then its rows, each
+/// cell marked with its type (`n:` number, `s:` text), so a number exported as text shows up.
+fn workbook_dump(path: &Path) -> String {
+    use calamine::{Data, Reader, Xlsx};
+    let mut workbook: Xlsx<_> = calamine::open_workbook(path).unwrap();
+    let mut dump = String::new();
+    for name in workbook.sheet_names() {
+        dump.push_str(&format!("# {name}\n"));
+        for row in workbook.worksheet_range(&name).unwrap().rows() {
+            let cells: Vec<String> = row
+                .iter()
+                .map(|cell| match cell {
+                    Data::Empty => String::new(),
+                    Data::Float(number) => format!("n:{number}"),
+                    Data::String(text) => format!("s:{text}"),
+                    other => panic!("an export only has numbers and text, not {other:?}"),
+                })
+                .collect();
+            dump.push_str(&cells.join("\t"));
+            dump.push('\n');
+        }
+    }
+    dump
+}
+
+/// The export of the golden class. The .xlsx bytes hold a timestamp, so its contents are compared.
+#[test]
+fn the_sheet_export_matches_the_golden_dump() {
+    let dir = tempfile::tempdir().unwrap();
+    let connection = db::open(&dir.path().join("x.db"), None).unwrap();
+    fill_current(&connection);
+    let class = classes::list_classes(&connection).unwrap()[0].id;
+    let path = dir.path().join("1A.xlsx");
+    avalio_lite::spreadsheet::export::export_sheet(&connection, class, Language::English, &path).unwrap();
+    let dump = workbook_dump(&path);
+    if updating() {
+        fs::write(golden("sheet-export.tsv"), &dump).unwrap();
+    }
+    let expected = fs::read_to_string(golden("sheet-export.tsv")).unwrap().replace('\r', "");
+    assert_eq!(dump, expected, "the export changed; see the module docs");
 }
 
 /// The schema a fresh database gets, as SQLite stores it. Changing it needs a new migration, and

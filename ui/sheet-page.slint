@@ -133,6 +133,11 @@ export component SheetPage inherits Rectangle {
             message: Gradebook.error-message;
             is-error: true;
         }
+        // created only when there is a message: a hidden banner would still take the layout's spacing
+        if Gradebook.status-message != "": MessageBanner {
+            message: Gradebook.status-message;
+            is-error: false;
+        }
         HorizontalLayout {
             alignment: start;
             vertical-stretch: 1;
@@ -308,6 +313,14 @@ export component SheetPage inherits Rectangle {
                 MenuOption {
                     title: Gradebook.show-column-settings ? @tr("Hide weights & scales") : @tr("Show weights & scales");
                     clicked => { Gradebook.toggle-column-settings(); }
+                }
+                MenuOption {
+                    title: @tr("Export to Excel…");
+                    clicked => { Gradebook.export-sheet(); }
+                }
+                MenuOption {
+                    title: @tr("Import from Excel…");
+                    clicked => { Gradebook.import-sheet(); }
                 }
                 MenuOption {
                     title: @tr("Delete class");

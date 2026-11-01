@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.826999
-//+ Revised: 	2026/10/29 02:54:47.944079
+//+ Revised: 	2026/10/29 14:12:16.511551
 // -----------------------------------------------------------------------------
 
 //! Interface language. Slint strings are translated from `lang/<code>/LC_MESSAGES/avalio-lite.po`;
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use serde::{Deserialize, Serialize};
 
 pub use errors::error_message;
-pub use messages::{Message, default_column_title, text};
+pub use messages::{ExportLabels, Message, column_type_name, default_column_title, export_labels, text};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Language {

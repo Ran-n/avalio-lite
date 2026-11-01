@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/10/29 04:36:58.749687 )
+[//]: # (+ Revised: 	2026/10/29 15:46:50.995740 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -16,12 +16,18 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 - Keyboard shortcuts for the theme (Ctrl+Shift+D), weights and scales (Ctrl+H), Settings (Ctrl+,) and switching classes (Ctrl+PageDown/PageUp), alongside Ctrl+L to lock; listed in Settings and changeable in config.toml under `[shortcuts]`, with bad entries reported and replaced by their defaults
 - Keyboard shortcuts can be changed (press Change, then the new keys) and reset, one or all, in Settings; plain letters, Ctrl+Alt (AltGr), the text-editing keys Ctrl+A/C/V/X/Y/Z and keys another shortcut has are refused with the reason
+- Settings → Backup → Export everything…: saves the whole database to one .avalio file, encrypted with the PIN when there is one
+- Settings → Backup → Restore from a backup…: replaces the app's data with an .avalio backup, keeping the current PIN; a backup made with another PIN asks for it in the card
+- Settings → Backup → Add classes from a backup…: copies another backup's classes into the app, with their pupils and marks; a taken class name gets " (2)", and a pupil already here with the same name is joined
 - The avalio-lite logo (a marking tick on the accent tile) in the sidebar, first-run and lock screens, the window and taskbar, the program file, the installer and the README
+- Export to Excel… in the sheet's ⋯ menu: saves the sheet as an .xlsx workbook, marks as numbers, with a second tab listing each column's settings and a note when the final grades are provisional
+- Import from Excel… in the sheet's ⋯ menu: adds the pupils of an .xlsx, .xls or .ods file to the class and fills the marks under columns with the same titles, asking before it replaces any
 
 ### Changed
 
 - Line coverage raised to 98 % and the gate with it; the coverage script lists the few lines left uncovered on purpose, and a desktop test now runs the real exe with its Windows dialogs
 - The coverage gate checks branches (92 %) as well as lines, on the nightly toolchain; release.ps1 runs both, and the coverage script's -Branches mode, which never worked, now does
+- Tests strengthened after mutation testing (cargo-mutants, configured in `.cargo/mutants.toml`)
 
 ### Fixed
 

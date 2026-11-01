@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.812550
-//+ Revised: 	2026/10/29 04:09:18.141036
+//+ Revised: 	2026/10/29 14:13:27.867109
 // -----------------------------------------------------------------------------
 
 //! The database file. SQLite through SQLCipher: without a key it is a plain SQLite file;
@@ -92,6 +92,14 @@ pub fn verify(path: &Path, key: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// The schema version stored in a database file, read without changing it: 0 for a file that
+/// was never an avalio-lite database (an empty one, say), since every migration raises it.
+pub fn stored_version(path: &Path, key: Option<&str>) -> Result<usize> {
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    apply_key(&connection, key)?;
+    migrations::schema_version(&connection)
+}
+
 pub fn close(connection: Connection) -> Result<()> {
     connection.close().map_err(|(_, error)| AppError::Database(error))
 }
@@ -100,6 +108,14 @@ pub fn close(connection: Connection) -> Result<()> {
 pub fn remove_files(path: &Path) -> Result<()> {
     remove_if_present(path)?;
     remove_sidecars(path)
+}
+
+/// Deletes a copy left by a step that just failed, logging (not hiding) a failure to delete it:
+/// the caller is already returning the first error, and the copy may hold readable data.
+pub fn discard(path: &Path) {
+    if let Err(error) = remove_files(path) {
+        log::error!("could not remove {}: {error}", path.display());
+    }
 }
 
 /// Deletes only the WAL sidecar files (`-wal`, `-shm`) of a closed database.
@@ -151,9 +167,5 @@ pub fn key_statement(key: &str) -> Zeroizing<String> {
 }
 
 fn sidecar_paths(path: &Path) -> impl Iterator<Item = PathBuf> + '_ {
-    SIDECAR_SUFFIXES.iter().map(move |suffix| {
-        let mut name = path.as_os_str().to_owned();
-        name.push(suffix);
-        PathBuf::from(name)
-    })
+    SIDECAR_SUFFIXES.iter().map(move |suffix| storage::with_suffix(path, suffix))
 }

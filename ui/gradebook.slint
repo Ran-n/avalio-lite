@@ -49,6 +49,8 @@ export global Gradebook {
     in property <bool> weights-complete: true;
     in property <[string]> addable-pupils;
     in property <string> error-message;
+    // what the last sheet action did, such as where an export went; cleared by the next one
+    in property <string> status-message;
     // when false, column headers show only titles (no weight / scale tags)
     in property <bool> show-column-settings: true;
 
@@ -72,6 +74,10 @@ export global Gradebook {
     callback create-class(string);
     callback rename-class(string);
     callback delete-class();
+    // asks where, then saves the open sheet as an Excel workbook
+    callback export-sheet();
+    // asks for a workbook, then adds its pupils and fills in marks under matching column titles
+    callback import-sheet();
 
     callback add-column(ColumnType);
     callback rename-column(int, string);

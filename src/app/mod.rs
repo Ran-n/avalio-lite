@@ -1,9 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.224094
-//+ Revised: 	2026/10/29 04:09:17.948710
+//+ Revised: 	2026/10/29 14:13:27.249937
 // -----------------------------------------------------------------------------
 
+mod backup;
 mod callbacks;
 pub mod dialogs;
 mod gradebook;
@@ -114,6 +115,7 @@ pub fn open(
     language::apply(&window, preferences.language.unwrap_or(system_language));
     theme::apply_preference(&window, &preferences);
     callbacks::wire(&window, &state, &dialogs);
+    backup::wire(&window, &state, &dialogs);
     gradebook::wire(&window, &state, &dialogs);
     lock_screen::wire(&window, &state);
     shortcuts::wire(&window, &state);

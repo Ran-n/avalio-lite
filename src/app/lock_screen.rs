@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:42.253612
-//+ Revised: 	2026/10/29 04:09:17.881631
+//+ Revised: 	2026/10/29 14:13:23.194256
 // -----------------------------------------------------------------------------
 
 use std::cell::RefCell;
@@ -15,7 +15,7 @@ use crate::app::{SharedState, gradebook, view, with_window, with_window1};
 use crate::error::{AppError, Result};
 use crate::i18n::{self, Message};
 use crate::lock::AttemptLimiter;
-use crate::ui::{AppWindow, Gradebook};
+use crate::ui::{AppWindow, Backup, Gradebook};
 
 pub fn wire(window: &AppWindow, state: &SharedState) {
     wire_locking(window, state);
@@ -30,6 +30,8 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
 
 /// Shows the lock screen; the database is already closed (or was never opened).
 pub fn show_locked(window: &AppWindow) {
+    // a backup waiting for its PIN is dropped, so nothing of it stays open behind the lock
+    window.global::<Backup>().invoke_pin_cancelled();
     window.set_unlock_pin(SharedString::new());
     window.set_unlock_error(SharedString::new());
     clear_pin_fields(window);

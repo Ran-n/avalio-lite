@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.615582
-//+ Revised: 	2026/10/29 03:07:05.697080
+//+ Revised: 	2026/10/29 15:46:51.526924
 // -----------------------------------------------------------------------------
 
 use super::Language;
@@ -35,6 +35,7 @@ fn english(error: &AppError) -> String {
             "This database was made by a newer version of avalio-lite (schema {found}; this version reads up to {supported}). Update the app to open it."
         ),
         AppError::IntegrityCheckFailed(path) => format!("The database at {} is damaged.", path.display()),
+        AppError::NotADatabase(path) => format!("{} isn't an avalio-lite backup or database.", path.display()),
         AppError::NoDatabaseOpen => "No database is open.".to_owned(),
         AppError::EmptyName => "A name can't be empty.".to_owned(),
         AppError::DuplicateClassName(name) => format!("There's already a class called \"{name}\"."),
@@ -72,6 +73,14 @@ fn english(error: &AppError) -> String {
             display(Language::English, keys),
             action_label(Language::English, *taken_by)
         ),
+        AppError::SpreadsheetWrite { path, reason } => format!("Couldn't save {}: {reason}", path.display()),
+        AppError::SpreadsheetRead { path, reason } => format!("Couldn't read {}: {reason}", path.display()),
+        AppError::NoPupilsInFile(path) => {
+            format!("{} has no pupils: names go in column A, from row 2.", path.display())
+        }
+        AppError::DuplicatePupilInFile(name) => {
+            format!("The file has \"{name}\" twice; each pupil can only be in it once.")
+        }
     }
 }
 
@@ -97,6 +106,9 @@ fn galician(error: &AppError) -> String {
             "Esta base de datos creouse cunha versión máis nova de avalio-lite (esquema {found}; esta versión le ata o {supported}). Actualiza a aplicación para abrila."
         ),
         AppError::IntegrityCheckFailed(path) => format!("A base de datos de {} está danada.", path.display()),
+        AppError::NotADatabase(path) => {
+            format!("{} non é unha copia nin unha base de datos de avalio-lite.", path.display())
+        }
         AppError::NoDatabaseOpen => "Non hai ningunha base de datos aberta.".to_owned(),
         AppError::EmptyName => "O nome non pode quedar baleiro.".to_owned(),
         AppError::DuplicateClassName(name) => format!("Xa hai unha clase chamada «{name}»."),
@@ -135,5 +147,13 @@ fn galician(error: &AppError) -> String {
             display(Language::Galician, keys),
             action_label(Language::Galician, *taken_by)
         ),
+        AppError::SpreadsheetWrite { path, reason } => format!("Non se puido gardar {}: {reason}", path.display()),
+        AppError::SpreadsheetRead { path, reason } => format!("Non se puido ler {}: {reason}", path.display()),
+        AppError::NoPupilsInFile(path) => {
+            format!("{} non ten alumnos: os nomes van na columna A, desde a fila 2.", path.display())
+        }
+        AppError::DuplicatePupilInFile(name) => {
+            format!("O ficheiro ten «{name}» dúas veces; cada alumno só pode estar nel unha vez.")
+        }
     }
 }

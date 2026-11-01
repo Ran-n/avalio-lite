@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.393948
-//+ Revised: 	2026/10/29 00:10:41.102685
+//+ Revised: 	2026/10/29 14:12:11.637694
 // -----------------------------------------------------------------------------
 
 use std::rc::Rc;
@@ -12,8 +12,8 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use super::panel;
 use crate::error::Result;
 use crate::gradebook::compute::{
-    Tone, bonus_weight_total, depends_on_weights, evaluate_row, format_number, grade_summary, round_to, weight_total,
-    weights_add_up,
+    Tone, bonus_weight_total, depends_on_weights, evaluate_row, format_number, grade_summary, grades_are_provisional,
+    round_to, weight_total, weights_add_up,
 };
 use crate::gradebook::model::{ClassSummary, Column, ColumnKind, ColumnType, Sheet, SheetRow};
 use crate::gradebook::{classes, columns, pupils, sheet};
@@ -188,13 +188,11 @@ fn show_summary(window: &AppWindow, loaded: &Sheet) {
     }
 }
 
-/// The weights only matter once there is a final grade to compute, so the warning waits for one.
 fn show_weight_total(window: &AppWindow, columns: &[Column]) {
-    let has_final_grade = columns.iter().any(|column| column.kind.column_type() == ColumnType::Weighted);
     let gradebook = window.global::<Gradebook>();
     gradebook.set_weight_total(number(weight_total(columns)).into());
     gradebook.set_bonus_total(number(bonus_weight_total(columns)).into());
-    gradebook.set_weights_complete(!has_final_grade || weights_add_up(columns));
+    gradebook.set_weights_complete(!grades_are_provisional(columns));
 }
 
 /// Columns a rounded column may round, in sheet order; the round-source picker's indexes refer to this.

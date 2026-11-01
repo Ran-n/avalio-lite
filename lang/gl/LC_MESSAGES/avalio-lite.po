@@ -24,8 +24,8 @@ msgstr "Axustes"
 msgid "Database"
 msgstr "Base de datos"
 
-msgid "Every class, pupil and mark is in this file. Copy it while the app is closed to make a backup."
-msgstr "Todas as clases, alumnos e notas están neste ficheiro. Cópiao coa aplicación pechada para facer unha copia de seguridade."
+msgid "Every class, pupil and mark is in this file."
+msgstr "Cada clase, alumno e nota está neste ficheiro."
 
 msgid "Move…"
 msgstr "Mover…"
@@ -100,6 +100,12 @@ msgstr "Ocultar pesos e escalas"
 
 msgid "Show weights & scales"
 msgstr "Amosar pesos e escalas"
+
+msgid "Export to Excel…"
+msgstr "Exportar a Excel…"
+
+msgid "Import from Excel…"
+msgstr "Importar de Excel…"
 
 msgid "Delete class"
 msgstr "Eliminar clase"
@@ -342,3 +348,27 @@ msgstr "Restablecer todo"
 
 msgid "Press the new keys…"
 msgstr "Preme as novas teclas…"
+
+msgid "Backup"
+msgstr "Copia de seguranza"
+
+msgid "Save everything (every class, pupil, column and mark) in one .avalio file, to keep it safe or take it to another computer. With a PIN, the file is encrypted with it."
+msgstr "Garda todo (cada clase, alumno, columna e nota) nun ficheiro .avalio, para telo a salvo ou levalo a outro ordenador. Cun PIN, o ficheiro cífrase con el."
+
+msgid "Export everything…"
+msgstr "Exportar todo…"
+
+msgid "Restore from a backup…"
+msgstr "Restaurar unha copia…"
+
+msgid "This backup is encrypted. Type the PIN it was made with."
+msgstr "Esta copia está cifrada. Escribe o PIN co que se fixo."
+
+msgid "Backup PIN"
+msgstr "PIN da copia"
+
+msgid "Continue"
+msgstr "Continuar"
+
+msgid "Add classes from a backup…"
+msgstr "Engadir clases dunha copia…"

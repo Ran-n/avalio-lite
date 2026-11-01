@@ -1,23 +1,64 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.081050
-//+ Revised: 	2026/10/28 15:53:08.459048
+//+ Revised: 	2026/10/29 15:46:51.262505
 // -----------------------------------------------------------------------------
 
 use std::path::{Path, PathBuf};
 
-use crate::i18n::{self, Message};
+use crate::backup;
+use crate::i18n::{self, Language, Message};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 
-const DATABASE_EXTENSIONS: &[&str] = &["db"];
+/// The kinds of file the app opens and saves, each with its own filter in the file dialogs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileKind {
+    Database,
+    Spreadsheet,
+    Backup,
+}
+
+impl FileKind {
+    /// What the open dialog shows: a spreadsheet may come from any program calamine reads, and a
+    /// backup can also be a plain database file (a copied `avalio-lite.db`): it is the same format.
+    pub fn open_extensions(self) -> &'static [&'static str] {
+        match self {
+            Self::Spreadsheet => &["xlsx", "xls", "ods"],
+            Self::Database => self.save_extensions(),
+            Self::Backup => &[backup::EXTENSION, "db"],
+        }
+    }
+
+    /// What the save dialog offers, the first being what the app writes.
+    pub fn save_extensions(self) -> &'static [&'static str] {
+        match self {
+            Self::Database => &["db"],
+            Self::Spreadsheet => &["xlsx"],
+            Self::Backup => &[backup::EXTENSION],
+        }
+    }
+
+    /// The filter's name in the file dialogs, such as "Excel workbook".
+    pub fn filter_name(self, language: Language) -> String {
+        let message = match self {
+            Self::Database => Message::DatabaseFileType,
+            Self::Spreadsheet => Message::SpreadsheetFileType,
+            Self::Backup => Message::BackupFileType,
+        };
+        i18n::text(language, &message)
+    }
+}
 
 /// The questions the app asks through the operating system. Behind a trait so tests can answer
 /// them without a native dialog opening.
 pub trait Dialogs {
     /// Folder picker, opened at `start` when it exists. `None` means the user cancelled.
     fn pick_folder(&self, start: &Path) -> Option<PathBuf>;
-    /// Picker for a database file. `None` means the user cancelled.
-    fn pick_database_file(&self) -> Option<PathBuf>;
+    /// Open dialog for a file of `kind`. `None` means the user cancelled.
+    fn pick_file(&self, kind: FileKind) -> Option<PathBuf>;
+    /// Save dialog for a file of `kind`, opened at `start` when it exists and proposing
+    /// `file_name`. Windows itself asks before replacing a file. `None` means the user cancelled.
+    fn save_file(&self, kind: FileKind, start: &Path, file_name: &str) -> Option<PathBuf>;
     /// Yes/No question before anything that deletes data.
     fn confirm(&self, question: &str) -> bool;
     /// Last-resort error shown when the main window can't be used to report it.
@@ -29,15 +70,15 @@ pub struct NativeDialogs;
 
 impl Dialogs for NativeDialogs {
     fn pick_folder(&self, start: &Path) -> Option<PathBuf> {
-        let dialog = FileDialog::new();
-        let dialog = if start.is_dir() { dialog.set_directory(start) } else { dialog };
-        dialog.pick_folder()
+        opened_at(FileDialog::new(), start).pick_folder()
     }
 
-    fn pick_database_file(&self) -> Option<PathBuf> {
-        FileDialog::new()
-            .add_filter(i18n::text(i18n::current(), &Message::DatabaseFileType), DATABASE_EXTENSIONS)
-            .pick_file()
+    fn pick_file(&self, kind: FileKind) -> Option<PathBuf> {
+        filtered(kind, kind.open_extensions()).pick_file()
+    }
+
+    fn save_file(&self, kind: FileKind, start: &Path, file_name: &str) -> Option<PathBuf> {
+        opened_at(filtered(kind, kind.save_extensions()), start).set_file_name(file_name).save_file()
     }
 
     fn confirm(&self, question: &str) -> bool {
@@ -58,4 +99,14 @@ impl Dialogs for NativeDialogs {
             .set_buttons(MessageButtons::Ok)
             .show();
     }
+}
+
+/// A file dialog showing only files of `kind` with one of `extensions`.
+fn filtered(kind: FileKind, extensions: &[&str]) -> FileDialog {
+    FileDialog::new().add_filter(kind.filter_name(i18n::current()), extensions)
+}
+
+/// Starts the dialog in `start`, unless that folder is gone (Windows then picks the folder).
+fn opened_at(dialog: FileDialog, start: &Path) -> FileDialog {
+    if start.is_dir() { dialog.set_directory(start) } else { dialog }
 }

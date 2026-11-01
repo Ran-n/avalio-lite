@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/10/29 03:07:05.945136
+//+ Revised: 	2026/10/29 15:46:52.103594
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -11,7 +11,10 @@ use std::path::PathBuf;
 use avalio_lite::error::{AppError, Folder, NumberField};
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::i18n::shortcuts::{action_label, display, key_names};
-use avalio_lite::i18n::{LANGUAGES, Language, Message, default_column_title, error_message, localize_number, text};
+use avalio_lite::i18n::{
+    LANGUAGES, Language, Message, column_type_name, current, default_column_title, error_message, export_labels,
+    localize_number, set_current, text,
+};
 use avalio_lite::shortcuts::{Action, KeyCombo, ProblemKind, ShortcutError, ShortcutProblem};
 
 /// English language is the source text in the .slint files; every other language needs a .po file.
@@ -109,9 +112,33 @@ fn placeholders_survive_translation() {
 fn language_codes_round_trip() {
     for language in LANGUAGES {
         assert_eq!(Language::from_code(language.code()), Some(language));
-        assert!(!language.native_name().is_empty());
     }
     assert_eq!(Language::from_code("fr"), None);
+}
+
+/// Kills the mutant that makes `native_name` return a made-up name.
+#[test]
+fn each_language_is_named_in_itself() {
+    assert_eq!(Language::English.native_name(), "English");
+    assert_eq!(Language::Galician.native_name(), "Galego");
+}
+
+/// The only test in this binary that touches the process-wide language, so none races it. Kills
+/// the mutants of `current`, `set_current` and `index` (a fixed index, a default language, == as !=).
+#[test]
+fn the_current_language_is_the_last_one_set() {
+    for language in [Language::Galician, Language::English, Language::Galician] {
+        set_current(language);
+        assert_eq!(current(), language);
+    }
+    set_current(Language::default());
+}
+
+/// Kills the mutant that makes `from_system` return the default language, wherever Windows isn't
+/// set to English.
+#[test]
+fn the_system_language_follows_the_windows_locale() {
+    assert_eq!(Language::from_system(), Language::from_locale(sys_locale::get_locale().as_deref()));
 }
 
 #[test]
@@ -133,6 +160,7 @@ fn galician_numbers_use_a_decimal_comma() {
 /// One of each message. The match below has no wildcard, so a new variant won't compile until
 /// it is added here too, and then this test checks its translation.
 fn every_message() -> Vec<Message<'static>> {
+    let renamed: &'static [(String, String)] = Box::leak(Box::new([("1A".to_owned(), "1A (2)".to_owned())]));
     let all = vec![
         Message::ConfirmDeleteClass { class: "1A" },
         Message::ConfirmRemovePupil { pupil: "Ana", class: "1A" },
@@ -140,6 +168,15 @@ fn every_message() -> Vec<Message<'static>> {
         Message::DatabaseMoved { path: "D:\\x" },
         Message::LogsMoved { path: "D:\\y" },
         Message::DatabaseFileType,
+        Message::BackupFileType,
+        Message::BackupExported { path: "D:\\x" },
+        Message::ConfirmRestore { file: "Exam", classes: 4, pupils: 1 },
+        Message::BackupRestored { file: "Exam" },
+        Message::BackupClassesAdded { classes: 3, pupils: 1, existing: 2, file: "Exam" },
+        Message::BackupClassesAdded { classes: 1, pupils: 2, existing: 1, file: "Exam" },
+        Message::BackupClassesAdded { classes: 2, pupils: 2, existing: 0, file: "Exam" },
+        Message::BackupClassesRenamed { pairs: renamed },
+        Message::BackupHasNoClasses,
         Message::WindowFailed { reason: "boom" },
         Message::LockNeedsPin,
         Message::PinTurnedOn,
@@ -147,6 +184,14 @@ fn every_message() -> Vec<Message<'static>> {
         Message::PinTurnedOff,
         Message::ShortcutChanged { action: "Exam", keys: "boom" },
         Message::ShortcutsReset,
+        Message::SheetExported { class: "1A", path: "D:\\x" },
+        Message::SpreadsheetFileType,
+        Message::ExportWeightsWarning { total: "boom" },
+        Message::ConfirmImportOverwrite { count: 2, class: "1A" },
+        Message::ImportDone { pupils: 2, new_pupils: 1, marks: 3, class: "1A" },
+        Message::ImportLeftOut { headers: "Phone", count: 1 },
+        Message::ImportErrorCells { count: 2 },
+        Message::UntitledColumn { letter: "D" },
     ];
     for message in &all {
         match message {
@@ -156,13 +201,28 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::DatabaseMoved { .. }
             | Message::LogsMoved { .. }
             | Message::DatabaseFileType
+            | Message::BackupFileType
+            | Message::BackupExported { .. }
+            | Message::ConfirmRestore { .. }
+            | Message::BackupRestored { .. }
+            | Message::BackupClassesAdded { .. }
+            | Message::BackupClassesRenamed { .. }
+            | Message::BackupHasNoClasses
             | Message::WindowFailed { .. }
             | Message::LockNeedsPin
             | Message::PinTurnedOn
             | Message::PinChanged
             | Message::PinTurnedOff
             | Message::ShortcutChanged { .. }
-            | Message::ShortcutsReset => {}
+            | Message::ShortcutsReset
+            | Message::SheetExported { .. }
+            | Message::SpreadsheetFileType
+            | Message::ExportWeightsWarning { .. }
+            | Message::ConfirmImportOverwrite { .. }
+            | Message::ImportDone { .. }
+            | Message::ImportLeftOut { .. }
+            | Message::ImportErrorCells { .. }
+            | Message::UntitledColumn { .. } => {}
         }
     }
     all
@@ -183,6 +243,7 @@ fn every_error() -> Vec<AppError> {
         AppError::AlreadyExists("D:\\x".into()),
         AppError::NewerSchema { found: 3, supported: 1 },
         AppError::IntegrityCheckFailed("D:\\x".into()),
+        AppError::NotADatabase("D:\\x".into()),
         AppError::NoDatabaseOpen,
         AppError::EmptyName,
         AppError::DuplicateClassName("1A".into()),
@@ -204,6 +265,10 @@ fn every_error() -> Vec<AppError> {
         AppError::Shortcut(ShortcutError::CtrlAlt),
         AppError::Shortcut(ShortcutError::EditingKey('C')),
         AppError::Shortcut(ShortcutError::Clash { keys: "Ctrl+H".parse().unwrap(), taken_by: Action::Lock }),
+        AppError::SpreadsheetWrite { path: "D:\\x".into(), reason: "denied".into() },
+        AppError::SpreadsheetRead { path: "D:\\x".into(), reason: "not a workbook".into() },
+        AppError::NoPupilsInFile("D:\\x".into()),
+        AppError::DuplicatePupilInFile("Ana".into()),
     ];
     for error in &all {
         match error {
@@ -217,6 +282,7 @@ fn every_error() -> Vec<AppError> {
             | AppError::AlreadyExists(_)
             | AppError::NewerSchema { .. }
             | AppError::IntegrityCheckFailed(_)
+            | AppError::NotADatabase(_)
             | AppError::NoDatabaseOpen
             | AppError::EmptyName
             | AppError::DuplicateClassName(_)
@@ -228,7 +294,11 @@ fn every_error() -> Vec<AppError> {
             | AppError::WrongPin
             | AppError::PinWait { .. }
             | AppError::InvalidShortcuts(_)
-            | AppError::Shortcut(_) => {}
+            | AppError::Shortcut(_)
+            | AppError::SpreadsheetWrite { .. }
+            | AppError::SpreadsheetRead { .. }
+            | AppError::NoPupilsInFile(_)
+            | AppError::DuplicatePupilInFile(_) => {}
         }
     }
     all
@@ -269,6 +339,70 @@ fn default_column_titles_exist_in_every_language() {
             assert!(!default_column_title(language, column_type, 1).is_empty());
         }
         assert!(default_column_title(language, ColumnType::Test, 3).ends_with('3'));
+    }
+}
+
+/// One of a thing is singular, and so is its verb in Galician; none or several are plural.
+#[test]
+fn import_messages_count_in_every_language() {
+    let english = |message: &Message| text(Language::English, message);
+    let galician = |message: &Message| text(Language::Galician, message);
+    let done = |pupils, new_pupils, marks| Message::ImportDone { pupils, new_pupils, marks, class: "1A" };
+    assert_eq!(english(&done(1, 0, 1)), "Imported 1 pupil and 1 mark or note into 1A.");
+    assert_eq!(english(&done(3, 2, 0)), "Imported 3 pupils (2 new) and 0 marks or notes into 1A.");
+    assert_eq!(galician(&done(1, 1, 1)), "Importáronse 1 alumno (1 novo) e 1 nota ou observación en 1A.");
+    assert_eq!(galician(&done(3, 2, 0)), "Importáronse 3 alumnos (2 novos) e 0 notas ou observacións en 1A.");
+    assert_eq!(galician(&done(2, 0, 2)), "Importáronse 2 alumnos e 2 notas ou observacións en 1A.");
+    let overwrite = |count| Message::ConfirmImportOverwrite { count, class: "1A" };
+    assert_eq!(english(&overwrite(1)), "Importing replaces 1 mark or note already in 1A. Continue?");
+    assert_eq!(galician(&overwrite(1)), "Ao importar substitúese 1 nota ou observación que xa hai en 1A. Continuar?");
+    assert_eq!(
+        galician(&overwrite(12)),
+        "Ao importar substitúense 12 notas ou observacións que xa hai en 1A. Continuar?"
+    );
+    let left_out = |headers, count| Message::ImportLeftOut { headers, count };
+    assert_eq!(galician(&left_out("Teléfono", 1)), "Quedou fóra: Teléfono.");
+    assert_eq!(
+        galician(&left_out("Teléfono, columna D (sen título)", 2)),
+        "Quedaron fóra: Teléfono, columna D (sen título)."
+    );
+    assert_eq!(english(&left_out("Phone, column D (no title)", 2)), "Left out: Phone, column D (no title).");
+    let errors = |count| Message::ImportErrorCells { count };
+    assert_eq!(english(&errors(1)), "1 cell with an Excel error was skipped.");
+    assert_eq!(english(&errors(2)), "2 cells with Excel errors were skipped.");
+    assert_eq!(galician(&errors(1)), "Saltouse 1 cela cun erro de Excel.");
+    assert_eq!(galician(&errors(2)), "Saltáronse 2 celas con erros de Excel.");
+}
+
+/// The file dialogs filter by kind: a spreadsheet opens from any program, but is saved as .xlsx.
+#[test]
+fn file_kinds_have_extensions_and_translated_filters() {
+    use avalio_lite::app::dialogs::FileKind;
+    assert_eq!(FileKind::Spreadsheet.open_extensions(), ["xlsx", "xls", "ods"]);
+    assert_eq!(FileKind::Spreadsheet.save_extensions(), ["xlsx"]);
+    assert_eq!(FileKind::Database.open_extensions(), ["db"]);
+    assert_eq!(FileKind::Backup.save_extensions(), ["avalio"]);
+    for kind in [FileKind::Database, FileKind::Spreadsheet, FileKind::Backup] {
+        let (english, galician) = (kind.filter_name(Language::English), kind.filter_name(Language::Galician));
+        assert!(!english.is_empty() && english != galician, "{kind:?}: {english} / {galician}");
+    }
+    assert_eq!(FileKind::Spreadsheet.filter_name(Language::Galician), "Libro de Excel");
+}
+
+#[test]
+fn export_words_are_translated() {
+    let (english, galician) = (export_labels(Language::English), export_labels(Language::Galician));
+    assert_ne!(english.pupil, galician.pupil);
+    assert_ne!(english.sheet, galician.sheet);
+    assert_ne!(english.columns_tab, galician.columns_tab);
+    assert_ne!(english.yes, galician.yes);
+    for (english, galician) in english.column_headers.iter().zip(galician.column_headers) {
+        assert_ne!(*english, galician);
+    }
+    for column_type in
+        [ColumnType::Info, ColumnType::Test, ColumnType::Weighted, ColumnType::Average, ColumnType::Round]
+    {
+        assert_ne!(column_type_name(Language::English, column_type), column_type_name(Language::Galician, column_type));
     }
 }
 

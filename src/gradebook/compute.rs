@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.047841
-//+ Revised: 	2026/10/28 10:52:44.853266
+//+ Revised: 	2026/10/29 14:12:13.172426
 // -----------------------------------------------------------------------------
 
 use super::model::{Column, ColumnKind};
@@ -73,6 +73,12 @@ const WEIGHT_TOLERANCE: f64 = 1e-6;
 /// Bonus tests are left out: they are meant to take the total past 100 %.
 pub fn weights_add_up(columns: &[Column]) -> bool {
     (weight_total(columns) - FULL_WEIGHT).abs() < WEIGHT_TOLERANCE
+}
+
+/// Whether the sheet warns that its final grades are provisional: the weights only matter once
+/// there is a final grade to compute, so the warning waits for one.
+pub fn grades_are_provisional(columns: &[Column]) -> bool {
+    columns.iter().any(|column| matches!(column.kind, ColumnKind::Weighted { .. })) && !weights_add_up(columns)
 }
 
 /// Final grades and roundings of them are only trustworthy once the test weights add up to 100 %.

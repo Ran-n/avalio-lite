@@ -1,18 +1,21 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:44.148390
-//+ Revised: 	2026/10/29 00:10:41.232064
+//+ Revised: 	2026/10/29 14:13:27.568156
 // -----------------------------------------------------------------------------
 
 //! Locking, unlocking and changing the PIN that encrypts the open database.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+use rusqlite::Connection;
 
 use super::AppState;
 use crate::db;
 use crate::error::{AppError, Result, io_at};
 use crate::lock::{Pin, pins_match, validate_new_pin};
+use crate::storage::with_suffix;
 
 const REKEY_SUFFIX: &str = ".rekey";
 const BACKUP_SUFFIX: &str = ".previous";
@@ -85,23 +88,30 @@ impl AppState {
         }
     }
 
-    /// Writes a copy with the new key next to the database, checks it opens, then swaps it in.
-    /// The original is renamed aside until the new file is in place, so a failure at any step
-    /// leaves one complete, openable database at the usual path.
     fn rekey(&mut self, new_key: Option<&str>) -> Result<()> {
+        self.replace_with(None, new_key)
+    }
+
+    /// Writes the contents of `source` (the open database itself when `None`), encrypted with
+    /// `new_key`, next to the database, checks the copy opens, then swaps it in. Changing the PIN
+    /// and restoring a backup both go through here. The original is renamed aside until the new
+    /// file is in place, so a failure at any step leaves one complete, openable database at the
+    /// usual path.
+    pub(super) fn replace_with(&mut self, source: Option<&Connection>, new_key: Option<&str>) -> Result<()> {
         let path = self.config.as_ref().ok_or(AppError::NoDatabaseOpen)?.database_path.clone();
-        let connection = self.connection.as_ref().ok_or(AppError::NoDatabaseOpen)?;
+        let own = self.connection.as_ref().ok_or(AppError::NoDatabaseOpen)?;
+        let source = source.unwrap_or(own);
         let fresh = with_suffix(&path, REKEY_SUFFIX);
         db::remove_files(&fresh)?;
-        let prepared = db::export(connection, &fresh, new_key).and_then(|()| db::verify(&fresh, new_key));
+        let prepared = db::export(source, &fresh, new_key).and_then(|()| db::verify(&fresh, new_key));
         if let Err(error) = prepared {
-            discard(&fresh);
+            db::discard(&fresh);
             return Err(error);
         }
         let old_key = self.key.clone();
         self.close_connection();
         if let Err(error) = swap_in(&path, &fresh) {
-            discard(&fresh);
+            db::discard(&fresh);
             self.reopen(&path, old_key.as_ref().map(Pin::as_str));
             return Err(error);
         }
@@ -115,7 +125,7 @@ impl AppState {
         leftover
     }
 
-    /// Opens `path` with `key` after a re-key, logging (not hiding) a failure: the caller then
+    /// Opens `path` with `key` after a re-key or restore, logging (not hiding) a failure: the caller then
     /// reports `NoDatabaseOpen` and the lock screen asks for the PIN again. Never creates the
     /// file: if it is gone, an empty database in its place would hide where the data went.
     fn reopen(&mut self, path: &Path, key: Option<&str>) {
@@ -124,7 +134,7 @@ impl AppState {
                 self.connection = Some(connection);
                 self.key = key.map(Pin::new);
             }
-            Err(error) => log::error!("could not reopen {} after changing the PIN: {error}", path.display()),
+            Err(error) => log::error!("could not reopen {} after replacing it: {error}", path.display()),
         }
     }
 }
@@ -142,16 +152,4 @@ fn swap_in(path: &Path, fresh: &Path) -> Result<()> {
         return Err(error);
     }
     Ok(())
-}
-
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name = path.as_os_str().to_owned();
-    name.push(suffix);
-    PathBuf::from(name)
-}
-
-fn discard(path: &Path) {
-    if let Err(error) = db::remove_files(path) {
-        log::error!("could not remove {}: {error}", path.display());
-    }
 }

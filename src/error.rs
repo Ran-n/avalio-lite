@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.190729
-//+ Revised: 	2026/10/29 03:07:05.635971
+//+ Revised: 	2026/10/29 15:46:51.392505
 // -----------------------------------------------------------------------------
 
 use std::io;
@@ -62,6 +62,9 @@ pub enum AppError {
     #[error("the database at {0} failed its integrity check")]
     IntegrityCheckFailed(PathBuf),
 
+    #[error("{0} is not an avalio-lite backup or database")]
+    NotADatabase(PathBuf),
+
     #[error("no database is open")]
     NoDatabaseOpen,
 
@@ -97,6 +100,18 @@ pub enum AppError {
 
     #[error("that shortcut can't be used: {0}")]
     Shortcut(ShortcutError),
+
+    #[error("could not write {path}: {reason}")]
+    SpreadsheetWrite { path: PathBuf, reason: String },
+
+    #[error("could not read {path}: {reason}")]
+    SpreadsheetRead { path: PathBuf, reason: String },
+
+    #[error("{0} has no pupils in column A from row 2")]
+    NoPupilsInFile(PathBuf),
+
+    #[error("the file has \"{0}\" more than once")]
+    DuplicatePupilInFile(String),
 }
 
 fn list(problems: &[ShortcutProblem]) -> String {
