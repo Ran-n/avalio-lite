@@ -57,7 +57,18 @@ component PinCard inherits Card {
         alignment: start;
         if root.pin-set: PinField { label: @tr("Current PIN"); value <=> root.current; }
         PinField { label: root.pin-set ? @tr("New PIN") : @tr("PIN"); value <=> root.new-pin; }
-        PinField { label: @tr("Repeat PIN"); value <=> root.repeat; }
+        // Enter does what the card's main button does
+        PinField {
+            label: @tr("Repeat PIN");
+            value <=> root.repeat;
+            accepted => {
+                if (root.pin-set) {
+                    root.change-pin();
+                } else {
+                    root.set-pin();
+                }
+            }
+        }
     }
     HorizontalLayout {
         spacing: 8px;

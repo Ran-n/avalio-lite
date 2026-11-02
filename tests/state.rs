@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/10/29 04:09:18.851306
+//+ Revised: 	2026/11/02 14:00:09.691995
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -419,4 +419,161 @@ fn a_database_move_that_fails_midway_leaves_no_copy_and_keeps_the_original() {
     assert!(!destination.join(DATABASE_FILE_NAME).exists(), "the copy is removed");
     assert!(fixture.database().is_file());
     assert_eq!(pupil_count(&state), 1, "the original stays open and intact");
+}
+
+fn keeps_working_as_before(state: &AppState, fixture: &Fixture) {
+    assert_eq!(state.config().unwrap().database_path, fixture.database(), "the choice was not taken");
+    assert_eq!(fixture.store().load().unwrap().unwrap().database_path, fixture.database(), "nothing was saved");
+    assert!(state.connection().is_some(), "the current database stays open");
+    assert!(!state.is_locked());
+}
+
+#[test]
+fn regression_an_empty_file_is_not_initialised_as_a_database_when_chosen() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let stray = fixture.path("stray.db");
+    fs::write(&stray, b"").unwrap();
+    let result = state.open_existing(&stray, &fixture.path("logs"));
+    assert!(matches!(result, Err(AppError::NotADatabase(path)) if path == stray));
+    assert_eq!(fs::metadata(&stray).unwrap().len(), 0, "the file was not touched");
+    keeps_working_as_before(&state, &fixture);
+}
+
+#[test]
+fn regression_a_stray_file_does_not_make_the_app_ask_for_a_pin() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let stray = fixture.path("stray.db");
+    // looks encrypted, but is not whole pages
+    fs::write(&stray, vec![7u8; 700]).unwrap();
+    assert!(matches!(state.open_existing(&stray, &fixture.path("logs")), Err(AppError::NotADatabase(_))));
+    keeps_working_as_before(&state, &fixture);
+    fs::write(&stray, b"tiny").unwrap();
+    assert!(matches!(state.open_existing(&stray, &fixture.path("logs")), Err(AppError::NotADatabase(_))));
+    keeps_working_as_before(&state, &fixture);
+}
+
+#[test]
+fn a_sqlite_file_that_is_not_avalio_lite_is_refused_untouched() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let foreign = fixture.path("foreign.db");
+    let connection = rusqlite::Connection::open(&foreign).unwrap();
+    connection.execute("CREATE TABLE notes (text)", []).unwrap();
+    connection.close().unwrap();
+    let before = fs::read(&foreign).unwrap();
+    assert!(matches!(state.open_existing(&foreign, &fixture.path("logs")), Err(AppError::NotADatabase(_))));
+    assert_eq!(fs::read(&foreign).unwrap(), before, "no migration ran on it");
+    keeps_working_as_before(&state, &fixture);
+}
+
+#[test]
+fn a_whole_page_file_that_looks_encrypted_is_chosen_locked() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let locked = fixture.path("locked.db");
+    fs::write(&locked, vec![0xA5u8; 4096]).unwrap();
+    assert_eq!(state.open_existing(&locked, &fixture.path("logs")).unwrap(), avalio_lite::app::state::Opened::Locked);
+    assert!(state.is_locked());
+}
+
+#[test]
+fn regression_start_does_not_initialise_an_empty_or_foreign_database_file() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let path = state.config().unwrap().database_path.clone();
+    state.shutdown();
+    avalio_lite::db::remove_files(&path).unwrap();
+    for contents in [&b""[..], b"short", b"SQLite format 3\0 but then garbage garbage"] {
+        fs::write(&path, contents).unwrap();
+        let startup = fixture.state().start();
+        assert!(matches!(startup, Startup::NeedsSetup(SetupReason::DatabaseUnusable(_))), "{contents:?}");
+        assert_eq!(fs::read(&path).unwrap(), contents, "the file was left as it was");
+    }
+}
+
+#[test]
+fn regression_a_failed_settings_save_does_not_leave_the_log_moved_away_from_the_settings() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    // a directory where the temporary settings file goes makes saving fail
+    fs::create_dir(fixture.path("config").join("config.toml.tmp")).unwrap();
+    let result = state.move_logs(&fixture.path("new-logs"));
+    assert!(matches!(result, Err(AppError::Io { .. })));
+    assert_eq!(state.config().unwrap().log_dir, fixture.path("logs"));
+    assert_eq!(fixture.store().load().unwrap().unwrap().log_dir, fixture.path("logs"));
+    assert!(fixture.path("logs").join(LOG_FILE_NAME).is_file(), "the log is back where the settings say");
+    assert!(!fixture.path("new-logs").join(LOG_FILE_NAME).exists());
+}
+
+#[test]
+fn moving_the_logs_takes_the_old_rotated_log_along() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let old = avalio_lite::logging::rotated_path(&fixture.path("logs"));
+    fs::write(&old, b"history").unwrap();
+    state.move_logs(&fixture.path("new-logs")).unwrap();
+    assert!(!old.exists());
+    assert_eq!(fs::read(avalio_lite::logging::rotated_path(&fixture.path("new-logs"))).unwrap(), b"history");
+}
+
+#[test]
+fn an_old_log_that_cannot_be_taken_along_stays_behind() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let old = avalio_lite::logging::rotated_path(&fixture.path("logs"));
+    fs::write(&old, b"history").unwrap();
+    // something already has the old log's name in the new folder
+    let taken = avalio_lite::logging::rotated_path(&fixture.path("new-logs"));
+    fs::create_dir_all(&taken).unwrap();
+    state.move_logs(&fixture.path("new-logs")).unwrap();
+    assert_eq!(fs::read(&old).unwrap(), b"history", "the history stays where it was");
+    assert_eq!(state.config().unwrap().log_dir, fixture.path("new-logs"), "the move itself went through");
+}
+
+#[test]
+fn a_database_from_a_newer_version_needs_setup_at_startup() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let connection = rusqlite::Connection::open(fixture.database()).unwrap();
+    connection.pragma_update(None, "user_version", 999).unwrap();
+    drop(connection);
+    let mut state = fixture.state();
+    let startup = state.start();
+    assert!(
+        matches!(&startup, Startup::NeedsSetup(SetupReason::DatabaseUnusable(text)) if text.contains("newer version")),
+        "{startup:?}"
+    );
+}
+
+#[test]
+fn a_database_another_program_is_writing_to_is_reported_and_not_opened() {
+    let fixture = Fixture::new();
+    let other_place = fixture.path("other").join(DATABASE_FILE_NAME);
+    avalio_lite::db::close(avalio_lite::db::open(&other_place, None).unwrap()).unwrap();
+    let mut state = fixture.set_up();
+    let writer = rusqlite::Connection::open(&other_place).unwrap();
+    writer.execute_batch("PRAGMA journal_mode = DELETE; PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE;").unwrap();
+    let result = state.open_existing(&other_place, &fixture.path("logs"));
+    assert!(matches!(result, Err(AppError::Database(_))), "{result:?}");
+    assert_eq!(state.config().unwrap().database_path, fixture.database(), "still on the database it had");
+    writer.execute_batch("ROLLBACK").unwrap();
+}
+
+#[test]
+fn regression_a_large_log_moved_with_its_old_log_strands_nothing() {
+    // the moved log, past the size limit after a long session, was set aside as `.1` on reopening
+    // before the old `.1` was taken along, which then found its name taken and stayed behind
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let logs = fixture.path("logs");
+    fs::write(avalio_lite::logging::rotated_path(&logs), b"history").unwrap();
+    let mut log = fs::OpenOptions::new().append(true).open(logs.join(LOG_FILE_NAME)).unwrap();
+    let limit = usize::try_from(avalio_lite::logging::MAX_LOG_BYTES).unwrap();
+    std::io::Write::write_all(&mut log, &vec![b'x'; limit + 1]).unwrap();
+    drop(log);
+    state.move_logs(&fixture.path("new-logs")).unwrap();
+    assert!(!avalio_lite::logging::rotated_path(&logs).exists(), "nothing is left in the old folder");
+    assert!(avalio_lite::logging::rotated_path(&fixture.path("new-logs")).is_file());
 }

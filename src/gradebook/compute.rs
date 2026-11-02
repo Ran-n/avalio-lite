@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.047841
-//+ Revised: 	2026/10/29 14:12:13.172426
+//+ Revised: 	2026/11/02 08:27:50.062096
 // -----------------------------------------------------------------------------
 
 use super::model::{Column, ColumnKind};
@@ -9,7 +9,7 @@ use super::model::{Column, ColumnKind};
 pub const FULL_WEIGHT: f64 = 100.0;
 /// A mark passes at half of its scale (5 out of 10).
 pub const PASS_FRACTION: f64 = 0.5;
-const DISPLAY_DECIMALS: usize = 2;
+const DISPLAY_DECIMALS: u8 = 2;
 const FLOAT_SNAP: f64 = 1e6;
 
 /// Whether a numeric cell is a pass or a fail; `Neutral` for text and empty cells.
@@ -28,15 +28,25 @@ pub struct Evaluated {
     pub tone: Tone,
 }
 
-/// Accepts both "7.5" and "7,5".
+/// Accepts both "7.5" and "7,5": digits with at most one decimal separator, and a minus sign in
+/// front. Anything else ("1e2", "+5", "inf") isn't a number a teacher types.
 pub fn parse_number(text: &str) -> Option<f64> {
-    let number: f64 = text.trim().replace(',', ".").parse().ok()?;
+    let text = text.trim();
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    let mut parts = digits.splitn(2, ['.', ',']);
+    let whole = parts.next().unwrap_or_default();
+    let fraction = parts.next().unwrap_or_default();
+    let all_digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
+    if whole.len() + fraction.len() == 0 || !all_digits(whole) || !all_digits(fraction) {
+        return None;
+    }
+    let number: f64 = text.replace(',', ".").parse().ok()?;
     number.is_finite().then_some(number)
 }
 
-/// Up to two decimals, without trailing zeros: 8, 7.5, 6.25.
+/// Up to two decimals, rounded half up like `round_to`, without trailing zeros: 8, 7.5, 6.25.
 pub fn format_number(value: f64) -> String {
-    let text = format!("{value:.DISPLAY_DECIMALS$}");
+    let text = format!("{:.*}", usize::from(DISPLAY_DECIMALS), round_to(value, DISPLAY_DECIMALS));
     let trimmed = text.trim_end_matches('0').trim_end_matches('.');
     if trimmed == "-0" { "0".to_owned() } else { trimmed.to_owned() }
 }
@@ -110,7 +120,7 @@ pub fn grade_summary(columns: &[Column], rows: &[Vec<String>]) -> Option<GradeSu
     if grades.is_empty() {
         return None;
     }
-    let passing = grades.iter().filter(|grade| **grade >= max_score * PASS_FRACTION).count();
+    let passing = grades.iter().filter(|grade| passes(round_to(**grade, DISPLAY_DECIMALS), max_score)).count();
     Some(GradeSummary {
         average: grades.iter().sum::<f64>() / grades.len() as f64,
         passing,
@@ -126,7 +136,7 @@ pub fn evaluate_row(columns: &[Column], values: &[String]) -> Vec<Evaluated> {
         .zip(values)
         .zip(&numbers)
         .map(|((column, raw), number)| {
-            let tone = tone(*number, scale(columns, column));
+            let tone = tone(shown_number(column.kind, *number), scale(columns, column));
             display(column.kind, raw, *number, tone)
         })
         .collect()
@@ -146,9 +156,24 @@ fn scale(columns: &[Column], column: &Column) -> Option<f64> {
     }
 }
 
+/// The number as the cell shows it, which is what passes or fails: a final grade of 4.996 shows
+/// as 5, so it passes. Typed scores show as typed, and rounded columns are rounded already.
+fn shown_number(kind: ColumnKind, number: Option<f64>) -> Option<f64> {
+    match kind {
+        ColumnKind::Weighted { .. } | ColumnKind::Average { .. } => {
+            number.map(|value| round_to(value, DISPLAY_DECIMALS))
+        }
+        _ => number,
+    }
+}
+
+fn passes(value: f64, max_score: f64) -> bool {
+    value >= max_score * PASS_FRACTION
+}
+
 fn tone(number: Option<f64>, scale: Option<f64>) -> Tone {
     match (number, scale) {
-        (Some(value), Some(max)) if value >= max * PASS_FRACTION => Tone::Pass,
+        (Some(value), Some(max)) if passes(value, max) => Tone::Pass,
         (Some(_), Some(_)) => Tone::Fail,
         _ => Tone::Neutral,
     }

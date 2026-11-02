@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:43.679671
-//+ Revised: 	2026/10/29 04:09:17.713014
+//+ Revised: 	2026/11/02 14:00:09.636960
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model};
@@ -30,7 +30,11 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         });
     }));
 
-    gradebook.on_close_column_panel(with_window(window, close));
+    gradebook.on_close_column_panel(with_window(window, |window| {
+        // a value refused in one of its fields goes with the panel, and so does its error
+        crate::app::view::clear_error(window);
+        close(window);
+    }));
 }
 
 /// Opens the panel for `column`. The one-item model is replaced each time, so the panel is

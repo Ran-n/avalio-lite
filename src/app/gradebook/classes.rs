@@ -1,14 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:52.882316
-//+ Revised: 	2026/10/29 04:09:17.519891
+//+ Revised: 	2026/11/02 08:27:48.962932
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, SharedString};
 
 use super::view::{Refresh, current_class_id};
 use super::{SharedState, run};
-use crate::app::{SharedDialogs, with_window, with_window1};
+use crate::app::{SharedDialogs, alive, with_window, with_window1};
 use crate::gradebook::classes;
 use crate::i18n::{self, Message};
 use crate::ui::{AppWindow, Gradebook};
@@ -35,12 +35,15 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
     }));
 
     let shared = state.clone();
-    gradebook.on_create_class(with_window1(window, move |window, name: SharedString| {
-        run(window, &shared, "create class", |connection| {
-            let class_id = classes::create_class(connection, &name)?;
-            Ok(Refresh::All { select: Some(class_id) })
-        });
-    }));
+    let weak = window.as_weak();
+    gradebook.on_create_class(move |name: SharedString| {
+        alive(&weak).is_some_and(|window| {
+            run(&window, &shared, "create class", |connection| {
+                let class_id = classes::create_class(connection, &name)?;
+                Ok(Refresh::All { select: Some(class_id) })
+            })
+        })
+    });
 
     let shared = state.clone();
     gradebook.on_rename_class(with_window1(window, move |window, name: SharedString| {

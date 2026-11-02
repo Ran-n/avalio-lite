@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.732824
-//+ Revised: 	2026/10/29 15:46:51.778859
+//+ Revised: 	2026/11/02 08:27:49.708329
 // -----------------------------------------------------------------------------
 
 //! `.avalio` backup files: a complete copy of the database, in the same SQLite format and with its
@@ -98,7 +98,11 @@ pub struct BackupContents {
 /// `WrongPin` only when none of them opens it; any error deletes the copy.
 pub fn open_copy(file: &Path, copy: &Path, keys: &[Option<&str>]) -> Result<OpenedBackup> {
     db::remove_files(copy)?;
-    fs::copy(file, copy).map_err(io_at(file))?;
+    if let Err(error) = fs::copy(file, copy) {
+        // a copy cut short (a full disk, say) may still hold readable data
+        db::discard(copy);
+        return Err(io_at(file)(error));
+    }
     // counted here, so an unreadable backup fails while opening, like every other bad file
     let opened = open_checked_copy(file, copy, keys)
         .and_then(|connection| count_contents(&connection).map(|contents| (connection, contents)));
@@ -187,8 +191,8 @@ struct Adding {
     summary: AddSummary,
     /// backup pupil id -> pupil id here, so a shared pupil is matched once
     pupils: HashMap<i64, i64>,
-    /// pupils made during this add, never matched by name: they weren't "already here"
-    made: HashSet<i64>,
+    /// pupils here that already stand for a backup pupil, never matched by name again
+    claimed: HashSet<i64>,
 }
 
 impl Adding {
@@ -218,9 +222,11 @@ impl Adding {
             return Ok(id);
         }
         self.summary.pupils += 1;
+        // a pupil here already stands for another backup pupil (one made during this add, or
+        // the namesake joined for an earlier one), so two backup pupils never become one
         let here: Vec<Pupil> = pupils::pupils_named(connection, &pupil.name)?
             .into_iter()
-            .filter(|found| !self.made.contains(&found.id))
+            .filter(|found| !self.claimed.contains(&found.id))
             .collect();
         let id = match here.as_slice() {
             [only] => {
@@ -228,13 +234,10 @@ impl Adding {
                 self.summary.existing_pupils += 1;
                 only.id
             }
-            _ => {
-                let id = pupils::insert_new_pupil(connection, class_id, &pupil.name)?;
-                self.made.insert(id);
-                id
-            }
+            _ => pupils::insert_new_pupil(connection, class_id, &pupil.name)?,
         };
         self.pupils.insert(pupil.id, id);
+        self.claimed.insert(id);
         Ok(id)
     }
 }

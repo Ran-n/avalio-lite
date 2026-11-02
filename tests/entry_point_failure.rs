@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.973308
-//+ Revised: 	2026/10/28 15:53:06.973308
+//+ Revised: 	2026/11/02 08:27:51.045801
 // -----------------------------------------------------------------------------
 
 //! `app::run_with` when the window can't run: Slint's headless backend without an event loop
@@ -31,8 +31,9 @@ fn a_window_that_cannot_run_shows_the_fatal_error_and_fails() {
     assert_eq!(exit, ExitCode::FAILURE);
     let fatal = dialogs.fatal.borrow();
     assert_eq!(fatal.len(), 1);
-    let prefix = i18n::text(i18n::current(), &Message::WindowFailed { reason: "" });
-    assert!(fatal[0].starts_with(&prefix), "{}", fatal[0]);
+    let prefix = i18n::text(i18n::current(), &Message::WindowFailed);
+    // a fixed sentence: the window system's own error text is only in the log
+    assert_eq!(fatal[0], prefix);
     // even a failed run shuts down: the database can be deleted
     std::fs::remove_file(fixture.database()).expect("the database is closed");
 }

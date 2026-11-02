@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.393948
-//+ Revised: 	2026/10/29 14:12:11.637694
+//+ Revised: 	2026/11/02 08:27:49.268404
 // -----------------------------------------------------------------------------
 
 use std::rc::Rc;
@@ -18,7 +18,7 @@ use crate::gradebook::compute::{
 use crate::gradebook::model::{ClassSummary, Column, ColumnKind, ColumnType, Sheet, SheetRow};
 use crate::gradebook::{classes, columns, pupils, sheet};
 use crate::i18n;
-use crate::ui::{self, AppWindow, CellItem, ClassItem, ColumnItem, Gradebook, RowItem};
+use crate::ui::{self, AddablePupil, AppWindow, CellItem, ClassItem, ColumnItem, Gradebook, RowItem};
 
 const NO_CLASS: i32 = -1;
 const NO_SOURCE: i32 = -1;
@@ -54,6 +54,8 @@ pub fn apply(window: &AppWindow, connection: &Connection, refresh: Refresh) -> R
 
 /// Called when a database is opened: forgets the class selected in the previous one.
 pub fn show_new_database(window: &AppWindow, connection: &Connection) -> Result<()> {
+    // the panel belongs to a column of the previous database; the same row id there is another column
+    panel::close(window);
     window.global::<Gradebook>().set_current_class_id(NO_CLASS);
     show_all(window, connection, None)
 }
@@ -74,6 +76,7 @@ fn show_all(window: &AppWindow, connection: &Connection, select: Option<i64>) ->
     match current {
         Some(class_id) => show_sheet(window, connection, class_id),
         None => {
+            panel::close(window);
             window.global::<Gradebook>().set_current_class_id(NO_CLASS);
             Ok(())
         }
@@ -96,8 +99,11 @@ fn show_class_list(window: &AppWindow, connection: &Connection) -> Result<Vec<Cl
 
 fn show_sheet(window: &AppWindow, connection: &Connection, class_id: i64) -> Result<()> {
     let loaded = sheet::load_sheet(connection, class_id)?;
-    let addable: Vec<SharedString> =
-        pupils::pupils_not_in_class(connection, class_id)?.into_iter().map(|pupil| pupil.name.into()).collect();
+    let no_class: Vec<i64> = pupils::pupils_in_no_class(connection)?.into_iter().map(|pupil| pupil.id).collect();
+    let addable: Vec<AddablePupil> = pupils::pupils_not_in_class(connection, class_id)?
+        .into_iter()
+        .map(|pupil| AddablePupil { no_class: no_class.contains(&pupil.id), name: pupil.name.into() })
+        .collect();
     let gradebook = window.global::<Gradebook>();
     gradebook.set_current_class_id(ui_id(class_id));
     gradebook.set_class_name(classes::class_name(connection, class_id)?.into());

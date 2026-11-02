@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:44.148390
-//+ Revised: 	2026/10/29 14:13:27.568156
+//+ Revised: 	2026/11/02 14:00:09.105401
 // -----------------------------------------------------------------------------
 
 //! Locking, unlocking and changing the PIN that encrypts the open database.
@@ -95,9 +95,22 @@ impl AppState {
     /// Writes the contents of `source` (the open database itself when `None`), encrypted with
     /// `new_key`, next to the database, checks the copy opens, then swaps it in. Changing the PIN
     /// and restoring a backup both go through here. The original is renamed aside until the new
-    /// file is in place, so a failure at any step leaves one complete, openable database at the
-    /// usual path.
+    /// file is in place, so a failure at any step leaves one complete, openable database: at the
+    /// usual path, or, when another program holds the files so it can't go back, kept aside and
+    /// named in the error (`KeptAside`).
     pub(super) fn replace_with(&mut self, source: Option<&Connection>, new_key: Option<&str>) -> Result<()> {
+        self.replace_using(source, new_key, &db::open_existing)
+    }
+
+    /// `replace_with`, with the way the swapped-in file is opened as a parameter so a test can make
+    /// that step fail (only another program grabbing the file can make it fail for real).
+    #[doc(hidden)]
+    pub fn replace_using(
+        &mut self,
+        source: Option<&Connection>,
+        new_key: Option<&str>,
+        open: &dyn Fn(&Path, Option<&str>) -> Result<Connection>,
+    ) -> Result<()> {
         let path = self.config.as_ref().ok_or(AppError::NoDatabaseOpen)?.database_path.clone();
         let own = self.connection.as_ref().ok_or(AppError::NoDatabaseOpen)?;
         let source = source.unwrap_or(own);
@@ -110,46 +123,87 @@ impl AppState {
         }
         let old_key = self.key.clone();
         self.close_connection();
-        if let Err(error) = swap_in(&path, &fresh) {
+        if let Err(error) = set_aside(&path) {
             db::discard(&fresh);
-            self.reopen(&path, old_key.as_ref().map(Pin::as_str));
+            // the old file is still at `path`; a failure to open it is already logged
+            let _ = self.reopen(&path, old_key.as_ref().map(Pin::as_str), open);
             return Err(error);
         }
-        self.reopen(&path, new_key);
-        // the new file is in place, so the old one is only a leftover now; failing to delete it is
-        // still reported, since it may be an unencrypted copy of the data
-        let leftover = db::remove_files(&with_suffix(&path, BACKUP_SUFFIX));
-        if self.connection.is_none() {
-            return Err(AppError::NoDatabaseOpen);
+        // from here the old file is only at `.previous`, and every failure puts it back
+        if let Err(error) = move_in(&path, &fresh) {
+            db::discard(&fresh);
+            // nothing new is at `path`, and any sidecar files left there are the old file's own
+            return Err(self.put_back(&path, old_key.as_ref(), error));
         }
-        leftover
+        if let Err(error) = self.reopen(&path, new_key, open) {
+            return Err(self.roll_back(&path, old_key.as_ref(), error));
+        }
+        // the new file is in place and opens, so the old one is only a leftover now; failing to
+        // delete it is still reported, since it may be an unencrypted copy of the data
+        db::remove_files(&with_suffix(&path, BACKUP_SUFFIX))
     }
 
-    /// Opens `path` with `key` after a re-key or restore, logging (not hiding) a failure: the caller then
-    /// reports `NoDatabaseOpen` and the lock screen asks for the PIN again. Never creates the
-    /// file: if it is gone, an empty database in its place would hide where the data went.
-    fn reopen(&mut self, path: &Path, key: Option<&str>) {
-        match db::open_existing(path, key) {
+    /// The new file would not open: removes it and puts the old one back (`put_back`).
+    fn roll_back(&mut self, path: &Path, old_key: Option<&Pin>, cause: AppError) -> AppError {
+        match db::remove_files(path) {
+            Ok(()) => self.put_back(path, old_key, cause),
+            Err(error) => kept_aside(path, &cause, &error),
+        }
+    }
+
+    /// Puts the old file (kept aside as `.previous`) back at `path` and opens it, so the only
+    /// intact copy is never lost. Returns `cause`, the reason the swap failed; if even the old file
+    /// can't be put back, it stays as `.previous` and the error (`KeptAside`) says where.
+    fn put_back(&mut self, path: &Path, old_key: Option<&Pin>, cause: AppError) -> AppError {
+        if let Err(error) = fs::rename(with_suffix(path, BACKUP_SUFFIX), path).map_err(io_at(path)) {
+            return kept_aside(path, &cause, &error);
+        }
+        log::warn!("the new database did not go in or open ({cause}); the previous one was put back");
+        // a failure to open it is logged, and the lock screen asks for the PIN again
+        let _ = self.reopen(path, old_key.map(Pin::as_str), &db::open_existing);
+        cause
+    }
+
+    /// Opens `path` with `key` after a re-key or restore. A failure is logged and returned; never
+    /// creates the file: if it is gone, an empty database in its place would hide where the data went.
+    fn reopen(
+        &mut self,
+        path: &Path,
+        key: Option<&str>,
+        open: &dyn Fn(&Path, Option<&str>) -> Result<Connection>,
+    ) -> Result<()> {
+        match open(path, key) {
             Ok(connection) => {
                 self.connection = Some(connection);
                 self.key = key.map(Pin::new);
+                Ok(())
             }
-            Err(error) => log::error!("could not reopen {} after replacing it: {error}", path.display()),
+            Err(error) => {
+                log::error!("could not reopen {} after replacing it: {error}", path.display());
+                Err(error)
+            }
         }
     }
 }
 
-/// Replaces the (closed) database at `path` with `fresh`, keeping the old file aside (and putting
-/// it back on any failure) until the new one is in place. The caller deletes the old file.
-fn swap_in(path: &Path, fresh: &Path) -> Result<()> {
+/// The old file couldn't go back to `path`: it stays at `.previous`, which the error names.
+fn kept_aside(path: &Path, cause: &AppError, error: &AppError) -> AppError {
+    let kept = with_suffix(path, BACKUP_SUFFIX);
+    log::error!("could not put the previous database back after {cause}, it is kept as {}: {error}", kept.display());
+    AppError::KeptAside { kept, path: path.to_path_buf() }
+}
+
+/// Renames the (closed) database at `path` aside to `.previous`, where it stays until the new one
+/// has opened. On failure it is still at `path`.
+fn set_aside(path: &Path) -> Result<()> {
     let previous = with_suffix(path, BACKUP_SUFFIX);
     db::remove_files(&previous)?;
-    fs::rename(path, &previous).map_err(io_at(path))?;
-    // sidecar files belong to the old file; left next to the new one they would corrupt it
-    let replaced = db::remove_sidecars(path).and_then(|()| fs::rename(fresh, path).map_err(io_at(fresh)));
-    if let Err(error) = replaced {
-        fs::rename(&previous, path).map_err(io_at(path))?;
-        return Err(error);
-    }
-    Ok(())
+    fs::rename(path, &previous).map_err(io_at(path))
+}
+
+/// Puts `fresh` at `path`, which `set_aside` emptied. Sidecar files belong to the old file; left
+/// next to the new one they would corrupt it.
+fn move_in(path: &Path, fresh: &Path) -> Result<()> {
+    db::remove_sidecars(path)?;
+    fs::rename(fresh, path).map_err(io_at(fresh))
 }

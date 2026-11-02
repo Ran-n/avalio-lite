@@ -1,7 +1,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { ColumnType, Gradebook, RowItem } from "gradebook.slint";
-import { ActionButton, ButtonKind, IconActionButton, IconButton, IconKind, MenuOption, MenuSurface, MessageBanner, NavItem, TextField } from "components.slint";
+import { ActionButton, ButtonKind, IconActionButton, IconButton, IconKind, Menu, MenuSurface, MessageBanner, NavItem, TextField } from "components.slint";
 import { ColumnHeader } from "column-header.slint";
 import { ColumnPanel } from "column-panel.slint";
 import { GridCell } from "grid-cell.slint";
@@ -30,6 +30,9 @@ component NameCell inherits Rectangle {
                 boxed: false;
                 text: root.pupil.name;
                 spoken-label: @tr("Pupil");
+                restores: true;
+                saved: root.pupil.name;
+                restored => { Gradebook.field-restored(); }
                 edited(text) => { Gradebook.rename-pupil(root.pupil.pupil-id, text); }
             }
         }
@@ -87,6 +90,9 @@ component SheetTitle inherits VerticalLayout {
             spoken-label: @tr("Class name");
             font-size: Theme.text-xl;
             font-weight: 600;
+            restores: true;
+            saved: Gradebook.class-name;
+            restored => { Gradebook.field-restored(); }
             edited(text) => { Gradebook.rename-class(text); }
         }
         VerticalLayout {
@@ -115,6 +121,9 @@ component SheetTitle inherits VerticalLayout {
 }
 
 export component SheetPage inherits Rectangle {
+    in property <string> error-message;
+    // what the last action did, such as where an export went
+    in property <string> status-message;
     property <length> name-width: 210px;
     property <length> cell-width: 128px;
     property <length> wide-cell-width: 176px;
@@ -130,12 +139,12 @@ export component SheetPage inherits Rectangle {
             more => { more-menu.show(); }
         }
         MessageBanner {
-            message: Gradebook.error-message;
+            message: root.error-message;
             is-error: true;
         }
         // created only when there is a message: a hidden banner would still take the layout's spacing
-        if Gradebook.status-message != "": MessageBanner {
-            message: Gradebook.status-message;
+        if root.status-message != "": MessageBanner {
+            message: root.status-message;
             is-error: false;
         }
         HorizontalLayout {
@@ -231,8 +240,9 @@ export component SheetPage inherits Rectangle {
                                         boxed: false;
                                         placeholder: @tr("Add pupil…");
                                         accepted(text) => {
-                                            Gradebook.add-new-pupil(text);
-                                            self.clear();
+                                            if (Gradebook.add-new-pupil(text)) {
+                                                self.clear();
+                                            }
                                         }
                                     }
                                 }
@@ -266,33 +276,19 @@ export component SheetPage inherits Rectangle {
         y: title.actions-bottom - root.absolute-position.y + 6px;
         width: 340px;
         MenuSurface {
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                MenuOption {
-                    title: @tr("Test");
-                    hint: @tr("A mark out of a maximum that counts towards the final grade");
-                    clicked => { Gradebook.add-column(ColumnType.test); }
-                }
-                MenuOption {
-                    title: @tr("Info");
-                    hint: @tr("Free text, such as notes");
-                    clicked => { Gradebook.add-column(ColumnType.info); }
-                }
-                MenuOption {
-                    title: @tr("Final grade");
-                    hint: @tr("Adds up the tests by their weights");
-                    clicked => { Gradebook.add-column(ColumnType.weighted); }
-                }
-                MenuOption {
-                    title: @tr("Average");
-                    hint: @tr("Mean of the marked tests");
-                    clicked => { Gradebook.add-column(ColumnType.average); }
-                }
-                MenuOption {
-                    title: @tr("Rounded");
-                    hint: @tr("Another column rounded to whole marks or decimals");
-                    clicked => { Gradebook.add-column(ColumnType.round); }
+            Menu {
+                entries: [
+                    { id: 0, title: @tr("Test"), hint: @tr("A mark out of a maximum that counts towards the final grade") },
+                    { id: 1, title: @tr("Info"), hint: @tr("Free text, such as notes") },
+                    { id: 2, title: @tr("Final grade"), hint: @tr("Adds up the tests by their weights") },
+                    { id: 3, title: @tr("Average"), hint: @tr("Mean of the marked tests") },
+                    { id: 4, title: @tr("Rounded"), hint: @tr("Another column rounded to whole marks or decimals") },
+                ];
+                dismissed => { column-menu.close(); }
+                chosen(id) => {
+                    column-menu.close();
+                    Gradebook.add-column(id == 0 ? ColumnType.test : id == 1 ? ColumnType.info
+                        : id == 2 ? ColumnType.weighted : id == 3 ? ColumnType.average : ColumnType.round);
                 }
             }
         }
@@ -303,29 +299,34 @@ export component SheetPage inherits Rectangle {
         y: title.actions-bottom - root.absolute-position.y + 6px;
         width: 280px;
         MenuSurface {
-            VerticalLayout {
-                padding: 6px;
-                spacing: 2px;
-                if Gradebook.addable-pupils.length > 0: MenuOption {
-                    title: @tr("Add from another class…");
-                    clicked => { pupil-menu.show(); }
-                }
-                MenuOption {
-                    title: Gradebook.show-column-settings ? @tr("Hide weights & scales") : @tr("Show weights & scales");
-                    clicked => { Gradebook.toggle-column-settings(); }
-                }
-                MenuOption {
-                    title: @tr("Export to Excel…");
-                    clicked => { Gradebook.export-sheet(); }
-                }
-                MenuOption {
-                    title: @tr("Import from Excel…");
-                    clicked => { Gradebook.import-sheet(); }
-                }
-                MenuOption {
-                    title: @tr("Delete class");
-                    destructive: true;
-                    clicked => { Gradebook.delete-class(); }
+            Menu {
+                // "Add from another class" is only offered while some pupil could be added
+                entries: Gradebook.addable-pupils.length > 0 ? [
+                    { id: 0, title: @tr("Add from another class…") },
+                    { id: 1, title: Gradebook.show-column-settings ? @tr("Hide weights & scales") : @tr("Show weights & scales") },
+                    { id: 2, title: @tr("Export to Excel…") },
+                    { id: 3, title: @tr("Import from Excel…") },
+                    { id: 4, title: @tr("Delete class"), destructive: true },
+                ] : [
+                    { id: 1, title: Gradebook.show-column-settings ? @tr("Hide weights & scales") : @tr("Show weights & scales") },
+                    { id: 2, title: @tr("Export to Excel…") },
+                    { id: 3, title: @tr("Import from Excel…") },
+                    { id: 4, title: @tr("Delete class"), destructive: true },
+                ];
+                dismissed => { more-menu.close(); }
+                chosen(id) => {
+                    more-menu.close();
+                    if (id == 0) {
+                        pupil-menu.show();
+                    } else if (id == 1) {
+                        Gradebook.toggle-column-settings();
+                    } else if (id == 2) {
+                        Gradebook.export-sheet();
+                    } else if (id == 3) {
+                        Gradebook.import-sheet();
+                    } else {
+                        Gradebook.delete-class();
+                    }
                 }
             }
         }
@@ -343,11 +344,29 @@ export component SheetPage inherits Rectangle {
                 y: 6px;
                 width: parent.width - 12px;
                 height: parent.height - 12px;
-                for name[index] in Gradebook.addable-pupils: NavItem {
-                    label: name;
-                    clicked => {
-                        pupil-menu.close();
-                        Gradebook.add-existing-pupil(index);
+                for pupil[index] in Gradebook.addable-pupils: HorizontalLayout {
+                    NavItem {
+                        label: pupil.name;
+                        detail: pupil.no-class ? @tr("no class") : "";
+                        clicked => {
+                            pupil-menu.close();
+                            Gradebook.add-existing-pupil(index);
+                        }
+                    }
+                    // a pupil in no class can be deleted for good; the menu stays open for more
+                    if pupil.no-class: VerticalLayout {
+                        alignment: center;
+                        IconButton {
+                            glyph: "×";
+                            tooltip: @tr("Delete {}", pupil.name);
+                            destructive: true;
+                            clicked => {
+                                Gradebook.delete-pupil-in-no-class(index);
+                                if (Gradebook.addable-pupils.length == 0) {
+                                    pupil-menu.close();
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -356,6 +375,9 @@ export component SheetPage inherits Rectangle {
 }
 
 export component NoClassPage inherits Rectangle {
+    in property <string> error-message;
+    in property <string> status-message;
+
     VerticalLayout {
         alignment: center;
         HorizontalLayout {
@@ -375,8 +397,12 @@ export component NoClassPage inherits Rectangle {
                     color: Theme.muted;
                 }
                 MessageBanner {
-                    message: Gradebook.error-message;
+                    message: root.error-message;
                     is-error: true;
+                }
+                if root.status-message != "": MessageBanner {
+                    message: root.status-message;
+                    is-error: false;
                 }
                 HorizontalLayout {
                     spacing: 8px;

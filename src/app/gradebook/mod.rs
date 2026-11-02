@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.139186
-//+ Revised: 	2026/10/29 15:46:51.328417
+//+ Revised: 	2026/11/02 08:27:49.021281
 // -----------------------------------------------------------------------------
 
 mod cells;
@@ -13,11 +13,10 @@ mod spreadsheet;
 pub mod view;
 
 use rusqlite::Connection;
-use slint::{ComponentHandle, SharedString};
+use slint::ComponentHandle;
 
-use crate::app::{SharedDialogs, SharedState, shortcuts, with_window};
+use crate::app::{SharedDialogs, SharedState, shortcuts, view as window_view, with_window};
 use crate::error::{AppError, Result};
-use crate::i18n;
 use crate::ui::{AppWindow, Gradebook};
 use view::Refresh;
 
@@ -29,6 +28,9 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
     cells::wire(window, state);
     panel::wire(window, state);
     wire_preferences(window, state);
+    window.global::<Gradebook>().on_field_restored(with_window(window, |window| {
+        window_view::clear_error(window);
+    }));
 }
 
 fn wire_preferences(window: &AppWindow, state: &SharedState) {
@@ -36,15 +38,12 @@ fn wire_preferences(window: &AppWindow, state: &SharedState) {
     window.global::<Gradebook>().on_toggle_column_settings(with_window(window, move |window| {
         let gradebook = window.global::<Gradebook>();
         let show = !gradebook.get_show_column_settings();
-        gradebook.set_status_message(SharedString::new());
+        window_view::clear_messages(window);
         match shared.borrow_mut().set_show_column_settings(show) {
-            Ok(()) => {
-                gradebook.set_show_column_settings(show);
-                gradebook.set_error_message(SharedString::new());
-            }
+            Ok(()) => gradebook.set_show_column_settings(show),
             Err(error) => {
                 log::warn!("saving the column settings preference failed: {error}");
-                gradebook.set_error_message(i18n::error_message(i18n::current(), &error).into());
+                window_view::show_error(window, &error);
             }
         }
     }));
@@ -55,34 +54,37 @@ pub fn redraw(window: &AppWindow, state: &SharedState) {
     redraw_selecting(window, state, None);
 }
 
-/// Redraws the class list and opens class `select` (the open class stays when `None`).
-pub fn redraw_selecting(window: &AppWindow, state: &SharedState, select: Option<i64>) {
-    run(window, state, "redraw sheet", |_| Ok(Refresh::All { select }));
+/// Redraws the class list and opens class `select` (the open class stays when `None`). True when
+/// it worked; otherwise the error is on screen.
+pub fn redraw_selecting(window: &AppWindow, state: &SharedState, select: Option<i64>) -> bool {
+    run(window, state, "redraw sheet", |_| Ok(Refresh::All { select }))
 }
 
-/// Loads the classes of a freshly opened database; errors show in the sheet's banner.
-pub fn show_database(window: &AppWindow, state: &SharedState) {
+/// Loads the classes of a freshly opened database; an error shows in the message banner. True
+/// when it worked.
+pub fn show_database(window: &AppWindow, state: &SharedState) -> bool {
     let preferences = state.borrow().preferences();
     window.global::<Gradebook>().set_show_column_settings(preferences.show_column_settings);
-    run(window, state, "load classes", |connection| {
+    let loaded = run(window, state, "load classes", |connection| {
         view::show_new_database(window, connection)?;
         Ok(Refresh::Nothing)
     });
     shortcuts::show(window, state);
     // after the load, whose success clears the banner
     shortcuts::report_problems(window, state);
+    loaded
 }
 
-/// Runs one database action, redraws what it changed, and shows or clears the error banner.
-/// The status of an earlier action is cleared first, so it never sits next to a new error.
-/// True when the action succeeded.
+/// Runs one database action, redraws what it changed, and shows or clears the error banner of the
+/// page that is open. The status of an earlier action is cleared first, so it never sits next to
+/// a new error. True when the action succeeded.
 fn run(
     window: &AppWindow,
     state: &SharedState,
     action: &str,
     task: impl FnOnce(&Connection) -> Result<Refresh>,
 ) -> bool {
-    window.global::<Gradebook>().set_status_message(SharedString::new());
+    window_view::clear_status(window);
     let result = {
         let state = state.borrow();
         match state.connection() {
@@ -90,21 +92,15 @@ fn run(
             None => Err(AppError::NoDatabaseOpen),
         }
     };
-    let gradebook = window.global::<Gradebook>();
     match result {
         Ok(()) => {
-            gradebook.set_error_message(SharedString::new());
+            window_view::clear_error(window);
             true
         }
         Err(error) => {
             log::warn!("{action} failed: {error}");
-            gradebook.set_error_message(i18n::error_message(i18n::current(), &error).into());
+            window_view::show_error(window, &error);
             false
         }
     }
-}
-
-/// The green banner on the sheet, until the next sheet action.
-fn show_status(window: &AppWindow, text: String) {
-    window.global::<Gradebook>().set_status_message(text.into());
 }

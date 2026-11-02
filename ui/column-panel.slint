@@ -13,6 +13,8 @@ component FieldLabel inherits Text {
 component NumberField inherits VerticalLayout {
     in property <string> label;
     in property <string> value;
+    // what is saved for the column, which the field goes back to when left with something else
+    in property <string> saved;
     in property <string> unit;
     callback edited(string);
 
@@ -24,6 +26,9 @@ component NumberField inherits VerticalLayout {
         TextField {
             text: root.value;
             spoken-label: root.label;
+            restores: true;
+            saved: root.saved;
+            restored => { Gradebook.field-restored(); }
             edited(text) => { root.edited(text); }
         }
         if root.unit != "": Text {
@@ -44,6 +49,8 @@ export component ColumnPanel inherits Rectangle {
     property <bool> is-last: root.index == Gradebook.columns.length - 1;
 
     width: 340px;
+    // the title is the first thing to change, so the keyboard starts there
+    init => { title-field.focus-input(); }
     background: Theme.surface;
     drop-shadow-blur: 40px;
     drop-shadow-offset-x: -12px;
@@ -55,6 +62,15 @@ export component ColumnPanel inherits Rectangle {
         width: 1px;
         background: Theme.line;
     }
+    // Escape closes the panel from any field in it
+    FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                Gradebook.close-column-panel();
+                return accept;
+            }
+            return reject;
+        }
     VerticalLayout {
         padding: 24px;
         spacing: 18px;
@@ -81,9 +97,12 @@ export component ColumnPanel inherits Rectangle {
             VerticalLayout {
                 spacing: 6px;
                 FieldLabel { text: @tr("Title"); }
-                TextField {
+                title-field := TextField {
                     text: root.column.title;
                     spoken-label: @tr("Title");
+                    restores: true;
+                    saved: Gradebook.columns[root.index].title;
+                    restored => { Gradebook.field-restored(); }
                     edited(text) => { Gradebook.rename-column(root.column.id, text); }
                 }
             }
@@ -108,11 +127,13 @@ export component ColumnPanel inherits Rectangle {
                         label: @tr("Weight");
                         unit: "%";
                         value: root.column.weight;
+                        saved: Gradebook.columns[root.index].weight;
                         edited(text) => { Gradebook.set-weight(root.column.id, text); }
                     }
                     NumberField {
                         label: @tr("Out of");
                         value: root.column.max-score;
+                        saved: Gradebook.columns[root.index].max-score;
                         edited(text) => { Gradebook.set-max-score(root.column.id, text); }
                     }
                 }
@@ -137,6 +158,7 @@ export component ColumnPanel inherits Rectangle {
             if root.column.kind == ColumnType.weighted || root.column.kind == ColumnType.average: NumberField {
                 label: @tr("Out of");
                 value: root.column.max-score;
+                saved: Gradebook.columns[root.index].max-score;
                 edited(text) => { Gradebook.set-max-score(root.column.id, text); }
             }
             if root.column.kind == ColumnType.round: VerticalLayout {
@@ -153,6 +175,7 @@ export component ColumnPanel inherits Rectangle {
                 NumberField {
                     label: @tr("Decimals");
                     value: root.column.decimals;
+                    saved: Gradebook.columns[root.index].decimals;
                     edited(text) => { Gradebook.set-decimals(root.column.id, text); }
                 }
             }
@@ -199,5 +222,6 @@ export component ColumnPanel inherits Rectangle {
                 clicked => { Gradebook.delete-column(root.column.id); }
             }
         }
+    }
     }
 }

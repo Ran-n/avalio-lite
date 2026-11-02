@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/10/29 15:46:52.165960
+//+ Revised: 	2026/11/02 14:00:09.863535
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -568,7 +568,7 @@ fn ctrl_l_without_a_pin_explains_how_to_lock() {
     assert!(!shows(&ui, "Lock (Ctrl+L)"), "no lock button without a PIN");
     with_control(&ui, "l");
     assert!(!ui.session.window.get_locked());
-    assert_eq!(gradebook(&ui).get_error_message(), english(&Message::LockNeedsPin));
+    assert_eq!(ui.session.window.get_error_message(), english(&Message::LockNeedsPin));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -627,7 +627,7 @@ fn the_class_shortcuts_do_nothing_without_classes() {
     with_keys(&ui, false, Key::PageDown);
     with_keys(&ui, false, Key::PageUp);
     assert_eq!(gradebook(&ui).get_current_class_id(), -1);
-    assert!(gradebook(&ui).get_error_message().is_empty());
+    assert!(ui.session.window.get_error_message().is_empty());
 }
 
 #[test]
@@ -669,7 +669,7 @@ fn bad_shortcut_entries_are_reported_and_use_the_defaults() {
     fixture.set_up().shutdown();
     with_shortcut_config(&fixture, &[("lock", "Ctrl+"), ("toggle-theme", "Ctrl+L")]);
     let ui = Ui::open(fixture);
-    let banner = gradebook(&ui).get_error_message().to_string();
+    let banner = ui.session.window.get_error_message().to_string();
     assert!(banner.contains("lock = \"Ctrl+\"") && banner.contains("toggle-theme = \"Ctrl+L\""), "{banner}");
     with_keys(&ui, true, "D");
     assert!(ui.session.window.global::<Theme>().get_dark(), "the theme keeps its default");
@@ -1509,7 +1509,7 @@ fn preferences_that_cannot_be_saved_are_reported() {
     click(&ui, "More actions");
     click(&ui, "Hide weights & scales");
     assert!(gradebook(&ui).get_show_column_settings(), "the column settings stay shown");
-    assert!(!gradebook(&ui).get_error_message().is_empty());
+    assert!(!ui.session.window.get_error_message().is_empty());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1529,7 +1529,7 @@ fn a_class_is_created_from_the_empty_page() {
 fn an_empty_class_name_is_refused() {
     let ui = Ui::with_database();
     click(&ui, "Create class");
-    assert_eq!(gradebook(&ui).get_error_message(), error_text(&AppError::EmptyName));
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::EmptyName));
     assert_eq!(gradebook(&ui).get_classes().row_count(), 0);
 }
 
@@ -1547,7 +1547,7 @@ fn a_duplicate_class_name_is_refused() {
     let ui = seeded();
     type_into(&ui, "New class", "1A");
     press_enter(&ui);
-    assert_eq!(gradebook(&ui).get_error_message(), error_text(&AppError::DuplicateClassName("1A".into())));
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::DuplicateClassName("1A".into())));
 }
 
 #[test]
@@ -1598,8 +1598,8 @@ fn export_to_excel_saves_the_sheet_and_says_where() {
     export_through_the_menu(&ui, Some(&destination));
     assert!(destination.is_file());
     let shown = destination.display().to_string();
-    assert_eq!(gradebook(&ui).get_status_message(), english(&Message::SheetExported { class: "1A", path: &shown }));
-    assert!(gradebook(&ui).get_error_message().is_empty());
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::SheetExported { class: "1A", path: &shown }));
+    assert!(ui.session.window.get_error_message().is_empty());
     let documents = dirs::document_dir().unwrap_or_default();
     assert_eq!(
         ui.dialogs.save_requests.borrow()[0],
@@ -1623,8 +1623,8 @@ fn the_proposed_file_name_leaves_out_what_windows_refuses() {
 fn a_cancelled_export_does_nothing() {
     let ui = seeded();
     export_through_the_menu(&ui, None);
-    assert!(gradebook(&ui).get_status_message().is_empty());
-    assert!(gradebook(&ui).get_error_message().is_empty());
+    assert!(ui.session.window.get_status_message().is_empty());
+    assert!(ui.session.window.get_error_message().is_empty());
     assert_eq!(
         fs::read_dir(ui.fixture.root.path())
             .unwrap()
@@ -1640,13 +1640,13 @@ fn a_failed_export_shows_the_error() {
     let ui = seeded();
     let destination = ui.fixture.path("no such folder").join("1A.xlsx");
     export_through_the_menu(&ui, Some(&destination));
-    let banner = gradebook(&ui).get_error_message().to_string();
-    assert!(banner.starts_with(&format!("Couldn't save {}: ", destination.display())), "{banner}");
-    assert!(gradebook(&ui).get_status_message().is_empty());
+    let banner = ui.session.window.get_error_message().to_string();
+    assert!(banner.starts_with(&format!("Couldn't save {}. ", destination.display())), "{banner}");
+    assert!(ui.session.window.get_status_message().is_empty());
 
     export_through_the_menu(&ui, Some(&ui.fixture.path("1A.xlsx")));
-    assert!(gradebook(&ui).get_error_message().is_empty(), "a later export that works clears it");
-    assert!(!gradebook(&ui).get_status_message().is_empty());
+    assert!(ui.session.window.get_error_message().is_empty(), "a later export that works clears it");
+    assert!(!ui.session.window.get_status_message().is_empty());
     assert_eq!(
         ui.dialogs.save_requests.borrow()[1].1,
         dirs::document_dir().unwrap_or_default(),
@@ -1659,14 +1659,14 @@ fn a_failed_export_shows_the_error() {
 fn regression_the_export_status_clears_on_the_next_action() {
     let ui = seeded();
     export_through_the_menu(&ui, Some(&ui.fixture.path("1A.xlsx")));
-    assert!(!gradebook(&ui).get_status_message().is_empty());
+    assert!(!ui.session.window.get_status_message().is_empty());
     type_into(&ui, "Class name", "1A bis");
-    assert!(gradebook(&ui).get_status_message().is_empty(), "a sheet action clears it");
+    assert!(ui.session.window.get_status_message().is_empty(), "a sheet action clears it");
 
     export_through_the_menu(&ui, Some(&ui.fixture.path("1A.xlsx")));
     click(&ui, "More actions");
     click(&ui, "Hide weights & scales");
-    assert!(gradebook(&ui).get_status_message().is_empty(), "so does a preference");
+    assert!(ui.session.window.get_status_message().is_empty(), "so does a preference");
 }
 
 /// A workbook in the fixture folder whose first tab holds `rows`, every cell written as text
@@ -1705,9 +1705,9 @@ fn import_from_excel_fills_the_sheet_and_reports() {
     );
     import_through_the_menu(&ui, Some(&file));
     assert_eq!(*ui.dialogs.file_kinds.borrow(), [FileKind::Spreadsheet]);
-    assert!(gradebook(&ui).get_error_message().is_empty(), "{}", gradebook(&ui).get_error_message());
+    assert!(ui.session.window.get_error_message().is_empty(), "{}", ui.session.window.get_error_message());
     assert_eq!(
-        gradebook(&ui).get_status_message(),
+        ui.session.window.get_status_message(),
         "Imported 2 pupils (1 new) and 2 marks or notes into 1A. Left out: Phone, column D (no title), Final grade."
     );
     assert!(ui.dialogs.questions.borrow().is_empty(), "nothing to replace, so nothing to ask");
@@ -1723,7 +1723,7 @@ fn import_reports_skipped_error_cells_and_singulars() {
     let file = import_file(&ui, &[&["Pupil", "Exam"], &["Ana", "#DIV/0!"]]);
     import_through_the_menu(&ui, Some(&file));
     assert_eq!(
-        gradebook(&ui).get_status_message(),
+        ui.session.window.get_status_message(),
         "Imported 1 pupil and 0 marks or notes into 1A. 1 cell with an Excel error was skipped."
     );
 }
@@ -1742,20 +1742,20 @@ fn overwriting_asks_first_and_no_changes_nothing() {
     );
     assert_eq!(cell_text(&ui, 0, 0), "3");
     assert_eq!(count(&ui, "SELECT COUNT(*) FROM cells"), 1, "no change at all");
-    assert!(gradebook(&ui).get_status_message().is_empty());
+    assert!(ui.session.window.get_status_message().is_empty());
 
     ui.dialogs.answer_next(true);
     import_through_the_menu(&ui, Some(&file));
     assert_eq!((cell_text(&ui, 0, 0), cell_text(&ui, 1, 0)), ("9".to_owned(), "6".to_owned()));
-    assert_eq!(gradebook(&ui).get_status_message(), "Imported 2 pupils and 2 marks or notes into 1A.");
+    assert_eq!(ui.session.window.get_status_message(), "Imported 2 pupils and 2 marks or notes into 1A.");
 }
 
 #[test]
 fn a_cancelled_import_does_nothing() {
     let ui = seeded();
     import_through_the_menu(&ui, None);
-    assert!(gradebook(&ui).get_status_message().is_empty());
-    assert!(gradebook(&ui).get_error_message().is_empty());
+    assert!(ui.session.window.get_status_message().is_empty());
+    assert!(ui.session.window.get_error_message().is_empty());
     assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2);
 }
 
@@ -1765,17 +1765,17 @@ fn an_unreadable_file_shows_the_error() {
     let file = ui.fixture.path("notes.xlsx");
     fs::write(&file, "not a workbook").unwrap();
     import_through_the_menu(&ui, Some(&file));
-    let banner = gradebook(&ui).get_error_message().to_string();
-    assert!(banner.starts_with(&format!("Couldn't read {}: ", file.display())), "{banner}");
-    assert!(gradebook(&ui).get_status_message().is_empty());
+    let banner = ui.session.window.get_error_message().to_string();
+    assert!(banner.starts_with(&format!("{} isn't a workbook that can be read.", file.display())), "{banner}");
+    assert!(ui.session.window.get_status_message().is_empty());
 
     let header_only = import_file(&ui, &[&["Pupil", "Exam"]]);
     import_through_the_menu(&ui, Some(&header_only));
-    assert_eq!(gradebook(&ui).get_error_message(), error_text(&AppError::NoPupilsInFile(header_only)));
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::NoPupilsInFile(header_only)));
 
     let twice = import_file(&ui, &[&["Pupil"], &["Eva"], &["eva"]]);
     import_through_the_menu(&ui, Some(&twice));
-    assert_eq!(gradebook(&ui).get_error_message(), error_text(&AppError::DuplicatePupilInFile("eva".into())));
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::DuplicatePupilInFile("eva".into())));
     assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2, "nothing was added");
 }
 
@@ -1899,7 +1899,7 @@ fn an_invalid_weight_is_reported_in_the_banner() {
     let ui = seeded();
     click(&ui, "Exam");
     type_into(&ui, "Weight", "lots");
-    assert!(!gradebook(&ui).get_error_message().is_empty());
+    assert!(!ui.session.window.get_error_message().is_empty());
     assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().weight, "100", "the weight is unchanged");
 }
 
@@ -2040,7 +2040,7 @@ fn clearing_a_mark_deletes_it() {
 fn sheet_actions_while_locked_report_no_database() {
     let ui = encrypted();
     gradebook(&ui).invoke_create_class("1A".into());
-    assert_eq!(gradebook(&ui).get_error_message(), error_text(&AppError::NoDatabaseOpen));
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::NoDatabaseOpen));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2062,7 +2062,7 @@ fn regression_ctrl_l_locks_right_after_unlocking() {
 fn regression_ctrl_l_answers_right_after_startup() {
     let ui = seeded();
     with_control(&ui, "l");
-    assert_eq!(gradebook(&ui).get_error_message(), english(&Message::LockNeedsPin));
+    assert_eq!(ui.session.window.get_error_message(), english(&Message::LockNeedsPin));
 }
 
 /// Same cause: typing in a settings field and then going back to the sheet destroyed the
@@ -2167,4 +2167,357 @@ fn regression_number_fields_sit_below_their_labels() {
             field.absolute_position().y
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Messages on the page that is open, menus and fields from the keyboard
+
+/// The settings folder turns into a file, so nothing the app saves to config.toml can be written.
+fn break_saving_the_settings(ui: &Ui) {
+    let config_dir = ui.fixture.path("config");
+    fs::remove_dir_all(&config_dir).unwrap();
+    fs::write(&config_dir, b"in the way").unwrap();
+}
+
+/// What the field labelled `label` holds.
+fn field_text(ui: &Ui, label: &str) -> String {
+    find(ui, label).accessible_value().map(|value| value.to_string()).unwrap_or_default()
+}
+
+/// The error on the window, which must also be on screen.
+fn error_on_screen(ui: &Ui) -> String {
+    let message = ui.session.window.get_error_message().to_string();
+    assert!(!message.is_empty(), "there is an error");
+    assert!(shows_text(ui, &message), "the error is shown on the open page: {message}");
+    message
+}
+
+/// The sheet showed `Gradebook.error-message` and Settings the window's, so a failure reported
+/// from the other page (the theme button in the sidebar, Ctrl+L) was set but never seen.
+#[test]
+fn regression_a_theme_failure_from_the_sheet_shows_on_the_sheet() {
+    let ui = seeded();
+    break_saving_the_settings(&ui);
+    click(&ui, "Dark mode");
+    error_on_screen(&ui);
+}
+
+#[test]
+fn regression_the_lock_hint_shows_on_the_sheet_and_on_settings() {
+    let ui = seeded();
+    with_control(&ui, "l");
+    assert_eq!(error_on_screen(&ui), english(&Message::LockNeedsPin));
+    open_settings(&ui);
+    assert!(ui.session.window.get_error_message().is_empty(), "leaving the sheet drops its message");
+    with_control(&ui, "l");
+    assert_eq!(error_on_screen(&ui), english(&Message::LockNeedsPin));
+}
+
+#[test]
+fn regression_messages_are_dropped_when_the_page_changes() {
+    let ui = seeded();
+    break_saving_the_settings(&ui);
+    click(&ui, "Dark mode");
+    error_on_screen(&ui);
+    open_settings(&ui);
+    assert!(ui.session.window.get_error_message().is_empty());
+    click(&ui, "Dark");
+    error_on_screen(&ui);
+    click(&ui, "1A");
+    assert!(ui.session.window.get_error_message().is_empty());
+    assert!(ui.session.window.get_status_message().is_empty());
+}
+
+#[test]
+fn regression_ignored_shortcut_entries_show_on_screen() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    with_shortcut_config(&fixture, &[("lock", "Ctrl+")]);
+    let ui = Ui::open(fixture);
+    assert!(error_on_screen(&ui).contains("lock = \"Ctrl+\""));
+}
+
+/// The panel is matched to its column by row id, and a new database has columns with the same ids.
+#[test]
+fn regression_opening_another_database_closes_the_column_panel() {
+    let other = Fixture::new();
+    let mut state = other.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let class = classes::create_class(connection, "Other class").unwrap();
+        columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
+    }
+    state.shutdown();
+    let ui = seeded();
+    click(&ui, "Exam");
+    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    open_folder_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&other.database()));
+    click(&ui, "Open another database…");
+    assert_eq!(gradebook(&ui).get_class_name(), "Other class");
+    assert_eq!(gradebook(&ui).get_panel_index(), -1);
+    assert_eq!(gradebook(&ui).get_panel_column().row_count(), 0);
+}
+
+#[test]
+fn regression_deleting_the_last_class_closes_the_column_panel() {
+    let ui = seeded();
+    click(&ui, "Exam");
+    ui.dialogs.answer_next(true);
+    gradebook(&ui).invoke_delete_class();
+    assert_eq!(gradebook(&ui).get_current_class_id(), -1);
+    assert_eq!(gradebook(&ui).get_panel_index(), -1);
+    assert_eq!(gradebook(&ui).get_panel_column().row_count(), 0);
+}
+
+/// A calculated cell's value sat in a plain Text next to a hidden field, so a screen reader had
+/// no cell to read it from.
+#[test]
+fn regression_calculated_cells_are_readable_with_their_value() {
+    let ui = seeded();
+    type_into(&ui, "Ana, Exam", "8");
+    let value = cell_text(&ui, 0, 1);
+    assert!(!value.is_empty());
+    assert!(shows_text(&ui, &format!("Ana, Final grade: {value}")));
+    assert!(!shows_text(&ui, &format!("Ana, Final grade: {value} (provisional)")));
+    click(&ui, "Exam");
+    type_into(&ui, "Weight", "50");
+    let value = cell_text(&ui, 0, 1);
+    assert!(shows_text(&ui, &format!("Ana, Final grade: {value} (provisional)")));
+    assert!(shows_text(&ui, "Bea, Final grade"), "an empty calculated cell is still named");
+}
+
+#[test]
+fn regression_the_add_column_menu_works_from_the_keyboard() {
+    let ui = seeded();
+    click(&ui, "+ Add column");
+    key(&ui, Key::DownArrow);
+    press_enter(&ui);
+    let columns = gradebook(&ui).get_columns();
+    assert_eq!(columns.row_count(), 3);
+    assert_eq!(columns.row_data(2).unwrap().kind, avalio_lite::ui::ColumnType::Info, "Down moved to Info");
+    assert!(!shows(&ui, "Rounded"), "choosing closes the menu");
+
+    click(&ui, "+ Add column");
+    press_enter(&ui);
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 4, "the first option is the one on");
+    assert_eq!(gradebook(&ui).get_columns().row_data(3).unwrap().kind, avalio_lite::ui::ColumnType::Test);
+
+    click(&ui, "+ Add column");
+    key(&ui, Key::UpArrow);
+    key(&ui, Key::Escape);
+    assert!(!shows(&ui, "Rounded"), "Escape closes the menu");
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 4, "and adds nothing");
+}
+
+#[test]
+fn regression_the_more_menu_works_from_the_keyboard() {
+    let ui = seeded();
+    click(&ui, "More actions");
+    press_enter(&ui);
+    assert!(!gradebook(&ui).get_show_column_settings(), "the first option toggles the weights and scales");
+    click(&ui, "More actions");
+    key(&ui, Key::UpArrow);
+    key(&ui, Key::Escape);
+    assert!(!shows(&ui, "Delete class"), "Escape closes the menu");
+    assert_eq!(gradebook(&ui).get_classes().row_count(), 1);
+}
+
+#[test]
+fn regression_the_column_panel_starts_on_its_title_and_escape_closes_it() {
+    let ui = seeded();
+    click(&ui, "Exam");
+    replace_text(&ui, "Quiz");
+    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().title, "Quiz", "typing went to the title");
+    key(&ui, Key::Escape);
+    assert_eq!(gradebook(&ui).get_panel_index(), -1);
+    assert!(!shows(&ui, "Weight"));
+}
+
+#[test]
+fn regression_closing_the_panel_takes_a_refused_value_error_with_it() {
+    // Escape on a field holding a refused weight closed the panel but left its error showing
+    let ui = seeded();
+    click(&ui, "Exam");
+    type_into(&ui, "Weight", "x");
+    assert!(!ui.session.window.get_error_message().is_empty(), "the refused weight is reported");
+    key(&ui, Key::Escape);
+    assert_eq!(gradebook(&ui).get_panel_index(), -1);
+    assert!(ui.session.window.get_error_message().is_empty(), "{}", ui.session.window.get_error_message());
+}
+
+#[test]
+fn a_stale_column_index_opens_no_panel() {
+    // a click that lands after the column went (a reload in between) must not open anything
+    let ui = seeded();
+    gradebook(&ui).invoke_open_column_panel(99);
+    assert_eq!(gradebook(&ui).get_panel_index(), -1);
+    assert!(ui.session.window.get_error_message().is_empty());
+}
+
+#[test]
+fn regression_enter_in_the_repeat_pin_field_sets_the_pin() {
+    let ui = seeded();
+    open_pin_settings(&ui);
+    type_into(&ui, "PIN", PIN);
+    type_into(&ui, "Repeat PIN", PIN);
+    press_enter(&ui);
+    assert!(ui.session.window.get_pin_set(), "{}", ui.session.window.get_error_message());
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::PinTurnedOn));
+}
+
+/// Saving as you type leaves a refused value (empty, a taken name) in the field; the field kept
+/// it when left, out of step with what was saved.
+#[test]
+fn regression_a_refused_class_name_is_put_back_when_the_field_is_left() {
+    let ui = with_second_class();
+    click(&ui, "Class name");
+    replace_text(&ui, "2B");
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::DuplicateClassName("2B".into())));
+    assert_eq!(field_text(&ui, "Class name"), "2B", "the refused text stays while typing");
+    click(&ui, "Add pupil…");
+    // "2" was saved on the way to "2B" (saving as you type), and that is what the field goes back to
+    assert_eq!(field_text(&ui, "Class name"), "2");
+    assert_eq!(gradebook(&ui).get_class_name(), "2");
+    assert!(ui.session.window.get_error_message().is_empty());
+}
+
+#[test]
+fn regression_enter_puts_back_a_refused_pupil_name() {
+    let ui = seeded();
+    let ana = || elements(&ui, "Pupil").into_iter().find(|e| e.accessible_value().as_deref() == Some("Ana"));
+    click_element(&ana().unwrap());
+    replace_text(&ui, "");
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::EmptyName));
+    press_enter(&ui);
+    assert!(ui.session.window.get_error_message().is_empty());
+    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().name, "Ana");
+    assert!(ana().is_some(), "the field shows the saved name again");
+}
+
+#[test]
+fn regression_a_refused_column_value_is_put_back_when_the_panel_field_is_left() {
+    let ui = seeded();
+    click(&ui, "Exam");
+    type_into(&ui, "Weight", "lots");
+    error_on_screen(&ui);
+    assert_eq!(field_text(&ui, "Weight"), "lots");
+    type_into(&ui, "Out of", "10");
+    assert_eq!(field_text(&ui, "Weight"), "100");
+    assert!(ui.session.window.get_error_message().is_empty());
+    type_into(&ui, "Title", "");
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::EmptyName));
+    press_enter(&ui);
+    assert_eq!(field_text(&ui, "Title"), "Exam");
+    assert!(ui.session.window.get_error_message().is_empty());
+}
+
+#[test]
+fn a_value_that_was_saved_is_kept_when_the_field_is_left() {
+    let ui = seeded();
+    click(&ui, "Exam");
+    type_into(&ui, "Title", "Quiz");
+    type_into(&ui, "Weight", "60");
+    assert_eq!(field_text(&ui, "Title"), "Quiz");
+    assert_eq!(field_text(&ui, "Weight"), "60");
+}
+
+#[test]
+fn regression_a_refused_new_class_or_pupil_stays_in_its_field() {
+    let ui = seeded();
+    type_into(&ui, "New class", "1A");
+    press_enter(&ui);
+    error_on_screen(&ui);
+    assert_eq!(field_text(&ui, "New class"), "1A", "a refused name is not lost");
+    replace_text(&ui, "3C");
+    press_enter(&ui);
+    assert_eq!(field_text(&ui, "New class"), "", "an accepted one empties the field");
+
+    click(&ui, "1A");
+    type_into(&ui, "Add pupil…", "   ");
+    press_enter(&ui);
+    error_on_screen(&ui);
+    assert_eq!(field_text(&ui, "Add pupil…"), "   ");
+    replace_text(&ui, "Carla");
+    press_enter(&ui);
+    assert_eq!(field_text(&ui, "Add pupil…"), "");
+}
+
+#[test]
+fn regression_the_weight_tag_follows_each_languages_percent_style() {
+    let ui = seeded();
+    assert!(shows_text(&ui, "100%"));
+    open_settings(&ui);
+    click(&ui, "Galego");
+    click(&ui, "1A");
+    assert!(shows_text(&ui, "100 %"));
+    assert!(!shows_text(&ui, "100%"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pupils in no class
+
+/// Class "1A" with Ana, and Carla, who left her only class: she is in none now.
+fn with_a_pupil_in_no_class() -> Ui {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let first = classes::create_class(connection, "1A").unwrap();
+        pupils::add_new_pupil(connection, first, "Ana").unwrap();
+        let second = classes::create_class(connection, "2B").unwrap();
+        let carla = pupils::add_new_pupil(connection, second, "Carla").unwrap();
+        pupils::remove_from_class(connection, second, carla).unwrap();
+        classes::delete_class(connection, second).unwrap();
+    }
+    state.shutdown();
+    Ui::open(fixture)
+}
+
+fn open_the_pupil_menu(ui: &Ui) {
+    click(ui, "More actions");
+    click(ui, "Add from another class…");
+}
+
+#[test]
+fn a_pupil_in_no_class_is_marked_and_deleted_after_asking() {
+    let ui = with_a_pupil_in_no_class();
+    open_the_pupil_menu(&ui);
+    assert!(shows_text(&ui, "no class"), "marked in the list");
+    ui.dialogs.answer_next(false);
+    click(&ui, "Delete Carla");
+    assert_eq!(ui.dialogs.questions.borrow()[0], english(&Message::ConfirmDeletePupil { pupil: "Carla" }));
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2, "a cancelled question deletes nobody");
+    assert!(shows(&ui, "Delete Carla"));
+    ui.dialogs.answer_next(true);
+    click(&ui, "Delete Carla");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 1);
+    assert!(gradebook(&ui).get_addable_pupils().row_count() == 0);
+    assert!(!shows(&ui, "Delete Carla"), "and the emptied menu closes");
+}
+
+#[test]
+fn a_pupil_in_another_class_cannot_be_deleted_from_the_menu() {
+    let ui = with_second_class();
+    open_the_pupil_menu(&ui);
+    assert!(shows(&ui, "Carla"));
+    assert!(!shows(&ui, "Delete Carla"));
+    assert!(!shows_text(&ui, "no class"));
+}
+
+#[test]
+fn deleting_a_pupil_who_has_joined_a_class_meanwhile_is_refused_and_shown() {
+    let ui = with_a_pupil_in_no_class();
+    open_the_pupil_menu(&ui);
+    {
+        let state = ui.session.state.borrow();
+        let connection = state.connection().unwrap();
+        let carla = pupils::pupils_in_no_class(connection).unwrap()[0].id;
+        let class = classes::list_classes(connection).unwrap()[0].id;
+        pupils::add_existing_pupil(connection, class, carla).unwrap();
+    }
+    ui.dialogs.answer_next(true);
+    click(&ui, "Delete Carla");
+    assert_eq!(error_on_screen(&ui), error_text(&AppError::NotEditable));
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2, "nobody was deleted");
 }

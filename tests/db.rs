@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.116536
-//+ Revised: 	2026/10/29 04:09:18.397207
+//+ Revised: 	2026/11/02 08:27:50.863579
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -494,4 +494,18 @@ proptest::proptest! {
         proptest::prop_assert_eq!(statement.as_str(), format!("PRAGMA key = '{}'", key.replace('\'', "''")));
         proptest::prop_assert_eq!(statement.capacity(), "PRAGMA key = '".len() + 2 * key.len() + 1);
     }
+}
+
+#[test]
+fn regression_a_damaged_plain_file_is_not_a_wrong_pin() {
+    // a file too short to be encrypted, opened without a key, said "Wrong PIN" although it has none
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("short.db");
+    fs::write(&path, b"SQLite fo").unwrap();
+    assert!(!db::is_encrypted(&path).unwrap(), "shorter than the header: never taken for encrypted");
+    assert!(matches!(db::open(&path, None), Err(AppError::NotADatabase(found)) if found == path));
+    // a file that looks encrypted, opened without a key, still needs its PIN
+    let random = dir.path().join("random.db");
+    fs::write(&random, [0x5Au8; 4096]).unwrap();
+    assert!(matches!(db::open(&random, None), Err(AppError::WrongPin)));
 }

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:41.384483
-//+ Revised: 	2026/10/28 22:23:16.815835
+//+ Revised: 	2026/11/02 08:27:50.351953
 // -----------------------------------------------------------------------------
 
 //! PIN rules and guess limiting. The PIN itself is the database's encryption key
@@ -70,6 +70,11 @@ pub fn pins_match(first: &str, second: &str) -> bool {
 
 /// Slows down guessing at the lock screen: the first few wrong PINs are free, then each
 /// try has to wait. (SQLCipher's key derivation already makes every single guess slow.)
+///
+/// This only slows the lock screen, and is kept in memory on purpose: restarting the app resets
+/// it. Persisting it would add nothing, because the database file can be copied and guessed at
+/// offline without going through the app at all. The real protection is the strength of the PIN
+/// and SQLCipher's key derivation.
 #[derive(Debug, Default)]
 pub struct AttemptLimiter {
     failures: u32,

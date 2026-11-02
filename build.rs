@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+//+ Authors: 	Ran# <ran.hash@proton.me>
+//+ Created: 	2026/11/01 20:52:43.232212
+//+ Revised: 	2026/11/02 08:27:48.794748
+// -----------------------------------------------------------------------------
+
 use slint_build::{CompilerConfiguration, DefaultTranslationContext};
 
 const ICON: &str = "assets/logo.ico";

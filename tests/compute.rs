@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.747058
-//+ Revised: 	2026/10/28 15:53:09.386311
+//+ Revised: 	2026/11/02 08:27:50.651609
 // -----------------------------------------------------------------------------
 
 use avalio_lite::gradebook::compute::{
@@ -279,5 +279,57 @@ proptest! {
     fn a_decimal_comma_reads_like_a_decimal_point(whole in 0u32..10_000, fraction in 0u32..1000) {
         let with_point = format!("{whole}.{fraction}");
         prop_assert_eq!(parse_number(&with_point.replace('.', ",")), parse_number(&with_point));
+    }
+}
+
+#[test]
+fn regression_shown_grades_round_half_up() {
+    // format! rounded the binary value: 6.125 showed as 6.12 and 7.455 (7.45499… in binary) as 7.45,
+    // while a rounded column of the same grade showed 6.13 and 7.46
+    assert_eq!(format_number(6.125), "6.13");
+    assert_eq!(format_number(7.455), "7.46");
+    assert_eq!(format_number(-6.125), "-6.13");
+}
+
+#[test]
+fn regression_a_grade_that_shows_as_a_pass_passes() {
+    // 4.996 out of 10 showed as "5" in a rose (fail) pill and counted as failing in the summary
+    let columns = [test(1, 99.96, 10.0), column(2, ColumnKind::Weighted { max_score: 10.0 })];
+    let values = vec!["5".to_owned(), String::new()];
+    let shown = evaluate_row(&columns, &values);
+    assert_eq!(shown[1].text, "5");
+    assert_eq!(shown[1].tone, Tone::Pass);
+    let summary = grade_summary(&columns, &[values]).unwrap();
+    assert_eq!((summary.passing, summary.failing), (1, 0));
+}
+
+#[test]
+fn a_typed_score_passes_or_fails_as_typed() {
+    let columns = [test(1, 100.0, 10.0)];
+    let shown = evaluate_row(&columns, &["4.999".to_owned()]);
+    assert_eq!(shown[0].tone, Tone::Fail, "a typed score isn't rounded, so it fails as it shows");
+}
+
+#[test]
+fn regression_only_plain_numbers_parse() {
+    // Rust's parser took "1e1" as 10 and "+5" as 5, so a typo counted as a score
+    for text in ["1e1", "+5", "1E2", "0x10", "NaN", "-inf", "5-", ".", "-", ",", "1.2.3", "1,2,3", "1 000", "7 ,5"] {
+        assert_eq!(parse_number(text), None, "{text}");
+    }
+    assert_eq!(parse_number("-3"), Some(-3.0));
+    assert_eq!(parse_number("7."), Some(7.0));
+    assert_eq!(parse_number(",5"), Some(0.5));
+}
+
+proptest! {
+    #[test]
+    fn shown_text_matches_round_to(value in -10_000.0f64..10_000.0) {
+        prop_assert_eq!(parse_number(&format_number(value)), Some(round_to(value, 2)).map(|n| if n == 0.0 { 0.0 } else { n }));
+    }
+
+    #[test]
+    fn plain_decimal_text_always_parses(whole in 0u64..1_000_000, fraction in 0u32..1000, comma: bool, negative: bool) {
+        let text = format!("{}{whole}{}{fraction}", if negative { "-" } else { "" }, if comma { "," } else { "." });
+        prop_assert!(parse_number(&text).is_some(), "{}", text);
     }
 }

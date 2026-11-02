@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.224094
-//+ Revised: 	2026/10/29 14:13:27.249937
+//+ Revised: 	2026/11/02 08:27:49.392172
 // -----------------------------------------------------------------------------
 
 mod backup;
@@ -86,8 +86,8 @@ pub fn run_with(dialogs: SharedDialogs) -> ExitCode {
     match launch(logger, dialogs.clone(), system_language) {
         Ok(()) => ExitCode::SUCCESS,
         Err(reason) => {
-            log::error!("{reason}");
-            dialogs.show_fatal(&i18n::text(i18n::current(), &Message::WindowFailed { reason: &reason }));
+            log::error!("avalio-lite could not start: {reason}");
+            dialogs.show_fatal(&i18n::text(i18n::current(), &Message::WindowFailed));
             ExitCode::FAILURE
         }
     }

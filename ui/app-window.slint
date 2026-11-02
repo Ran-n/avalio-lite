@@ -2,12 +2,12 @@ import { Palette } from "std-widgets.slint";
 import { SetupNotice, SetupPage } from "setup-page.slint";
 import { Section, Shell } from "shell.slint";
 import { LockPage } from "lock-page.slint";
-import { CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone } from "gradebook.slint";
+import { AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone } from "gradebook.slint";
 import { Theme } from "theme.slint";
 import { ShortcutAction, ShortcutItem, Shortcuts } from "shortcuts.slint";
 import { Backup } from "backup.slint";
 
-export { SetupNotice, Section, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone, Theme }
+export { SetupNotice, Section, AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone, Theme }
 export { ShortcutAction, ShortcutItem, Shortcuts, Backup }
 
 export component AppWindow inherits Window {
@@ -18,8 +18,9 @@ export component AppWindow inherits Window {
     in-out property <string> setup-log-folder;
     in property <string> database-path;
     in property <string> log-folder;
-    in property <string> error-message;
-    in property <string> status-message;
+    // the message of the last action; the page that is open shows it, and leaving the page drops it
+    in-out property <string> error-message;
+    in-out property <string> status-message;
     in property <string> language-code: "en";
 
     in property <bool> locked;
@@ -133,8 +134,12 @@ export component AppWindow inherits Window {
             } else if (action == ShortcutAction.toggle-column-settings) {
                 Gradebook.toggle-column-settings();
             } else if (action == ShortcutAction.open-settings) {
+                root.error-message = "";
+                root.status-message = "";
                 root.section = root.section == Section.settings ? Section.sheet : Section.settings;
             } else {
+                root.error-message = "";
+                root.status-message = "";
                 root.section = Section.sheet;
                 Gradebook.select-adjacent-class(action == ShortcutAction.next-class ? 1 : -1);
             }
@@ -157,8 +162,8 @@ export component AppWindow inherits Window {
             section <=> root.section;
             database-path: root.database-path;
             log-folder: root.log-folder;
-            error-message: root.error-message;
-            status-message: root.status-message;
+            error-message <=> root.error-message;
+            status-message <=> root.status-message;
             language-code: root.language-code;
             pin-set: root.pin-set;
             pin-current <=> root.pin-current;

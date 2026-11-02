@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.190729
-//+ Revised: 	2026/10/29 15:46:51.392505
+//+ Revised: 	2026/11/02 08:27:49.889031
 // -----------------------------------------------------------------------------
 
 use std::io;
@@ -64,6 +64,9 @@ pub enum AppError {
 
     #[error("{0} is not an avalio-lite backup or database")]
     NotADatabase(PathBuf),
+
+    #[error("the change failed and the database could not be put back; it is kept as {kept}")]
+    KeptAside { kept: PathBuf, path: PathBuf },
 
     #[error("no database is open")]
     NoDatabaseOpen,

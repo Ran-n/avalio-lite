@@ -1,12 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.062570
-//+ Revised: 	2026/10/29 04:09:18.078504
+//+ Revised: 	2026/11/02 08:27:49.774071
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -69,11 +70,14 @@ fn shown() -> bool {
 /// Reads and writes `config.toml` in a fixed folder (`%APPDATA%\avalio-lite` in normal use).
 pub struct ConfigStore {
     path: PathBuf,
+    /// The file on disk failed to load, so it may hold settings the user still wants (the
+    /// database path, shortcuts): the first save keeps a copy of it instead of just replacing it.
+    unreadable: AtomicBool,
 }
 
 impl ConfigStore {
     pub fn in_dir(dir: &Path) -> Self {
-        Self { path: dir.join(CONFIG_FILE_NAME) }
+        Self { path: dir.join(CONFIG_FILE_NAME), unreadable: AtomicBool::new(false) }
     }
 
     pub fn default_location() -> Result<Self> {
@@ -95,20 +99,52 @@ impl ConfigStore {
 
     /// Returns `None` on a first run, when no settings file exists yet.
     pub fn load(&self) -> Result<Option<AppConfig>> {
-        let text = match fs::read_to_string(&self.path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(io_at(&self.path)(error)),
+        let loaded = match fs::read_to_string(&self.path) {
+            Ok(text) => toml::from_str(&text)
+                .map(Some)
+                .map_err(|source| AppError::ConfigParse { path: self.path.clone(), source }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(io_at(&self.path)(error)),
         };
-        toml::from_str(&text).map(Some).map_err(|source| AppError::ConfigParse { path: self.path.clone(), source })
+        self.unreadable.store(loaded.is_err(), Ordering::Relaxed);
+        loaded
     }
 
-    /// Writes to a temporary file first so a crash mid-write never leaves a truncated settings file.
+    /// Writes to a temporary file first so a crash mid-write never leaves a truncated settings
+    /// file. A file that failed to load is copied aside (`config.toml.bad`) before it is replaced;
+    /// if that copy can't be made, nothing is written.
     pub fn save(&self, config: &AppConfig) -> Result<()> {
         storage::ensure_parent(&self.path)?;
+        if self.unreadable.load(Ordering::Relaxed) {
+            self.keep_unreadable_copy()?;
+        }
         let temporary = self.path.with_extension("toml.tmp");
         fs::write(&temporary, toml::to_string_pretty(config)?).map_err(io_at(&temporary))?;
-        fs::rename(&temporary, &self.path).map_err(io_at(&self.path))
+        if let Err(error) = fs::rename(&temporary, &self.path) {
+            if let Err(removal) = fs::remove_file(&temporary) {
+                log::error!("could not remove {}: {removal}", temporary.display());
+            }
+            return Err(io_at(&self.path)(error));
+        }
+        Ok(())
+    }
+
+    /// Copies the settings file that failed to load to `config.toml.bad` (with a timestamp added
+    /// when that name is taken), once; the file is absent when it was never there to copy.
+    fn keep_unreadable_copy(&self) -> Result<()> {
+        if self.path.is_file() {
+            let mut copy = storage::with_suffix(&self.path, ".bad");
+            if copy.exists() {
+                copy = storage::with_suffix(
+                    &self.path,
+                    &format!(".bad-{}", chrono::Local::now().format("%Y%m%d-%H%M%S%3f")),
+                );
+            }
+            fs::copy(&self.path, &copy).map_err(io_at(&copy))?;
+            log::warn!("the unreadable settings file was kept as {}", copy.display());
+        }
+        self.unreadable.store(false, Ordering::Relaxed);
+        Ok(())
     }
 }
 

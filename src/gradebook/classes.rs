@@ -1,12 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/10/29 14:13:31.264522
+//+ Revised: 	2026/11/02 08:27:49.946904
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, ErrorCode, params};
 
-use super::model::{ClassSummary, clean_name};
+use super::model::{ClassSummary, clean_name, name_sort_key};
+use super::update_one;
 use crate::error::{AppError, Result};
 
 pub fn list_classes(connection: &Connection) -> Result<Vec<ClassSummary>> {
@@ -14,11 +15,13 @@ pub fn list_classes(connection: &Connection) -> Result<Vec<ClassSummary>> {
         "SELECT c.id, c.name, COUNT(cp.pupil_id)
          FROM classes c LEFT JOIN class_pupils cp ON cp.class_id = c.id
          GROUP BY c.id
-         ORDER BY c.name COLLATE NOCASE",
+         ORDER BY c.id",
     )?;
-    let classes = statement
+    let mut classes: Vec<ClassSummary> = statement
         .query_map([], |row| Ok(ClassSummary { id: row.get(0)?, name: row.get(1)?, pupil_count: row.get(2)? }))?
         .collect::<rusqlite::Result<_>>()?;
+    // sorted here: SQLite's NOCASE only folds A to Z, which put "Árabe" after "Zoo"
+    classes.sort_by_cached_key(|class| name_sort_key(&class.name));
     Ok(classes)
 }
 
@@ -81,7 +84,7 @@ pub fn adjacent_index(len: usize, current: Option<usize>, delta: i32) -> Option<
 }
 
 pub fn delete_class(connection: &Connection, class_id: i64) -> Result<()> {
-    connection.execute("DELETE FROM classes WHERE id = ?1", [class_id])?;
+    update_one(connection, "DELETE FROM classes WHERE id = ?1", [class_id])?;
     log::info!("deleted class {class_id}");
     Ok(())
 }

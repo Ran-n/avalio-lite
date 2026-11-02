@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.532831
-//+ Revised: 	2026/10/29 04:09:18.914660
+//+ Revised: 	2026/11/02 14:00:10.248567
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -70,7 +70,24 @@ fn move_file_reports_an_original_it_cannot_remove() {
     let _held = common::hold_against_removal(&source);
     let result = move_file(&source, &destination);
     assert!(matches!(result, Err(AppError::Io { ref path, .. }) if *path == source), "{result:?}");
-    assert_eq!(fs::read(&destination).unwrap(), b"hello", "the complete copy is kept");
+    assert!(!destination.exists(), "the copy goes, so trying again isn't blocked by it");
+    assert_eq!(fs::read(&source).unwrap(), b"hello");
+}
+
+#[test]
+fn regression_a_move_that_failed_can_be_tried_again() {
+    // a complete copy stayed when the original couldn't be deleted, and every retry then failed
+    // with "already exists"
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("a.log");
+    let destination = dir.path().join("new").join("a.log");
+    fs::write(&source, b"hello").unwrap();
+    let held = common::hold_against_removal(&source);
+    assert!(move_file(&source, &destination).is_err());
+    drop(held);
+    move_file(&source, &destination).unwrap();
+    assert_eq!(fs::read(&destination).unwrap(), b"hello");
+    assert!(!source.exists());
 }
 
 #[test]
@@ -89,4 +106,18 @@ fn same_location_compares_spelling_when_the_paths_dont_exist() {
     let missing = dir.path().join("missing");
     assert!(same_location(&missing, &missing));
     assert!(!same_location(&missing, &dir.path().join("other")));
+}
+
+#[cfg(windows)]
+#[test]
+fn a_move_whose_copy_fails_leaves_the_source_and_no_destination() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let (source, destination) = (dir.path().join("a.log"), dir.path().join("b.log"));
+    fs::write(&source, b"hello").unwrap();
+    // held open without sharing, so the copy can't read it
+    let _held = fs::OpenOptions::new().read(true).write(true).share_mode(0).open(&source).unwrap();
+    assert!(matches!(move_file(&source, &destination), Err(AppError::Io { .. })));
+    assert!(!destination.exists(), "no partial copy is left");
+    assert!(source.is_file());
 }

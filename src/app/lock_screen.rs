@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:42.253612
-//+ Revised: 	2026/10/29 14:13:23.194256
+//+ Revised: 	2026/11/02 08:27:49.333212
 // -----------------------------------------------------------------------------
 
 use std::cell::RefCell;
@@ -15,7 +15,7 @@ use crate::app::{SharedState, gradebook, view, with_window, with_window1};
 use crate::error::{AppError, Result};
 use crate::i18n::{self, Message};
 use crate::lock::AttemptLimiter;
-use crate::ui::{AppWindow, Backup, Gradebook};
+use crate::ui::{AppWindow, Backup};
 
 pub fn wire(window: &AppWindow, state: &SharedState) {
     wire_locking(window, state);
@@ -51,8 +51,7 @@ fn wire_locking(window: &AppWindow, state: &SharedState) {
         if shared.borrow_mut().lock() {
             show_locked(window);
         } else {
-            let hint = i18n::text(i18n::current(), &Message::LockNeedsPin);
-            window.global::<Gradebook>().set_error_message(hint.into());
+            view::show_error_text(window, i18n::text(i18n::current(), &Message::LockNeedsPin));
         }
     }));
 

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.921715
-//+ Revised: 	2026/10/29 15:46:51.134795
+//+ Revised: 	2026/11/02 08:27:48.850959
 // -----------------------------------------------------------------------------
 
 //! Runs the real app, in its real window, for the desktop tests (`tests/desktop.rs`), against a
@@ -207,8 +207,6 @@ fn state(session: &Session) -> Value {
         "dark": window.global::<Theme>().get_dark(),
         "error": window.get_error_message().as_str(),
         "status": window.get_status_message().as_str(),
-        "sheet_error": gradebook.get_error_message().as_str(),
-        "sheet_status": gradebook.get_status_message().as_str(),
         "classes": classes,
         "class_name": gradebook.get_class_name().as_str(),
         "columns": columns,

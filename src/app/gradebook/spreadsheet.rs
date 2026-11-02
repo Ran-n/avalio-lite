@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.870291
-//+ Revised: 	2026/10/29 14:12:20.695838
+//+ Revised: 	2026/11/02 08:27:49.208226
 // -----------------------------------------------------------------------------
 
 //! The sheet's Excel menu entries: export the open class to a workbook, and import pupils and
@@ -14,8 +14,9 @@ use std::rc::Rc;
 use slint::ComponentHandle;
 
 use super::view::{Refresh, current_class_id};
-use super::{SharedState, run, show_status};
+use super::{SharedState, run};
 use crate::app::dialogs::FileKind;
+use crate::app::view::show_status;
 use crate::app::{SharedDialogs, with_window};
 use crate::i18n::{self, Language, Message};
 use crate::spreadsheet::export;

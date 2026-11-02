@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.917995
-//+ Revised: 	2026/10/29 14:13:31.951507
+//+ Revised: 	2026/11/02 08:27:50.006912
 // -----------------------------------------------------------------------------
 
 use rusqlite::types::Type;
@@ -15,6 +15,11 @@ use crate::i18n::{Language, default_column_title};
 
 pub const DEFAULT_MAX_SCORE: f64 = 10.0;
 pub const MAX_DECIMALS: u8 = 3;
+/// The largest weight a test takes, in %: ten times the whole grade is already far past any real
+/// use, and a bound keeps the sums finite.
+pub const MAX_WEIGHT: f64 = 1000.0;
+/// The largest maximum score a test, final grade or average takes.
+pub const MAX_SCORE_LIMIT: f64 = 10_000.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -77,7 +82,7 @@ pub fn set_bonus(connection: &Connection, column_id: i64, bonus: bool) -> Result
 
 pub fn set_weight(connection: &Connection, column_id: i64, text: &str) -> Result<()> {
     let weight = parse_number(text)
-        .filter(|weight| *weight >= 0.0)
+        .filter(|weight| (0.0..=MAX_WEIGHT).contains(weight))
         .ok_or_else(|| AppError::InvalidNumber { field: NumberField::Weight, value: text.to_owned() })?;
     update_one(
         connection,
@@ -88,7 +93,7 @@ pub fn set_weight(connection: &Connection, column_id: i64, text: &str) -> Result
 
 pub fn set_max_score(connection: &Connection, column_id: i64, text: &str) -> Result<()> {
     let max_score = parse_number(text)
-        .filter(|max| *max > 0.0)
+        .filter(|max| *max > 0.0 && *max <= MAX_SCORE_LIMIT)
         .ok_or_else(|| AppError::InvalidNumber { field: NumberField::MaxScore, value: text.to_owned() })?;
     update_one(
         connection,
@@ -128,7 +133,7 @@ pub fn set_round_source(connection: &Connection, column_id: i64, source: Option<
 }
 
 pub fn delete_column(connection: &Connection, column_id: i64) -> Result<()> {
-    connection.execute("DELETE FROM sheet_columns WHERE id = ?1", [column_id])?;
+    update_one(connection, "DELETE FROM sheet_columns WHERE id = ?1", [column_id])?;
     log::info!("deleted column {column_id}");
     Ok(())
 }
@@ -177,9 +182,15 @@ fn default_kind(column_type: ColumnType, existing: &[Column]) -> ColumnKind {
     }
 }
 
+/// Tests are numbered on from how many there are, skipping a title already in use ("Test 2"
+/// after "Test 1" was deleted).
 fn default_title(column_type: ColumnType, existing: &[Column], language: Language) -> String {
     let same_type = existing.iter().filter(|column| column.kind.column_type() == column_type).count();
-    default_column_title(language, column_type, same_type + 1)
+    let taken = |title: &str| existing.iter().any(|column| column.title.to_lowercase() == title.to_lowercase());
+    (same_type + 1..)
+        .map(|number| default_column_title(language, column_type, number))
+        .find(|title| column_type != ColumnType::Test || !taken(title))
+        .unwrap_or_default()
 }
 
 fn kind_fields(kind: ColumnKind) -> (Option<f64>, Option<f64>, Option<i64>, Option<u8>) {

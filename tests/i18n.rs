@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/10/29 15:46:52.103594
+//+ Revised: 	2026/11/02 08:27:51.228250
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -165,6 +165,7 @@ fn every_message() -> Vec<Message<'static>> {
         Message::ConfirmDeleteClass { class: "1A" },
         Message::ConfirmRemovePupil { pupil: "Ana", class: "1A" },
         Message::ConfirmDeleteColumn { column: "Exam" },
+        Message::ConfirmDeletePupil { pupil: "Ana" },
         Message::DatabaseMoved { path: "D:\\x" },
         Message::LogsMoved { path: "D:\\y" },
         Message::DatabaseFileType,
@@ -177,7 +178,7 @@ fn every_message() -> Vec<Message<'static>> {
         Message::BackupClassesAdded { classes: 2, pupils: 2, existing: 0, file: "Exam" },
         Message::BackupClassesRenamed { pairs: renamed },
         Message::BackupHasNoClasses,
-        Message::WindowFailed { reason: "boom" },
+        Message::WindowFailed,
         Message::LockNeedsPin,
         Message::PinTurnedOn,
         Message::PinChanged,
@@ -198,6 +199,7 @@ fn every_message() -> Vec<Message<'static>> {
             Message::ConfirmDeleteClass { .. }
             | Message::ConfirmRemovePupil { .. }
             | Message::ConfirmDeleteColumn { .. }
+            | Message::ConfirmDeletePupil { .. }
             | Message::DatabaseMoved { .. }
             | Message::LogsMoved { .. }
             | Message::DatabaseFileType
@@ -208,7 +210,7 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::BackupClassesAdded { .. }
             | Message::BackupClassesRenamed { .. }
             | Message::BackupHasNoClasses
-            | Message::WindowFailed { .. }
+            | Message::WindowFailed
             | Message::LockNeedsPin
             | Message::PinTurnedOn
             | Message::PinChanged
@@ -283,6 +285,7 @@ fn every_error() -> Vec<AppError> {
             | AppError::NewerSchema { .. }
             | AppError::IntegrityCheckFailed(_)
             | AppError::NotADatabase(_)
+            | AppError::KeptAside { .. }
             | AppError::NoDatabaseOpen
             | AppError::EmptyName
             | AppError::DuplicateClassName(_)
@@ -350,9 +353,13 @@ fn import_messages_count_in_every_language() {
     let done = |pupils, new_pupils, marks| Message::ImportDone { pupils, new_pupils, marks, class: "1A" };
     assert_eq!(english(&done(1, 0, 1)), "Imported 1 pupil and 1 mark or note into 1A.");
     assert_eq!(english(&done(3, 2, 0)), "Imported 3 pupils (2 new) and 0 marks or notes into 1A.");
-    assert_eq!(galician(&done(1, 1, 1)), "Importáronse 1 alumno (1 novo) e 1 nota ou observación en 1A.");
+    assert_eq!(galician(&done(1, 1, 1)), "Importouse 1 alumno (1 novo) e 1 nota ou observación en 1A.");
     assert_eq!(galician(&done(3, 2, 0)), "Importáronse 3 alumnos (2 novos) e 0 notas ou observacións en 1A.");
     assert_eq!(galician(&done(2, 0, 2)), "Importáronse 2 alumnos e 2 notas ou observacións en 1A.");
+    let added = |classes, pupils| Message::BackupClassesAdded { classes, pupils, existing: 0, file: "Exam" };
+    assert_eq!(galician(&added(1, 3)), "Engadiuse 1 clase e 3 alumnos desde Exam.");
+    assert_eq!(galician(&added(2, 1)), "Engadíronse 2 clases e 1 alumno desde Exam.");
+    assert_eq!(english(&added(1, 1)), "Added 1 class and 1 pupil from Exam.");
     let overwrite = |count| Message::ConfirmImportOverwrite { count, class: "1A" };
     assert_eq!(english(&overwrite(1)), "Importing replaces 1 mark or note already in 1A. Continue?");
     assert_eq!(galician(&overwrite(1)), "Ao importar substitúese 1 nota ou observación que xa hai en 1A. Continuar?");
@@ -436,4 +443,51 @@ proptest::proptest! {
             );
         }
     }
+}
+
+/// The system's own error text (English, technical) never reaches the user, in either language;
+/// what went wrong is worded by its kind, and the path stays.
+#[test]
+fn regression_technical_error_text_is_replaced_by_friendly_sentences() {
+    use std::io::{Error, ErrorKind};
+    let raw = "RAW-SYSTEM-TEXT";
+    let path = || std::path::PathBuf::from("D:\\x");
+    let io = |kind| AppError::Io { path: path(), source: Error::new(kind, raw) };
+    let sqlite = |code| {
+        AppError::Database(rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), Some(raw.to_owned())))
+    };
+    let toml_error = toml::from_str::<toml::Value>("not = [valid").unwrap_err();
+    let errors = [
+        io(ErrorKind::NotFound),
+        io(ErrorKind::PermissionDenied),
+        io(ErrorKind::StorageFull),
+        io(ErrorKind::Other),
+        AppError::Io { path: path(), source: Error::from_raw_os_error(32) },
+        sqlite(5),
+        sqlite(6),
+        sqlite(26),
+        sqlite(11),
+        sqlite(13),
+        sqlite(1),
+        AppError::ConfigParse { path: path(), source: toml_error },
+        AppError::SpreadsheetWrite { path: path(), reason: raw.into() },
+        AppError::SpreadsheetRead { path: path(), reason: raw.into() },
+        AppError::SpreadsheetRead { path: path(), reason: "the reader panicked".into() },
+    ];
+    for error in &errors {
+        for language in LANGUAGES {
+            let shown = error_message(language, error);
+            for technical in [raw, "os error", "SQLite", "TOML", "expected", "panicked", "code:"] {
+                assert!(!shown.contains(technical), "{technical:?} reaches the user in {language:?}: {shown}");
+            }
+        }
+    }
+    let english = |error: &AppError| error_message(Language::English, error);
+    assert!(english(&errors[0]).starts_with("Couldn't find D:\\x"));
+    assert!(english(&errors[1]).contains("isn't allowed"));
+    assert!(english(&errors[4]).contains("another program"));
+    assert!(english(&errors[5]).contains("another program"));
+    assert!(english(&errors[7]).contains("damaged"));
+    assert!(english(&errors[11]).contains("damaged") && english(&errors[11]).contains("D:\\x"));
+    assert!(english(&errors[14]).contains("isn't a workbook"));
 }

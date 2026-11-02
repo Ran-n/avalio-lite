@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.250028
-//+ Revised: 	2026/10/28 15:53:09.517557
+//+ Revised: 	2026/11/02 14:00:10.121611
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -97,4 +97,73 @@ fn flush_leaves_the_file_open_with_everything_written() {
     logger.close();
     logger.close();
     assert!(fs::read_to_string(dir.path().join(LOG_FILE_NAME)).unwrap().contains("second"), "still open after flush");
+}
+
+#[test]
+fn regression_a_log_over_the_limit_is_set_aside_at_startup() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(LOG_FILE_NAME);
+    fs::write(&file, vec![b'x'; 100]).unwrap();
+    let logger = FileLogger::new(LevelFilter::Info);
+    logger.open_with_limit(dir.path(), 100).unwrap();
+    logger.close();
+    assert_eq!(fs::metadata(&file).unwrap().len(), 100, "at the limit it is kept and appended to");
+    fs::write(&file, vec![b'y'; 101]).unwrap();
+    logger.open_with_limit(dir.path(), 100).unwrap();
+    logger.log(&record_for("avalio_lite", Level::Info, format_args!("fresh")));
+    logger.close();
+    let rotated = avalio_lite::logging::rotated_path(dir.path());
+    assert_eq!(fs::read(&rotated).unwrap(), vec![b'y'; 101]);
+    assert!(fs::read_to_string(&file).unwrap().contains("fresh"));
+    // only one old file is kept: the next rotation replaces it
+    fs::write(&file, vec![b'z'; 150]).unwrap();
+    logger.open_with_limit(dir.path(), 100).unwrap();
+    logger.close();
+    assert_eq!(fs::read(&rotated).unwrap(), vec![b'z'; 150]);
+}
+
+struct Failing;
+
+impl std::io::Write for Failing {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("disk full"))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn lost_lines_are_counted_and_reported_once_the_file_works_again() {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use avalio_lite::logging::write_line;
+    let lost = AtomicU64::new(0);
+    assert!(!write_line(&mut Failing, &lost, "one\n"));
+    assert!(!write_line(&mut Failing, &lost, "two\n"));
+    assert_eq!(lost.load(Ordering::Relaxed), 2);
+    let mut file = Vec::new();
+    assert!(write_line(&mut file, &lost, "three\n"));
+    let text = String::from_utf8(file).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "the note is a line of its own: {text:?}");
+    assert!(lines[0].ends_with("[WARNING ] avalio_lite::logging: 2 log line(s) could not be written"), "{text:?}");
+    assert_eq!(lines[1], "three");
+    assert_eq!(lost.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn a_large_log_that_cannot_be_set_aside_keeps_growing() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join(LOG_FILE_NAME);
+    fs::write(&log, "x".repeat(200)).unwrap();
+    // a folder where the old log would go makes setting it aside fail
+    let rotated = avalio_lite::logging::rotated_path(dir.path());
+    fs::create_dir(&rotated).unwrap();
+    fs::write(rotated.join("keep"), b"").unwrap();
+    let logger = FileLogger::new(LevelFilter::Info);
+    logger.open_with_limit(dir.path(), 100).unwrap();
+    assert_eq!(fs::read_to_string(&log).unwrap(), "x".repeat(200), "the log is kept and still used");
+    assert!(rotated.join("keep").exists());
+    logger.close();
 }

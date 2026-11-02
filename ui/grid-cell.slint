@@ -33,6 +33,13 @@ export component GridCell inherits Rectangle {
         selection-foreground-color: Theme.text;
         edited => { root.edited(self.text); }
     }
+    // A calculated cell is one readable item holding its value (and that it is provisional); a typed
+    // cell is its own text field. The pill's texts below are drawn only.
+    if root.computed: Rectangle {
+        accessible-role: AccessibleRole.text;
+        accessible-label: root.text == "" ? root.spoken-label
+            : root.spoken-label + ": " + root.text + (root.provisional ? " (" + @tr("provisional") + ")" : "");
+    }
     // A provisional grade is shown grey with a warning mark instead of pass / fail colours,
     // so it can't be mistaken for a final result while the test weights are wrong.
     if root.computed && root.text != "": Rectangle {
@@ -53,6 +60,7 @@ export component GridCell inherits Rectangle {
             spacing: 5px;
             if root.provisional: Text {
                 text: "!";
+                accessible-role: AccessibleRole.none;
                 font-size: Theme.text-m;
                 font-weight: 800;
                 vertical-alignment: center;
@@ -60,6 +68,7 @@ export component GridCell inherits Rectangle {
             }
             Text {
                 text: root.text;
+                accessible-role: AccessibleRole.none;
                 font-size: Theme.text-m;
                 font-weight: 700;
                 vertical-alignment: center;

@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.371587 )
-[//]: # (+ Revised: 	2026/10/29 04:36:58.678272 )
+[//]: # (+ Revised: 	2026/11/02 08:27:48.682159 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 Thank you for your interest in contributing.
@@ -51,7 +51,7 @@ Open an issue and include:
 
 1. Fork the repository
 2. Branch from `main`
-3. Make your change, with tests of every kind it touches (see *Tests* in the README): a bug fix starts with a `regression_…` test that fails without it; a UI change gets headless tests in `tests/ui.rs` and, when the look changes, reviewed desktop baselines
+3. Make your change, with tests of every kind it touches (see *Tests* in [docs/development.md](docs/development.md#tests)): a bug fix starts with a `regression_…` test that fails without it; a UI change gets headless tests in `tests/ui.rs` and, when the look changes, reviewed desktop baselines
 4. Check that `.\scripts\coverage.ps1 -Branches` (line and branch gates; needs the nightly toolchain) and `cargo test --test desktop -- --ignored --test-threads=1` pass
 5. Commit following the style below
 6. Open a pull request against `main` and describe *why* the change is needed
@@ -95,8 +95,8 @@ Commits use a bracketed title line followed by a Conventional Commits body.
 
 ## License
 
-This project is distributed under the [PayBack License (PBL)](LICENSE).
+This project is distributed under the [PayBack License (PBL) v2.0](LICENSE).
 
 Contributing does not transfer copyright. Non-trivial contributions may entitle contributors to a revenue share, subject to being listed in `CONTRIBUTORS` and a quorum vote among existing contributors.
 
-Personal and non-commercial use is free. Commercial use requires a revenue-share agreement per the PBL terms.
+Personal and non-commercial use is free. Commercial use requires a revenue-share agreement per the PBL v2.0 terms.

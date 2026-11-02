@@ -17,7 +17,15 @@
 #   src\db\mod.rs discard, "could not remove"; src\spreadsheet\export.rs "could not remove the
 #   incomplete export"
 #       a cleanup failing right after an earlier failure (a double fault), on a file the app
-#       created a moment before.
+#       created a moment before. The same for src\storage.rs move_file, "could not remove the
+#       copy", src\config.rs, "could not remove" the temporary settings file, and
+#       src\app\state\mod.rs move_logs, "could not move the log back", and
+#       src\app\state\protection.rs put_back, renaming the old file back failing right after the
+#       new one failed to go in (removing the new one first failing is tested, in roll_back).
+#   src\storage.rs copy_complete, a copy of another size than its original
+#       fs::copy reports any write it can't finish; the check is there for a disk that says it did.
+#   src\spreadsheet\import.rs read_table, the reader panicking
+#       no file is known to make the workbook reader panic; the guard is for one that would.
 #   src\app\state\protection.rs, reopening fails after the files were swapped (and the
 #   lock_screen.rs and src\app\backup.rs restore branches that then ask for the PIN again)
 #       the swapped-in file passed its check a moment earlier; only another program grabbing it in

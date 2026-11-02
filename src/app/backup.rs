@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.835428
-//+ Revised: 	2026/10/29 14:45:37.234073
+//+ Revised: 	2026/11/02 08:27:48.906387
 // -----------------------------------------------------------------------------
 
 //! The Backup card in Settings: exporting everything to an `.avalio` file, restoring one, and
@@ -158,8 +158,10 @@ fn restore(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs, bac
     let result = state.borrow_mut().restore_backup(backup);
     match result {
         Ok(()) => {
-            gradebook::show_database(window, state);
-            view::show_status(window, i18n::text(i18n::current(), &Message::BackupRestored { file: &file }));
+            // a reload that failed has its error on screen, which a success message would hide
+            if gradebook::show_database(window, state) {
+                view::show_status(window, i18n::text(i18n::current(), &Message::BackupRestored { file: &file }));
+            }
         }
         Err(error) => {
             log::warn!("restore backup failed: {error}");
@@ -190,7 +192,9 @@ fn add_classes(window: &AppWindow, state: &SharedState, backup: OpenedBackup) {
         view::show_status(window, i18n::text(language, &Message::BackupHasNoClasses));
         return;
     };
-    gradebook::redraw_selecting(window, state, Some(first));
+    if !gradebook::redraw_selecting(window, state, Some(first)) {
+        return;
+    }
     let mut status = i18n::text(
         language,
         &Message::BackupClassesAdded {

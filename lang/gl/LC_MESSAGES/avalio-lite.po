@@ -372,3 +372,15 @@ msgstr "Continuar"
 
 msgid "Add classes from a backup…"
 msgstr "Engadir clases dunha copia…"
+
+msgid "{}%"
+msgstr "{} %"
+
+msgid "provisional"
+msgstr "provisional"
+
+msgid "no class"
+msgstr "sen clase"
+
+msgid "Delete {}"
+msgstr "Eliminar a {}"

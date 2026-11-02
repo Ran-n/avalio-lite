@@ -30,6 +30,13 @@ export struct CellItem {
     provisional: bool,
 }
 
+// A pupil who could be added to the open class from another one
+export struct AddablePupil {
+    name: string,
+    // in no class at all: only kept so they can be added somewhere, and the one kind that can be deleted
+    no-class: bool,
+}
+
 export struct RowItem {
     pupil-id: int,
     name: string,
@@ -47,10 +54,7 @@ export global Gradebook {
     in property <string> weight-total;
     in property <string> bonus-total;
     in property <bool> weights-complete: true;
-    in property <[string]> addable-pupils;
-    in property <string> error-message;
-    // what the last sheet action did, such as where an export went; cleared by the next one
-    in property <string> status-message;
+    in property <[AddablePupil]> addable-pupils;
     // when false, column headers show only titles (no weight / scale tags)
     in property <bool> show-column-settings: true;
 
@@ -71,8 +75,11 @@ export global Gradebook {
     callback select-class(int);
     // the class below (1) or above (-1) the current one in the sidebar, wrapping round at the ends
     callback select-adjacent-class(int);
-    callback create-class(string);
+    // true when the class was created, so the field it was typed in can be emptied
+    callback create-class(string) -> bool;
     callback rename-class(string);
+    // an in-place field put its text back to the saved value, so the error about the refused text is gone
+    callback field-restored();
     callback delete-class();
     // asks where, then saves the open sheet as an Excel workbook
     callback export-sheet();
@@ -89,8 +96,11 @@ export global Gradebook {
     callback move-column(int, int);
     callback delete-column(int);
 
-    callback add-new-pupil(string);
+    // true when the pupil was added, so the field it was typed in can be emptied
+    callback add-new-pupil(string) -> bool;
     callback add-existing-pupil(int);
+    // asks first, then deletes the pupil at that index of addable-pupils, who is in no class
+    callback delete-pupil-in-no-class(int);
     callback rename-pupil(int, string);
     callback remove-pupil(int);
 

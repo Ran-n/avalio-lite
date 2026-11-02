@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.102653
-//+ Revised: 	2026/10/29 00:10:41.569451
+//+ Revised: 	2026/11/02 08:27:51.107489
 // -----------------------------------------------------------------------------
 
 //! Error paths must reach the log at the right level, not just the screen. The app's own logger
@@ -162,4 +162,20 @@ fn the_pin_never_reaches_the_log() {
     });
     assert!(has_line(&log, "INFO", "avalio_lite::app::state", "database unlocked"), "{log}");
     assert!(!log.contains(FIRST) && !log.contains(SECOND), "{log}");
+}
+
+/// The user sees a friendly sentence; the log keeps the system's own details.
+#[test]
+fn regression_a_friendly_error_still_logs_its_technical_source() {
+    let log = logged(|| {
+        let ui = Ui::with_database();
+        let config_dir = ui.fixture.path("config");
+        fs::remove_dir_all(&config_dir).unwrap();
+        fs::write(&config_dir, b"in the way").unwrap();
+        ui.session.window.invoke_choose_theme(true);
+        let shown = ui.session.window.get_error_message();
+        assert!(!shown.is_empty() && !shown.contains("os error"), "{shown}");
+    });
+    let line = log.lines().find(|line| line.contains("saving the theme failed")).expect(&log);
+    assert!(line.contains("could not"), "{line}");
 }
