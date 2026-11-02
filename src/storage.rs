@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.812932
-//+ Revised: 	2026/10/29 15:46:51.718282
+//+ Revised: 	2026/11/02 14:00:09.579627
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 
 use crate::error::{AppError, Result, io_at};
 
-/// Moves a file, also across drives: copy, then delete the original. `fs::copy` fails rather
-/// than leave a partial copy, so the original is only removed once the copy is complete.
+/// Moves a file, also across drives: copy, check the copy, then delete the original. When any
+/// step fails the copy is removed again, so `destination` is left as it was, and the original is
+/// only deleted once a complete copy exists.
 pub fn move_file(source: &Path, destination: &Path) -> Result<()> {
     if !source.is_file() {
         return Err(AppError::NotFound(source.to_path_buf()));
@@ -19,8 +20,28 @@ pub fn move_file(source: &Path, destination: &Path) -> Result<()> {
         return Err(AppError::AlreadyExists(destination.to_path_buf()));
     }
     ensure_parent(destination)?;
+    // `destination` did not exist a moment ago, so whatever is there after a failure is this
+    // copy: a partial one, or a complete one of an original that couldn't be deleted. Either way
+    // it goes, so the move failed as a whole and can simply be tried again.
+    let moved = copy_complete(source, destination).and_then(|()| fs::remove_file(source).map_err(io_at(source)));
+    if moved.is_err()
+        && let Err(removal) = fs::remove_file(destination)
+        && removal.kind() != std::io::ErrorKind::NotFound
+    {
+        log::error!("could not remove the copy {}: {removal}", destination.display());
+    }
+    moved
+}
+
+fn copy_complete(source: &Path, destination: &Path) -> Result<()> {
+    let expected = fs::metadata(source).map_err(io_at(source))?.len();
     fs::copy(source, destination).map_err(io_at(destination))?;
-    fs::remove_file(source).map_err(io_at(source))
+    let copied = fs::metadata(destination).map_err(io_at(destination))?.len();
+    if copied != expected {
+        let reason = format!("the copy has {copied} bytes, the original {expected}");
+        return Err(io_at(destination)(std::io::Error::other(reason)));
+    }
+    Ok(())
 }
 
 /// Creates the folder a file at `path` goes in, unless it has none (a drive root, an empty path).

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.516106
-//+ Revised: 	2026/10/29 00:32:02.088866
+//+ Revised: 	2026/11/02 08:27:49.627764
 // -----------------------------------------------------------------------------
 
 use std::path::Path;
@@ -43,9 +43,24 @@ pub fn show_locations(window: &AppWindow, config: &AppConfig) {
     window.set_log_folder(display(&config.log_dir));
 }
 
+/// The message of the last action is shown by whichever page is open (the sheet or Settings), so
+/// it is always where the user is looking. The callers log the error with its details.
 pub fn show_error(window: &AppWindow, error: &AppError) {
+    show_error_text(window, i18n::error_message(i18n::current(), error));
+}
+
+/// A notice worded by the app itself rather than by an error, shown where errors are.
+pub fn show_error_text(window: &AppWindow, text: String) {
     window.set_status_message(SharedString::new());
-    window.set_error_message(i18n::error_message(i18n::current(), error).into());
+    window.set_error_message(text.into());
+}
+
+pub fn clear_error(window: &AppWindow) {
+    window.set_error_message(SharedString::new());
+}
+
+pub fn clear_status(window: &AppWindow) {
+    window.set_status_message(SharedString::new());
 }
 
 pub fn clear_messages(window: &AppWindow) {

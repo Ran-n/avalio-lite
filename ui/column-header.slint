@@ -42,7 +42,7 @@ export component ColumnHeader inherits Rectangle {
         if Gradebook.show-column-settings: HorizontalLayout {
             spacing: 5px;
             alignment: start;
-            if root.column.kind == ColumnType.test && !root.column.bonus: Tag { text: root.column.weight + "%"; }
+            if root.column.kind == ColumnType.test && !root.column.bonus: Tag { text: @tr("{}%", root.column.weight); }
             if root.column.kind == ColumnType.test && root.column.bonus: Tag {
                 text: @tr("+{}% bonus", root.column.weight);
                 highlighted: true;

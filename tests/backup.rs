@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.935204
-//+ Revised: 	2026/10/29 14:45:37.325875
+//+ Revised: 	2026/11/02 08:27:50.589021
 // -----------------------------------------------------------------------------
 
 //! `.avalio` backups: exporting everything to one file, read back from the real file on disk.
@@ -319,8 +319,12 @@ fn a_damaged_backup_is_refused() {
     let fixture = Fixture::new();
     let state = fixture.set_up();
     let result = state.open_backup(&damaged, None);
-    assert!(result.is_err(), "a damaged backup can't be opened");
-    assert!(!matches!(result, Err(AppError::WrongPin)), "{:?}", result.err());
+    assert!(
+        matches!(&result, Err(AppError::IntegrityCheckFailed(path) | AppError::NotADatabase(path)) if *path == damaged)
+            || matches!(&result, Err(AppError::Database(_))),
+        "a damaged backup is reported as damaged, never as a wrong PIN: {:?}",
+        result.err()
+    );
     assert!(!restore_copy(&fixture).exists());
 }
 
@@ -365,9 +369,9 @@ fn the_restore_copy_never_stays_behind() {
     let fixture = Fixture::new();
     let state = fixture.set_up();
     // asked for a PIN, then given a wrong one, then cancelled (the opened backup dropped)
-    assert!(state.open_backup(&secret, None).is_err());
+    assert!(matches!(state.open_backup(&secret, None), Err(AppError::WrongPin)));
     assert!(!restore_copy(&fixture).exists());
-    assert!(state.open_backup(&secret, Some("0000")).is_err());
+    assert!(matches!(state.open_backup(&secret, Some("0000")), Err(AppError::WrongPin)));
     assert!(!restore_copy(&fixture).exists());
     let opened = state.open_backup(&secret, Some("2222")).unwrap();
     assert!(restore_copy(&fixture).exists(), "the copy is open while the question is asked");
@@ -612,4 +616,46 @@ proptest::proptest! {
             proptest::prop_assert_eq!(shape(&target, copy), shape(&target, class_id(&target, &name)));
         }
     }
+}
+
+#[test]
+fn regression_two_backup_pupils_never_join_the_same_pupil_here() {
+    // both backup Anas matched the one Ana here: in one class the second enrolment broke the
+    // class's primary key and the whole add failed; across classes two pupils became one
+    let fixture = Fixture::new();
+    let target = database(&fixture, "target.db");
+    let here = classes::create_class(&target, "Here").unwrap();
+    let ana = pupils::add_new_pupil(&target, here, "Ana García").unwrap();
+
+    let source = database(&fixture, "source.db");
+    let x = classes::create_class(&source, "X").unwrap();
+    let y = classes::create_class(&source, "Y").unwrap();
+    pupils::add_new_pupil(&source, x, "Ana García").unwrap();
+    pupils::add_new_pupil(&source, x, "Ana García").unwrap();
+    pupils::add_new_pupil(&source, y, "Ana García").unwrap();
+
+    let summary = backup::add_classes(&target, &source).unwrap();
+    assert_eq!((summary.pupils, summary.existing_pupils), (3, 1));
+    let ids = |class: &str| -> Vec<i64> {
+        pupils::list_class_pupils(&target, class_id(&target, class))
+            .unwrap()
+            .into_iter()
+            .map(|pupil| pupil.id)
+            .collect()
+    };
+    let (in_x, in_y) = (ids("X"), ids("Y"));
+    assert_eq!(in_x[0], ana, "the first one joins the Ana here");
+    assert_ne!(in_x[1], ana);
+    assert!(!in_x.contains(&in_y[0]), "the Ana of Y is a pupil of her own");
+    assert_eq!(count(&target, "pupils"), 3);
+}
+
+#[test]
+fn regression_a_failed_backup_copy_leaves_no_partial_file() {
+    // a copy cut short stayed next to the database, possibly readable
+    let fixture = Fixture::new();
+    let copy = fixture.path("copy.restore");
+    let missing = fixture.path("missing.avalio");
+    assert!(matches!(backup::open_copy(&missing, &copy, &[None]), Err(AppError::Io { path, .. }) if path == missing));
+    assert!(!copy.exists());
 }

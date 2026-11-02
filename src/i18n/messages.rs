@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.721797
-//+ Revised: 	2026/10/29 15:46:51.591640
+//+ Revised: 	2026/11/02 08:27:50.292547
 // -----------------------------------------------------------------------------
 
 use super::Language;
@@ -19,6 +19,10 @@ pub enum Message<'a> {
     },
     ConfirmDeleteColumn {
         column: &'a str,
+    },
+    /// a pupil who is in no class; deleting them is for good
+    ConfirmDeletePupil {
+        pupil: &'a str,
     },
     DatabaseMoved {
         path: &'a str,
@@ -50,9 +54,8 @@ pub enum Message<'a> {
         pairs: &'a [(String, String)],
     },
     BackupHasNoClasses,
-    WindowFailed {
-        reason: &'a str,
-    },
+    /// the window couldn't be created or run; the reason is in the log, not in the dialog
+    WindowFailed,
     LockNeedsPin,
     PinTurnedOn,
     PinChanged,
@@ -117,6 +120,9 @@ fn english(message: &Message) -> String {
         Message::ConfirmDeleteColumn { column } => {
             format!("Delete the column \"{column}\" and everything typed in it?")
         }
+        Message::ConfirmDeletePupil { pupil } => {
+            format!("Delete {pupil}? They're in no class; this can't be undone.")
+        }
         Message::DatabaseMoved { path } => format!("Database moved to {path}"),
         Message::LogsMoved { path } => format!("Logs moved to {path}"),
         Message::DatabaseFileType => "avalio-lite database".to_owned(),
@@ -144,7 +150,10 @@ fn english(message: &Message) -> String {
             format!("Renamed because the name was taken: {}.", renamings(pairs))
         }
         Message::BackupHasNoClasses => "The backup has no classes; nothing was added.".to_owned(),
-        Message::WindowFailed { reason } => format!("avalio-lite couldn't start: {reason}"),
+        Message::WindowFailed => {
+            "avalio-lite couldn't start. Close it and open it again; if that keeps happening, the log has the details."
+                .to_owned()
+        }
         Message::LockNeedsPin => "Set a PIN in Settings to lock the app.".to_owned(),
         Message::PinTurnedOn => "The database is now encrypted with your PIN.".to_owned(),
         Message::PinChanged => "PIN changed; the database is re-encrypted with it.".to_owned(),
@@ -193,6 +202,9 @@ fn galician(message: &Message) -> String {
         Message::ConfirmDeleteColumn { column } => {
             format!("Eliminar a columna «{column}» e todo o que se escribiu nela?")
         }
+        Message::ConfirmDeletePupil { pupil } => {
+            format!("Eliminar a {pupil}? Non está en ningunha clase; non se pode desfacer.")
+        }
         Message::DatabaseMoved { path } => format!("Base de datos movida a {path}"),
         Message::LogsMoved { path } => format!("Rexistros movidos a {path}"),
         Message::DatabaseFileType => "Base de datos de avalio-lite".to_owned(),
@@ -210,8 +222,9 @@ fn galician(message: &Message) -> String {
                 1 => " (1 xa estaba)".to_owned(),
                 _ => format!(" ({existing} xa estaban)"),
             };
+            let verb = plural(*classes, "Engadiuse", "Engadíronse");
             format!(
-                "Engadíronse {} e {}{already} desde {file}.",
+                "{verb} {} e {}{already} desde {file}.",
                 counted(*classes, "clase", "clases"),
                 counted(*pupils, "alumno", "alumnos")
             )
@@ -220,7 +233,10 @@ fn galician(message: &Message) -> String {
             format!("Renomeadas porque o nome xa existía: {}.", renamings(pairs))
         }
         Message::BackupHasNoClasses => "A copia non ten clases; non se engadiu nada.".to_owned(),
-        Message::WindowFailed { reason } => format!("Non se puido iniciar avalio-lite: {reason}"),
+        Message::WindowFailed => {
+            "Non se puido iniciar avalio-lite. Péchao e ábreo de novo; se segue pasando, o rexistro ten os detalles."
+                .to_owned()
+        }
         Message::LockNeedsPin => "Define un PIN en Axustes para bloquear a aplicación.".to_owned(),
         Message::PinTurnedOn => "A base de datos xa está cifrada co teu PIN.".to_owned(),
         Message::PinChanged => "PIN cambiado; a base de datos cifrouse de novo con el.".to_owned(),
@@ -230,7 +246,7 @@ fn galician(message: &Message) -> String {
         Message::SheetExported { class, path } => format!("Gardouse {class} en {path}"),
         Message::SpreadsheetFileType => "Libro de Excel".to_owned(),
         Message::ExportWeightsWarning { total } => {
-            format!("Os pesos das probas suman {total}%, non 100%: as notas finais son provisionais.")
+            format!("Os pesos das probas suman {total} %, non 100 %: as notas finais son provisionais.")
         }
         Message::ConfirmImportOverwrite { count, class } => {
             let (verb, what) = if *count == 1 {
@@ -246,8 +262,9 @@ fn galician(message: &Message) -> String {
             } else {
                 String::new()
             };
+            let verb = plural(*pupils, "Importouse", "Importáronse");
             format!(
-                "Importáronse {pupils} {}{added} e {marks} {} en {class}.",
+                "{verb} {pupils} {}{added} e {marks} {} en {class}.",
                 plural(*pupils, "alumno", "alumnos"),
                 plural(*marks, "nota ou observación", "notas ou observacións")
             )

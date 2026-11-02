@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/10/29 04:09:18.726268
+//+ Revised: 	2026/11/02 14:10:25.002217
 // -----------------------------------------------------------------------------
 
 use avalio_lite::db;
@@ -304,6 +304,8 @@ fn queries_on_a_file_without_the_tables_are_database_errors() {
     assert!(matches!(classes::create_class(&connection, "1A"), Err(AppError::Database(_))));
     assert!(matches!(columns::list_columns(&connection, 1), Err(AppError::Database(_))));
     assert!(matches!(columns::set_round_source(&connection, 1, None), Err(AppError::Database(_))));
+    assert!(matches!(columns::move_column(&connection, 1, Direction::Left), Err(AppError::Database(_))));
+    assert!(matches!(cells::set_cell(&connection, 1, 1, "7"), Err(AppError::Database(_))));
 }
 
 #[test]
@@ -423,6 +425,172 @@ proptest::proptest! {
                 proptest::prop_assert!(name.trim().is_empty());
                 proptest::prop_assert!(matches!(error, AppError::EmptyName));
             }
+        }
+    }
+}
+
+#[test]
+fn weights_and_maximums_have_an_upper_bound() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    let exam = columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
+    columns::set_weight(&connection, exam, &columns::MAX_WEIGHT.to_string()).unwrap();
+    columns::set_max_score(&connection, exam, &columns::MAX_SCORE_LIMIT.to_string()).unwrap();
+    for weight in ["1000.5", "1e308", "-1"] {
+        let result = columns::set_weight(&connection, exam, weight);
+        assert!(matches!(&result, Err(AppError::InvalidNumber { value, .. }) if value == weight), "{weight}");
+    }
+    for max in ["10000.01", "0", "1e308"] {
+        let result = columns::set_max_score(&connection, exam, max);
+        assert!(matches!(&result, Err(AppError::InvalidNumber { value, .. }) if value == max), "{max}");
+    }
+    let kind = columns::list_columns(&connection, class).unwrap()[0].kind;
+    assert_eq!(
+        kind,
+        ColumnKind::Test { weight: columns::MAX_WEIGHT, max_score: columns::MAX_SCORE_LIMIT, bonus: false }
+    );
+}
+
+#[test]
+fn regression_a_new_test_never_repeats_a_title() {
+    // the number was "tests so far + 1": after deleting Test 1, a second "Test 2" appeared
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    let first = columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
+    columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
+    columns::delete_column(&connection, first).unwrap();
+    columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
+    assert_eq!(titles(&connection, class), ["Test 2", "Test 3"]);
+    // a renamed column taking the next default is skipped too
+    let renamed = columns::add_column(&connection, class, ColumnType::Info, Language::English).unwrap();
+    columns::rename_column(&connection, renamed, "test 4").unwrap();
+    columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
+    assert_eq!(titles(&connection, class).last().unwrap(), "Test 5");
+}
+
+#[test]
+fn regression_accented_names_sort_with_their_letter() {
+    // SQLite's NOCASE folds only A to Z: "Álvaro" and "Ánxela" were listed after "Zoe"
+    let (_dir, connection) = open();
+    for name in ["Zoo", "árabe", "Ñu", "Nube", "Oca", "Abeto"] {
+        classes::create_class(&connection, name).unwrap();
+    }
+    let names: Vec<String> = classes::list_classes(&connection).unwrap().into_iter().map(|class| class.name).collect();
+    assert_eq!(names, ["Abeto", "árabe", "Nube", "Ñu", "Oca", "Zoo"]);
+
+    let other = classes::create_class(&connection, "Other").unwrap();
+    let here = classes::create_class(&connection, "Here").unwrap();
+    for name in ["Zoe", "Ánxela", "brais", "Álvaro"] {
+        pupils::add_new_pupil(&connection, other, name).unwrap();
+    }
+    let candidates: Vec<String> =
+        pupils::pupils_not_in_class(&connection, here).unwrap().into_iter().map(|pupil| pupil.name).collect();
+    assert_eq!(candidates, ["Álvaro", "Ánxela", "brais", "Zoe"]);
+}
+
+#[test]
+fn regression_names_match_ignoring_case_in_any_alphabet() {
+    // "álvaro" didn't find "Álvaro": NOCASE leaves Á and á apart
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    let alvaro = pupils::add_new_pupil(&connection, class, "Álvaro Núñez").unwrap();
+    pupils::add_new_pupil(&connection, class, "Alvaro Nunez").unwrap();
+    let found: Vec<i64> =
+        pupils::pupils_named(&connection, "  ÁLVARO NÚÑEZ ").unwrap().into_iter().map(|pupil| pupil.id).collect();
+    assert_eq!(found, [alvaro], "case is ignored, accents are not");
+}
+
+#[test]
+fn deleting_what_is_gone_is_reported() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    let column = columns::add_column(&connection, class, ColumnType::Info, Language::English).unwrap();
+    let pupil = pupils::add_new_pupil(&connection, class, "Ana").unwrap();
+    pupils::remove_from_class(&connection, class, pupil).unwrap();
+    assert!(matches!(pupils::remove_from_class(&connection, class, pupil), Err(AppError::NotEditable)));
+    columns::delete_column(&connection, column).unwrap();
+    assert!(matches!(columns::delete_column(&connection, column), Err(AppError::NotEditable)));
+    classes::delete_class(&connection, class).unwrap();
+    assert!(matches!(classes::delete_class(&connection, class), Err(AppError::NotEditable)));
+}
+
+mod name_keys {
+    use avalio_lite::gradebook::model::{name_match_key, name_sort_key};
+    use proptest::prelude::*;
+
+    #[test]
+    fn accents_fold_and_n_tilde_stays_after_n() {
+        assert_eq!(name_sort_key("Ánxela"), name_sort_key("anxela"));
+        assert_eq!(name_sort_key("A\u{301}lvaro"), name_sort_key("Álvaro"), "an accent typed as a mark of its own");
+        assert_eq!(name_sort_key("n\u{303}u"), name_sort_key("ñu"));
+        assert_eq!(name_sort_key("Ýago"), name_sort_key("yago"));
+        assert!(name_sort_key("nz") < name_sort_key("ña") && name_sort_key("ña") < name_sort_key("o"));
+    }
+
+    proptest! {
+        #[test]
+        fn case_never_changes_the_order_or_the_match(name in "[a-zA-Zá-úÁ-Úñ ]{0,20}") {
+            prop_assert_eq!(name_sort_key(&name.to_uppercase()), name_sort_key(&name.to_lowercase()));
+            prop_assert_eq!(name_match_key(&name.to_uppercase()), name_match_key(&name.to_lowercase()));
+            prop_assert_eq!(name_match_key(&format!("  {name} ")), name_match_key(&name));
+        }
+    }
+}
+
+#[test]
+fn a_pupil_in_no_class_can_be_deleted_and_only_then() {
+    let (_dir, connection) = open();
+    let a = classes::create_class(&connection, "1A").unwrap();
+    let b = classes::create_class(&connection, "1B").unwrap();
+    let ana = pupils::add_new_pupil(&connection, a, "Ana").unwrap();
+    pupils::add_existing_pupil(&connection, b, ana).unwrap();
+    let brais = pupils::add_new_pupil(&connection, b, "Brais").unwrap();
+    assert!(pupils::pupils_in_no_class(&connection).unwrap().is_empty());
+
+    pupils::remove_from_class(&connection, a, ana).unwrap();
+    assert!(matches!(pupils::delete_pupil_in_no_class(&connection, ana), Err(AppError::NotEditable)), "still in 1B");
+    // deleting a class leaves its pupils in no class, but kept
+    classes::delete_class(&connection, b).unwrap();
+    let left: Vec<String> =
+        pupils::pupils_in_no_class(&connection).unwrap().into_iter().map(|pupil| pupil.name).collect();
+    assert_eq!(left, ["Ana", "Brais"]);
+
+    pupils::delete_pupil_in_no_class(&connection, ana).unwrap();
+    assert!(pupils::pupils_named(&connection, "Ana").unwrap().is_empty());
+    assert!(matches!(pupils::delete_pupil_in_no_class(&connection, ana), Err(AppError::NotEditable)), "already gone");
+    assert_eq!(pupils::pupils_in_no_class(&connection).unwrap()[0].id, brais);
+}
+
+mod decomposed_accents {
+    use avalio_lite::gradebook::model::name_match_key;
+
+    #[test]
+    fn regression_an_accent_typed_as_a_mark_matches_the_same_name() {
+        // "A" + U+0301 (as some spreadsheets store it) didn't match a stored "Álvaro", and an
+        // import or backup made a second pupil
+        assert_eq!(
+            name_match_key("A\u{301}lvaro Nun\u{303}ez"),
+            name_match_key("Álvaro Núñez".replace('ú', "u").as_str())
+        );
+        assert_eq!(name_match_key("A\u{301}lvaro"), name_match_key("álvaro"));
+        assert_eq!(name_match_key("Franc\u{327}ois"), name_match_key("françois"));
+        assert_ne!(name_match_key("Alvaro"), name_match_key("Álvaro"), "accents still count");
+        assert_eq!(name_match_key("x\u{301}"), "x\u{301}", "a mark no letter takes stays as it is");
+        // every accent the table knows, against the same letter typed in one piece
+        for (marked, whole) in [
+            ("e\u{300}", "è"),
+            ("o\u{302}", "ô"),
+            ("u\u{308}", "ü"),
+            ("y\u{308}", "ÿ"),
+            ("a\u{303}", "ã"),
+            ("o\u{303}", "õ"),
+            ("n\u{303}", "ñ"),
+            ("c\u{327}", "ç"),
+        ] {
+            assert_eq!(name_match_key(marked), whole, "{whole}");
+        }
+        for unmatched in ["y\u{300}", "e\u{303}", "a\u{327}", "a\u{30A}"] {
+            assert_eq!(name_match_key(unmatched), unmatched, "{unmatched:?} has no letter of its own here");
         }
     }
 }

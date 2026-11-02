@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.961496
-//+ Revised: 	2026/10/29 04:09:18.328287
+//+ Revised: 	2026/11/02 14:00:09.747867
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
@@ -194,4 +194,70 @@ proptest::proptest! {
         store.save(&config).unwrap();
         proptest::prop_assert_eq!(store.load().unwrap(), Some(config));
     }
+}
+
+#[test]
+fn regression_saving_over_an_unreadable_settings_file_keeps_a_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    fs::write(store.path(), "database_path = [broken").unwrap();
+    assert!(matches!(store.load(), Err(AppError::ConfigParse { .. })));
+    store.save(&sample()).unwrap();
+    assert_eq!(fs::read_to_string(dir.path().join("config.toml.bad")).unwrap(), "database_path = [broken");
+    assert_eq!(store.load().unwrap(), Some(sample()));
+    // later saves do not copy again
+    store.save(&sample()).unwrap();
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
+}
+
+#[test]
+fn a_second_unreadable_file_gets_a_timestamped_copy_and_the_first_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    for broken in ["first = [", "second = ["] {
+        fs::write(store.path(), broken).unwrap();
+        assert!(store.load().is_err());
+        store.save(&sample()).unwrap();
+    }
+    assert_eq!(fs::read_to_string(dir.path().join("config.toml.bad")).unwrap(), "first = [");
+    let copies: Vec<_> = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("config.toml.bad-"))
+        .collect();
+    assert_eq!(copies.len(), 1);
+    assert_eq!(fs::read_to_string(dir.path().join(&copies[0])).unwrap(), "second = [");
+}
+
+#[test]
+fn a_readable_or_missing_settings_file_leaves_no_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    assert_eq!(store.load().unwrap(), None);
+    store.save(&sample()).unwrap();
+    store.load().unwrap();
+    store.save(&sample()).unwrap();
+    assert!(!dir.path().join("config.toml.bad").exists());
+}
+
+#[test]
+fn a_failed_rename_leaves_no_temporary_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    // a directory at the settings path makes the final rename fail
+    fs::create_dir(store.path()).unwrap();
+    assert!(matches!(store.save(&sample()), Err(AppError::Io { .. })));
+    assert!(!dir.path().join("config.toml.tmp").exists());
+}
+
+#[test]
+fn an_unreadable_settings_file_that_is_gone_by_the_save_needs_no_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    fs::write(store.path(), "database_path = [broken").unwrap();
+    assert!(store.load().is_err());
+    fs::remove_file(store.path()).unwrap();
+    store.save(&sample()).unwrap();
+    assert!(!dir.path().join("config.toml.bad").exists(), "nothing was left to keep");
+    assert_eq!(store.load().unwrap(), Some(sample()));
 }

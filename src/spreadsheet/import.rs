@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.784631
-//+ Revised: 	2026/10/29 15:12:04.022576
+//+ Revised: 	2026/11/02 14:00:09.519834
 // -----------------------------------------------------------------------------
 
 //! Reads pupils and marks from the first tab of a workbook into a class: names in column A, and
@@ -10,6 +10,7 @@
 //! writes it all in one transaction, through the same functions typing uses.
 
 use std::collections::{HashMap, HashSet};
+use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
 use calamine::{Data, Reader, open_workbook_auto};
@@ -18,7 +19,7 @@ use rust_xlsxwriter::utility::column_number_to_name;
 
 use crate::error::{AppError, Result};
 use crate::gradebook::compute::parse_number;
-use crate::gradebook::model::{ColumnKind, SheetRow};
+use crate::gradebook::model::{ColumnKind, SheetRow, name_match_key};
 use crate::gradebook::{cells, pupils, sheet};
 
 /// The first tab of a workbook: the headers from column B on, and one row per named pupil.
@@ -84,6 +85,13 @@ enum Target {
 
 /// The first tab of the workbook at `path` (.xlsx, .xls or .ods).
 pub fn read_table(path: &Path) -> Result<ImportTable> {
+    // a malformed file could make the reader panic; that is a file it can't read, not a crash
+    panic::catch_unwind(AssertUnwindSafe(|| read_first_tab(path))).unwrap_or_else(|_| {
+        Err(AppError::SpreadsheetRead { path: path.to_path_buf(), reason: "the reader panicked".to_owned() })
+    })
+}
+
+fn read_first_tab(path: &Path) -> Result<ImportTable> {
     let read_error = |reason: String| AppError::SpreadsheetRead { path: path.to_path_buf(), reason };
     let mut workbook = open_workbook_auto(path).map_err(|error| read_error(error.to_string()))?;
     let no_pupils = || AppError::NoPupilsInFile(path.to_path_buf());
@@ -112,16 +120,21 @@ pub fn read_table(path: &Path) -> Result<ImportTable> {
 }
 
 /// A cell as the text typing it would store: numbers without a locale (`7.5`, Rust's shortest
-/// form), text trimmed, `TRUE`/`FALSE`, dates as `YYYY-MM-DD`, durations as `H:MM:SS`, the same
-/// from .xlsx, .xls and .ods. `None` for empty and error cells.
-fn cell_text(data: &Data) -> Option<String> {
+/// form of the number Excel shows), text trimmed, `TRUE`/`FALSE`, dates as `YYYY-MM-DD`,
+/// durations and times of day as `H:MM:SS`, the same from .xlsx, .xls and .ods. `None` for
+/// empty and error cells.
+pub fn cell_text(data: &Data) -> Option<String> {
     let text = match data {
         Data::Empty | Data::Error(_) => return None,
         Data::Int(number) => number.to_string(),
-        Data::Float(number) => number.to_string(),
+        Data::Float(number) if number.is_finite() => without_float_noise(*number).to_string(),
+        Data::Float(_) => return None,
         Data::String(text) => text.trim().to_owned(),
         Data::Bool(value) => (if *value { "TRUE" } else { "FALSE" }).to_owned(),
-        Data::DateTime(moment) if moment.is_duration() => clock((moment.as_f64() * SECONDS_PER_DAY).round()),
+        // a duration, or a time of day with no date (Excel counts it from day 0)
+        Data::DateTime(moment) if moment.is_duration() || moment.as_f64().abs() < 1.0 => {
+            clock((moment.as_f64() * SECONDS_PER_DAY).round())
+        }
         Data::DateTime(moment) => {
             let (year, month, day, ..) = moment.to_ymd_hms_milli();
             format!("{year:04}-{month:02}-{day:02}")
@@ -135,25 +148,28 @@ fn cell_text(data: &Data) -> Option<String> {
 }
 
 const SECONDS_PER_DAY: f64 = 86_400.0;
+/// What Excel itself shows of a number: the digits past these are binary noise.
+const SIGNIFICANT_DIGITS: usize = 15;
 
-/// `seconds` (whole) as hours, minutes and seconds: 5405 is "1:30:05".
-fn clock(seconds: f64) -> String {
-    let seconds = seconds as i64;
-    format!("{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
+/// `number` to Excel's 15 significant digits, so a formula's 7.2999999999999989 is 7.3.
+pub fn without_float_noise(number: f64) -> f64 {
+    format!("{number:.*e}", SIGNIFICANT_DIGITS - 1).parse().unwrap_or(number)
+}
+
+/// `seconds` (whole) as hours, minutes and seconds: 5405 is "1:30:05", -5405 is "-1:30:05".
+pub fn clock(seconds: f64) -> String {
+    let sign = if seconds < 0.0 { "-" } else { "" };
+    let seconds = seconds.abs() as i64;
+    format!("{sign}{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
 }
 
 /// The length of a time duration as .ods files write it, `PT01H30M05S`, in whole seconds.
-fn iso_seconds(text: &str) -> Option<f64> {
+pub fn iso_seconds(text: &str) -> Option<f64> {
     let (hours, rest) = text.strip_prefix("PT")?.split_once('H')?;
     let (minutes, rest) = rest.split_once('M')?;
     let seconds = rest.strip_suffix('S')?;
     let number = |text: &str| text.parse::<f64>().ok();
     Some((number(hours)? * 3600.0 + number(minutes)? * 60.0 + number(seconds)?).round())
-}
-
-/// Names and titles match ignoring case and spaces at either end.
-fn match_key(text: &str) -> String {
-    text.trim().to_lowercase()
 }
 
 /// Works out who each row is and which cells change. Reads only.
@@ -165,17 +181,17 @@ pub fn plan_import(connection: &Connection, class_id: i64, table: &ImportTable) 
 
     let mut in_class: HashMap<String, &SheetRow> = HashMap::new();
     for row in &sheet.rows {
-        in_class.entry(match_key(&row.pupil.name)).or_insert(row);
+        in_class.entry(name_match_key(&row.pupil.name)).or_insert(row);
     }
     let mut elsewhere: HashMap<String, Vec<i64>> = HashMap::new();
     for pupil in pupils::pupils_not_in_class(connection, class_id)? {
-        elsewhere.entry(match_key(&pupil.name)).or_default().push(pupil.id);
+        elsewhere.entry(name_match_key(&pupil.name)).or_default().push(pupil.id);
     }
 
     let mut overwrites = 0;
     let mut planned = Vec::new();
     for row in &table.rows {
-        let key = match_key(&row.name);
+        let key = name_match_key(&row.name);
         let existing = in_class.get(&key);
         let target = match (existing, elsewhere.get(&key).map(Vec::as_slice)) {
             (Some(row), _) => Target::InClass(row.pupil.id),
@@ -210,7 +226,7 @@ pub fn plan_import(connection: &Connection, class_id: i64, table: &ImportTable) 
 /// Two rows for one pupil would have to be merged, and a mark could be lost.
 fn refuse_repeated_names(table: &ImportTable) -> Result<()> {
     let mut seen = HashSet::new();
-    match table.rows.iter().find(|row| !seen.insert(match_key(&row.name))) {
+    match table.rows.iter().find(|row| !seen.insert(name_match_key(&row.name))) {
         Some(row) => Err(AppError::DuplicatePupilInFile(row.name.clone())),
         None => Ok(()),
     }
@@ -236,7 +252,7 @@ fn match_headers(
         .iter()
         .enumerate()
         .map(|(header_index, header)| {
-            let key = match_key(header);
+            let key = name_match_key(header);
             if key.is_empty() {
                 let has_values = table.rows.iter().any(|row| row.values[header_index].is_some());
                 // column A holds the names, so the first header is column B
@@ -246,7 +262,7 @@ fn match_headers(
             let typed = columns
                 .iter()
                 .enumerate()
-                .find(|(_, column)| !column.kind.is_computed() && match_key(&column.title) == key);
+                .find(|(_, column)| !column.kind.is_computed() && name_match_key(&column.title) == key);
             match typed {
                 Some((index, column)) if seen.insert(key.clone()) => Some((index, column.id)),
                 _ => leave_out(LeftOut::Header(header.trim().to_owned())),
@@ -282,12 +298,7 @@ pub fn apply_import(connection: &Connection, class_id: i64, plan: &ImportPlan) -
         }
     }
     transaction.commit()?;
-    let summary = &plan.summary;
-    log::info!(
-        "imported {} pupils ({} new) and {} values into class {class_id}",
-        summary.pupils,
-        summary.new_pupils,
-        summary.marks
-    );
-    Ok(summary.clone())
+    let ImportSummary { pupils, new_pupils, marks, .. } = &plan.summary;
+    log::info!("imported {pupils} pupils ({new_pupils} new) and {marks} values into class {class_id}");
+    Ok(plan.summary.clone())
 }

@@ -1,3 +1,9 @@
+// -----------------------------------------------------------------------------
+//+ Authors: 	Ran# <ran.hash@proton.me>
+//+ Created: 	2026/11/01 21:11:28.443685
+//+ Revised: 	2026/11/02 08:27:49.450880
+// -----------------------------------------------------------------------------
+
 //! Connects the window's shortcut handler to the configured keys, fills what Settings and the
 //! labels show about them, and records new keys from Settings.
 
@@ -8,7 +14,7 @@ use crate::app::{SharedState, view, with_window, with_window1, with_window5};
 use crate::error::{AppError, Result};
 use crate::i18n::{self, Message, shortcuts::action_label, shortcuts::display, shortcuts::key_names};
 use crate::shortcuts::{Action, KeyCombo};
-use crate::ui::{self, AppWindow, Gradebook, ShortcutAction, ShortcutItem};
+use crate::ui::{self, AppWindow, ShortcutAction, ShortcutItem};
 
 const NOT_RECORDING: i32 = -1;
 
@@ -112,8 +118,7 @@ pub fn show(window: &AppWindow, state: &SharedState) {
 pub fn report_problems(window: &AppWindow, state: &SharedState) {
     let problems = state.borrow_mut().take_shortcut_problems();
     if !problems.is_empty() {
-        let message = i18n::error_message(i18n::current(), &AppError::InvalidShortcuts(problems));
-        window.global::<Gradebook>().set_error_message(message.into());
+        view::show_error(window, &AppError::InvalidShortcuts(problems));
     }
 }
 

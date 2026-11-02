@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/10/29 15:46:51.974061
+//+ Revised: 	2026/11/02 08:27:50.929376
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -102,6 +102,24 @@ fn with_sample_class() -> Fixture {
     let fixture = Fixture::new();
     let mut state = fixture.set_up();
     common::sample_class(state.connection().unwrap());
+    state.shutdown();
+    relative_paths(&fixture);
+    fixture
+}
+
+/// The sample class, and Xoán Vidal, who left the only other class there was: he is in none now.
+fn with_a_pupil_in_no_class() -> Fixture {
+    use avalio_lite::gradebook::{classes, pupils};
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        let connection = state.connection().unwrap();
+        common::sample_class(connection);
+        let spare = classes::create_class(connection, "Spare").unwrap();
+        let pupil = pupils::add_new_pupil(connection, spare, "Xoán Vidal").unwrap();
+        pupils::remove_from_class(connection, spare, pupil).unwrap();
+        classes::delete_class(connection, spare).unwrap();
+    }
     state.shutdown();
     relative_paths(&fixture);
     fixture
@@ -289,6 +307,73 @@ fn the_column_panel_and_menus() {
     app.quit();
 }
 
+/// The pupil menu marks a pupil in no class and offers to delete them; the keyboard works in the
+/// real window's popups too (headless tests can't tell how a real popup takes the focus).
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_pupil_menu_and_the_menus_from_the_keyboard() {
+    let _turn = desktop_support::turn();
+    let fixture = with_a_pupil_in_no_class();
+    // an open popup keeps its place when the window is resized, so each look starts the app afresh
+    for dark in [false, true] {
+        for size in [NORMAL, MINIMUM] {
+            let mut app = App::start(&config(&fixture), "en");
+            app.resize(size.0, size.1);
+            app.theme(dark);
+            app.click("More actions");
+            app.click_in_popup("Add from another class…");
+            let theme = if dark { "dark" } else { "light" };
+            let image = app.snapshot(&format!("pupil-menu-{theme}-{}x{}", size.0, size.1));
+            for control in ["Xoán Vidal", "Delete Xoán Vidal"] {
+                let found = app.locate_in_popup(control);
+                assert_eq!(found.len(), 1, "{control}");
+                assert_on_screen(&image, found[0], control);
+            }
+            let name = app.locate_in_popup("Xoán Vidal")[0];
+            let delete = app.locate_in_popup("Delete Xoán Vidal")[0];
+            assert!(delete.x >= name.x, "the delete button sits beside the name, not before it");
+            app.quit();
+        }
+    }
+    let mut app = App::start(&config(&fixture), "en");
+    app.click("More actions");
+    app.click_in_popup("Add from another class…");
+    app.answer_dialogs(&[], &[], &[true]);
+    app.click_in_popup("Delete Xoán Vidal");
+    assert!(app.locate("Delete Xoán Vidal").is_empty(), "the emptied menu closed");
+    app.quit();
+
+    // the one above deleted the pupil
+    let fixture = with_a_pupil_in_no_class();
+    let mut app = App::start(&config(&fixture), "gl");
+    app.resize(MINIMUM.0, MINIMUM.1);
+    app.click(&common::galician("More actions"));
+    app.click_in_popup(&common::galician("Add from another class…"));
+    let image = galician_look(&mut app, "pupil-menu");
+    let delete = app.locate_in_popup("Eliminar a Xoán Vidal");
+    assert_eq!(delete.len(), 1);
+    assert_on_screen(&image, delete[0], "Eliminar a Xoán Vidal");
+    app.quit();
+
+    // the add-column menu from the keyboard, in the real window
+    let fixture = with_sample_class();
+    let mut app = App::start(&config(&fixture), "en");
+    let before = app.state()["columns"].as_array().unwrap().len();
+    app.click("+ Add column");
+    app.press_down();
+    app.press_enter();
+    let columns = app.state()["columns"].as_array().unwrap().clone();
+    assert_eq!(columns.len(), before + 1, "Down then Enter added the second option, Info");
+    app.click("+ Add column");
+    app.press_escape();
+    assert!(app.locate("Rounded").is_empty(), "Escape closed the menu");
+    assert_eq!(app.state()["columns"].as_array().unwrap().len(), before + 1);
+    app.click("+ Add column");
+    app.press_enter();
+    assert_eq!(app.state()["columns"].as_array().unwrap().len(), before + 2, "the first option is the one on");
+    app.quit();
+}
+
 /// A workbook for the sample class: Ana's exam as it already is, a new pupil, and a column the
 /// class doesn't have, so the report has every part.
 fn sample_import(fixture: &Fixture) -> PathBuf {
@@ -340,13 +425,13 @@ fn the_sheet_menu_and_an_import() {
         }
         close_with_a_cancelled_export(app, "Export to Excel…");
     });
-    assert!(app.state()["sheet_status"].as_str().unwrap().is_empty(), "a cancelled export says nothing");
+    assert!(app.state()["status"].as_str().unwrap().is_empty(), "a cancelled export says nothing");
     app.click("More actions");
     app.answer_dialogs(&[], &[&workbook], &[]);
     app.click_in_popup("Import from Excel…");
     let state = app.state();
     let report = "Imported 2 pupils (1 new) and 1 mark or note into 2º ESO A. Left out: Phone.";
-    assert_eq!(state["sheet_status"], report, "{state}");
+    assert_eq!(state["status"], report, "{state}");
     assert_eq!(state["rows"].as_array().unwrap().len(), 6, "a real click imported Xoán");
     every_look(&mut app, "sheet-imported", |_, image, dark, _| {
         assert_on_screen(image, green_banner(&colours, image, dark), "the import report");
@@ -366,7 +451,7 @@ fn the_sheet_menu_and_an_import() {
     app.answer_dialogs(&[], &[&workbook], &[]);
     app.click_in_popup(&common::galician("Import from Excel…"));
     let report = "Importáronse 2 alumnos e 0 notas ou observacións en 2º ESO A. Quedou fóra: Phone.";
-    assert_eq!(app.state()["sheet_status"], report);
+    assert_eq!(app.state()["status"], report);
     let image = galician_look(&mut app, "sheet-imported");
     assert_on_screen(&image, green_banner(&colours, &image, false), "the import report");
     app.quit();

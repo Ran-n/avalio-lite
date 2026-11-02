@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.959439
-//+ Revised: 	2026/10/29 16:14:16.526431
+//+ Revised: 	2026/11/02 14:00:09.803770
 // -----------------------------------------------------------------------------
 
 //! The Excel export, read back with calamine as Excel would read it, and the import, from
@@ -210,7 +210,7 @@ fn incomplete_weights_add_the_provisional_note() {
     let galician = scratch.export(class, Language::Galician).marks;
     assert_eq!(
         galician[5][0],
-        text("Os pesos das probas suman 92,5%, non 100%: as notas finais son provisionais."),
+        text("Os pesos das probas suman 92,5 %, non 100 %: as notas finais son provisionais."),
         "the total in the language's own decimals"
     );
 
@@ -846,4 +846,94 @@ proptest::proptest! {
         proptest::prop_assert_eq!(scratch.pupil_count() - pupils_before, i64::try_from(summary.new_pupils).unwrap());
         proptest::prop_assert_eq!(summary.pupils, table.rows.len());
     }
+}
+
+mod cell_values {
+    use avalio_lite::spreadsheet::import::{cell_text, clock, iso_seconds, without_float_noise};
+    use calamine::{Data, ExcelDateTime, ExcelDateTimeType};
+    use proptest::prelude::*;
+
+    fn moment(value: f64, kind: ExcelDateTimeType) -> Data {
+        Data::DateTime(ExcelDateTime::new(value, kind, false))
+    }
+
+    #[test]
+    fn regression_a_time_of_day_is_a_time_not_a_date() {
+        // an 08:30 cell (no date) imported as "1899-12-31"
+        assert_eq!(cell_text(&moment(8.5 / 24.0, ExcelDateTimeType::DateTime)).as_deref(), Some("8:30:00"));
+        assert_eq!(cell_text(&moment(45_000.25, ExcelDateTimeType::DateTime)).as_deref(), Some("2023-03-15"));
+        assert_eq!(cell_text(&moment(1.5, ExcelDateTimeType::TimeDelta)).as_deref(), Some("36:00:00"));
+    }
+
+    #[test]
+    fn regression_negative_durations_carry_one_sign() {
+        // -5405 s showed as "-1:-30:-05"
+        assert_eq!(clock(-5405.0), "-1:30:05");
+        assert_eq!(clock(5405.0), "1:30:05");
+        assert_eq!(clock(0.0), "0:00:00");
+    }
+
+    #[test]
+    fn regression_formula_results_lose_their_float_noise() {
+        // 7.3 worked out by a formula is 7.2999999999999989, which imported as "7.299999999999999"
+        assert_eq!(cell_text(&Data::Float(7.3_f64.next_down())).as_deref(), Some("7.3"));
+        assert_eq!(cell_text(&Data::Float(0.1 + 0.2)).as_deref(), Some("0.3"));
+        assert_eq!(cell_text(&Data::Float(f64::NAN)), None);
+        assert_eq!(cell_text(&Data::Float(f64::INFINITY)), None);
+    }
+
+    #[test]
+    fn iso_durations_and_their_fallback() {
+        assert_eq!(cell_text(&Data::DurationIso("PT01H30M05S".to_owned())).as_deref(), Some("1:30:05"));
+        assert_eq!(cell_text(&Data::DurationIso("P1D".to_owned())).as_deref(), Some("P1D"), "kept as written");
+        assert_eq!(cell_text(&Data::DateTimeIso("2011-03-09T08:30:00".to_owned())).as_deref(), Some("2011-03-09"));
+        assert_eq!(cell_text(&Data::String("   ".to_owned())), None, "spaces only is empty");
+    }
+
+    proptest! {
+        #[test]
+        fn clock_reads_back(seconds in -1_000_000i64..1_000_000) {
+            let text = clock(seconds as f64);
+            let (sign, rest) = text.strip_prefix('-').map_or((1, text.as_str()), |rest| (-1, rest));
+            let parts: Vec<i64> = rest.split(':').map(|part| part.parse().unwrap()).collect();
+            prop_assert_eq!(sign * (parts[0] * 3600 + parts[1] * 60 + parts[2]), seconds);
+            prop_assert!(parts[1] < 60 && parts[2] < 60);
+        }
+
+        #[test]
+        fn iso_durations_read_as_seconds(hours in 0u32..1000, minutes in 0u32..60, seconds in 0u32..60) {
+            let text = format!("PT{hours:02}H{minutes:02}M{seconds:02}S");
+            prop_assert_eq!(iso_seconds(&text), Some(f64::from(hours * 3600 + minutes * 60 + seconds)));
+        }
+
+        #[test]
+        fn cell_text_is_never_empty_or_padded(text in ".*") {
+            if let Some(shown) = cell_text(&Data::String(text)) {
+                prop_assert!(!shown.is_empty());
+                prop_assert_eq!(shown.trim(), shown.as_str());
+            }
+        }
+
+        #[test]
+        fn short_decimals_import_as_typed(whole in 0u32..100_000, hundredths in 0u32..100) {
+            let typed = f64::from(whole) + f64::from(hundredths) / 100.0;
+            prop_assert_eq!(cell_text(&Data::Float(typed)), Some(typed.to_string()));
+            prop_assert_eq!(without_float_noise(typed), typed);
+        }
+    }
+}
+
+#[test]
+fn a_column_left_out_twice_is_named_once() {
+    let scratch = Scratch::new();
+    let (class, ..) = small_class(&scratch);
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[
+            vec![Text("Pupil"), Text("Phone"), Text("Phone"), Text("Exam"), Text("EXAM")],
+            vec![Text("Ana"), Text("600"), Text("700"), Number(4.0), Number(9.0)],
+        ],
+    );
+    let summary = scratch.import(class, &path);
+    assert_eq!(summary.left_out, [LeftOut::Header("Phone".into()), LeftOut::Header("EXAM".into())]);
 }

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/10/29 15:46:52.042517
+//+ Revised: 	2026/11/02 08:27:50.985834
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -289,6 +289,18 @@ impl App {
     pub fn press_enter(&mut self) {
         const VK_RETURN: u16 = 0x0D;
         self.window.press(VK_RETURN);
+        self.settle();
+    }
+
+    pub fn press_down(&mut self) {
+        const VK_DOWN: u16 = 0x28;
+        self.window.press(VK_DOWN);
+        self.settle();
+    }
+
+    pub fn press_escape(&mut self) {
+        const VK_ESCAPE: u16 = 0x1B;
+        self.window.press(VK_ESCAPE);
         self.settle();
     }
 

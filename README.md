@@ -1,168 +1,241 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/10/29 15:46:51.066887 )
+[//]: # (+ Revised: 	2026/11/02 08:27:48.738261 )
 [//]: # ( ---------------------------------------------------------------------- )
 
-# avalio-lite
+<p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
 
-<p align="center"><img src="assets/logo.svg" alt="avalio lite" width="96"></p>
+<h1 align="center">avalio lite</h1>
 
-Lightweight, local edition of Avalio — a teacher-focused student evaluation app.
+<p align="center"><b>Your class marks in one simple, private app.</b><br>
+A gradebook for teachers that works like a spreadsheet, does the maths for you, and keeps everything on your own computer.</p>
 
-A single native Windows app: no server, no accounts, no internet. Each class gets its own spreadsheet-style sheet of pupils and marks, all kept in one SQLite file in a folder you choose.
+<p align="center">
+  <a href="https://github.com/Ran-n/avalio-lite/releases/latest"><img src="https://img.shields.io/badge/Download_for_Windows-free-2f54d6?style=for-the-badge" alt="Download for Windows" height="40"></a>
+</p>
 
-## Using it
+<p align="center">
+  <a href="https://github.com/Ran-n/avalio-lite/releases"><img src="https://img.shields.io/badge/GitHub-releases-181717?logo=github&logoColor=white" alt="GitHub releases"></a>
+  <a href="https://gitlab.com/Ran-n/avalio-lite/-/releases"><img src="https://img.shields.io/badge/GitLab-releases-FC6D26?logo=gitlab&logoColor=white" alt="GitLab releases"></a>
+  <a href="https://codeberg.org/ran-n/avalio-lite/releases"><img src="https://img.shields.io/badge/Codeberg-releases-2185D0?logo=codeberg&logoColor=white" alt="Codeberg releases"></a>
+</p>
 
-- **Classes** are listed on the left; type a name in **+ New class** and press Enter.
-- **Pupils** are the rows of a class's sheet: type a name in the last row (or click **+ Add pupil**) and press Enter. A pupil can be in several classes (**⋯ → Add from another class**); renaming them renames them everywhere, and removing them (× next to the name) from one class only deletes their marks in that class.
-- **Columns** are added with **+ Add column**. Click a column's header to open its settings on the right: title, weight, maximum, bonus, rounding, move left / right and delete. The header itself shows the title and small tags such as `50%` and `/10`.
-- Under the class name: the number of pupils, the class average of the final grade, and how many pass and fail.
+<p align="center">
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/github/v/release/Ran-n/avalio-lite?label=version&color=2f54d6" alt="Latest version"></a>
+  <img src="https://img.shields.io/badge/platform-Windows-555" alt="Platform: Windows">
+  <img src="https://img.shields.io/badge/languages-Galego_·_English-555" alt="Languages: Galician and English">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PBL_v2.0-555" alt="License: PayBack License v2.0"></a>
+</p>
 
-| Column | Holds |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/sheet-dark-1280x800@100.png">
+  <img src="tests/desktop/baselines/sheet-light-1280x800@100.png" alt="A class sheet: pupils as rows; test, final-grade, rounded and notes columns; passing and failing marks in green and rose">
+</picture>
+
+<p align="center">
+  <a href="#why-avalio-lite">Why</a> ·
+  <a href="#a-closer-look">Screenshots</a> ·
+  <a href="#download-and-install">Download</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#how-grades-are-worked-out">Grades</a> ·
+  <a href="#your-data-stays-with-you">Privacy</a> ·
+  <a href="#questions">Questions</a> ·
+  <a href="#install--run-from-source">From source</a> ·
+  <a href="#technical-details">Docs</a>
+</p>
+
+## Why avalio lite?
+
+- **As easy as a spreadsheet.** Each class is one sheet: pupils down the side, your tests and notes across the top. Type a mark and you're done. There's no Save button, because everything saves as you type.
+- **The maths is done for you.** Give each test a weight and a maximum, and the app works out final grades, averages and roundings straight away. Extra-credit tests are supported, and passing and failing marks are colour-coded.
+- **Private by design.** No account, no cloud, no internet connection. Your marks live in one file in a folder you choose. Add a PIN and the file is encrypted.
+- **Works with Excel.** Export a class to Excel, or bring pupils and marks in from a spreadsheet.
+- **Easy to back up.** Save everything to a single file, then restore it later or on another computer.
+- **Feels at home.** Available in Galician and English, with light and dark themes and keyboard shortcuts.
+
+## A closer look
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/column-panel-dark-1280x800@100.png">
+        <img src="tests/desktop/baselines/column-panel-light-1280x800@100.png" alt="The settings panel for a test column: title, weight, maximum and bonus switch">
+      </picture>
+      <p align="center"><b>Set up each test</b><br>Weight, maximum mark, extra credit</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/sheet-menu-dark-1280x800@100.png">
+        <img src="tests/desktop/baselines/sheet-menu-light-1280x800@100.png" alt="The class menu: hide weights and scales, export to Excel, import from Excel, delete class">
+      </picture>
+      <p align="center"><b>Excel in and out</b><br>Export a class, or import pupils and marks</p>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/lock-dark-1280x800@100.png">
+        <img src="tests/desktop/baselines/lock-light-1280x800@100.png" alt="The lock screen with a PIN field and on-screen number keys">
+      </picture>
+      <p align="center"><b>Lock it with a PIN</b><br>Your file is encrypted with it</p>
+    </td>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/setup-dark-1280x800@100.png">
+        <img src="tests/desktop/baselines/setup-light-1280x800@100.png" alt="First launch: choose the folder for your marks">
+      </picture>
+      <p align="center"><b>Your folder, your data</b><br>You choose where your marks are kept</p>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/settings-backup-dark-1280x800@100.png">
+        <img src="tests/desktop/baselines/settings-backup-light-1280x800@100.png" alt="Settings: database location, backup and logs">
+      </picture>
+      <p align="center"><b>One-click backups</b><br>Export everything, restore, or merge in classes</p>
+    </td>
+    <td>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/settings-dark-1280x800@100.png">
+        <img src="tests/desktop/baselines/settings-light-1280x800@100.png" alt="Settings: appearance, language and keyboard shortcuts">
+      </picture>
+      <p align="center"><b>Make it yours</b><br>Light or dark theme, language, shortcuts</p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <p align="center"><img src="tests/desktop/baselines/sheet-gl-1000x600@100.png" alt="The class sheet in Galician" width="70%"></p>
+      <p align="center"><b>En galego tamén</b> · Also in Galician, with decimal commas</p>
+    </td>
+  </tr>
+</table>
+
+## Download and install
+
+avalio lite is a **Windows** app. Download the latest release from [GitHub](https://github.com/Ran-n/avalio-lite/releases), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/releases) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/releases); all three have the same files. Pick one:
+
+| File | Choose it if… |
 |---|---|
-| Test | A score you type, out of the test's maximum (e.g. 10 or 5), counting a set % towards the final grade. Tick **Bonus** for extra credit: its % counts on top of the normal tests' 100 % |
-| Info | Any text, e.g. notes |
-| Final grade | Sum of each test's weight × score / maximum (bonus tests included), shown out of its own maximum and never above it. Ungraded tests count as 0; blank until a test is marked. While the normal tests' weights don't add up to 100 %, a warning shows under the class name and final grades turn grey with a "!" |
-| Average | Mean of the graded normal tests (each as score / maximum), shown out of its own maximum; bonus tests are left out |
-| Rounded | Another numeric column rounded to 0–3 decimals (half up: 7.45 → 7.5) |
+| `avalio-lite-<version>-setup.exe` | You want a normal install, with a Start-menu entry, an optional desktop icon and an uninstaller. It doesn't need administrator rights. |
+| `avalio-lite-<version>-portable.exe` | You want one file you can run from anywhere, even a USB stick, without installing anything. |
 
-**⋯ → Hide weights & scales** hides the tags in the column headers; the choice is remembered.
+> [!NOTE]
+> The app is free, but it isn't in an app store, and its files aren't digitally signed. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. Alternatively, right-click the file → **Properties** → tick **Unblock**.
 
-**⋯ → Export to Excel…** saves the sheet as an .xlsx file: the marks as numbers, and a second tab with each column's settings.
+## Getting started
 
-**⋯ → Import from Excel…** adds the pupils in column A of a workbook (.xlsx, .xls or .ods) and fills the marks under columns with the same titles; it asks before replacing marks already there.
+1. **Choose a folder** for your marks when the app first opens (`Documents\avalio-lite` is suggested).
+2. **Add a class:** type its name in **+ New class** and press Enter.
+3. **Add pupils:** type each name in the last row and press Enter.
+4. **Add columns** with **+ Add column**, for example two tests and a final grade. Click a column's header to set its weight and maximum mark.
+5. **Type marks.** The final grade, the class average and the pass/fail count update straight away.
 
-**Light and dark:** the moon / sun button at the bottom of the sidebar (or **Settings → Appearance**). The app follows the Windows setting until you pick one.
+The **[user guide](docs/user-guide.md)** explains every feature in detail: column types and how grades are calculated, Excel import, keyboard shortcuts, backups and PINs.
 
-The app speaks **Galician** and **English**. It follows the Windows language until you pick one in **Settings → Language**; in Galician, calculated marks use a decimal comma (8,5).
+## How grades are worked out
 
-**Keyboard:** Tab moves between fields and buttons, and Enter or Space presses the focused button.
+Each test counts for the share of the final grade you give it. Here is Ana's row from the screenshot above, with a final grade out of 10:
 
-**Keyboard shortcuts** work anywhere on the main screen, even while you type in a cell (not on the lock or first-run screens), and Settings lists them:
+| Test | Her mark | Counts for | Adds to the final grade |
+|---|---|---|---|
+| Exam 1 | 8 / 10 | 60 % | 0.8 × 60 % × 10 = **4.8** |
+| Lab report | 4.5 / 5 | 40 % | 0.9 × 40 % × 10 = **3.6** |
+| Project *(extra credit)* | 1 / 1 | +10 % | 1.0 × 10 % × 10 = **1.0** |
+| **Final grade** | | | **9.4**, a pass (green) |
 
-| Shortcut | Does | Name in `config.toml` |
-|---|---|---|
-| Ctrl+L | Lock | `lock` |
-| Ctrl+Shift+D | Switch between light and dark | `toggle-theme` |
-| Ctrl+H | Show or hide weights and scales | `toggle-column-settings` |
-| Ctrl+, | Open Settings (again: back to the sheet) | `open-settings` |
-| Ctrl+PageDown | Next class | `next-class` |
-| Ctrl+PageUp | Previous class | `previous-class` |
+- The normal tests' shares should add up to 100 %. Until they do, the app shows a warning and greys out the final grades.
+- Extra-credit tests add on top, but a final grade never goes above its maximum.
+- A test with no mark yet counts as 0.
+- You can also add an **average** column, or a **rounded** column for report cards (9.4 → 9).
 
-To change one, press **Change** next to it in **Settings → Keyboard shortcuts** and then the new keys (Esc cancels); it is saved at once. **Reset** puts one back, **Reset all** every one. Keys another shortcut already has are refused rather than taken over. Alternatively, with the app closed, add it to `config.toml` under `[shortcuts]`, e.g. `lock = "Ctrl+K"`.
+## Your data stays with you
 
-A shortcut is Ctrl, Shift and Alt with A–Z, 0–9, `,`, `.`, PageUp, PageDown, Home or End; F1–F12 can also be used alone. These can't be used: plain letters (they type into the cell), Ctrl and Alt together (that is AltGr on many keyboards), and Ctrl+A, C, V, X, Y and Z, which edit text. A `config.toml` entry that isn't valid, or that two actions share, is reported when the app opens and the default is used.
+- Everything is kept in **one file, in a folder you choose**. You can move it later from Settings.
+- The app **never connects to the internet**. There are no accounts and no tracking.
+- With a **PIN**, the file is encrypted with AES-256 (via [SQLCipher](https://www.zetetic.net/sqlcipher/)). Without the PIN, nobody can read it.
+- **Uninstalling never deletes your marks.**
 
-Everything saves as you type. Scores accept `7.5` or `7,5`; a score that isn't a number within the test's range is shaded red and left out of the calculations. Calculated marks show as green pills at half their maximum or above (5 out of 10) and rose below it; failing test scores are shown in rose too.
+> [!WARNING]
+> **If you forget your PIN, your marks can't be recovered, by anyone, including the developer.** Keep the PIN somewhere safe, and make a backup now and then (**Settings → Backup → Export everything…**).
 
-## Install
+## Questions
 
-Download a release from [GitHub](https://github.com/Ran-n/avalio-lite/releases), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/releases) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/releases) (the same files on each; the app isn't in any app store). Each release ships two files; use either:
+<details>
+<summary><b>Is it free?</b></summary>
 
-| File | What it is |
+Yes, for personal and non-commercial use, such as a teacher keeping their own classes. Commercial use, such as a company selling it or building it into a product, needs a revenue-share agreement. See the [PayBack License (PBL) v2.0](LICENSE).
+</details>
+
+<details>
+<summary><b>Does it work on Mac, Linux, tablets or phones?</b></summary>
+
+No. avalio lite is a Windows app only.
+</details>
+
+<details>
+<summary><b>Can I use it on two computers?</b></summary>
+
+Yes. Put the portable version and your database folder on a USB stick, or export a backup on one computer and restore it on the other. **Open another database…** in Settings also opens a database file copied from elsewhere.
+</details>
+
+<details>
+<summary><b>How are final grades calculated?</b></summary>
+
+See [How grades are worked out](#how-grades-are-worked-out) for a worked example, and the [user guide](docs/user-guide.md#columns) for every column type.
+</details>
+
+<details>
+<summary><b>Can I bring my marks in from Excel?</b></summary>
+
+Yes. **⋯ → Import from Excel…** reads pupils from column A of an .xlsx, .xls or .ods file and fills in marks under columns with matching titles. It asks before replacing marks already there.
+</details>
+
+<details>
+<summary><b>I found a bug or have an idea.</b></summary>
+
+Open an issue on [GitHub](https://github.com/Ran-n/avalio-lite/issues), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/issues) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/issues). [CONTRIBUTING.md](CONTRIBUTING.md) says what to include.
+</details>
+
+## Install / run from source
+
+You need Windows with the MSVC C++ build tools, [Rust](https://rustup.rs/) and [Strawberry Perl](https://strawberryperl.com/), plus [Inno Setup 6](https://jrsoftware.org/isinfo.php) if you also want the installer. Clone into a short path (OpenSSL's build fails on long ones), then, in PowerShell:
+
+```powershell
+git clone https://codeberg.org/ran-n/avalio-lite.git C:\src\avalio-lite
+cd C:\src\avalio-lite
+. .\scripts\use-perl.ps1   # Strawberry Perl first on PATH for this session
+```
+
+**Run it** straight from the source:
+
+```powershell
+cargo run --release        # builds (the first time compiles OpenSSL and takes a while), then opens the app
+```
+
+**Install it:** build it once, then use the result like the portable release.
+
+```powershell
+cargo build --release      # writes target\release\avalio-lite.exe
+```
+
+`target\release\avalio-lite.exe` is the whole app in one file: run it from there or copy it anywhere. To get an installer instead, see [Building from source](docs/development.md#building-from-source), which also has the exact install commands for each tool.
+
+## Technical details
+
+The full technical documentation lives in separate files:
+
+| Document | What's in it |
 |---|---|
-| `avalio-lite-<version>-setup.exe` | Installer: Start-menu entry, optional desktop icon, uninstall from Windows Settings. Installs for the current user without an administrator prompt. |
-| `avalio-lite-<version>-portable.exe` | The whole app in one file. Put it anywhere (including a USB stick) and run it. |
+| [User guide](docs/user-guide.md) | Every feature in detail: column types and the grade formulas, accepted marks and limits, Excel import/export, keyboard shortcuts and `config.toml`, data and log locations, backups, PIN encryption (SQLCipher, AES-256) and how strong a PIN to choose |
+| [Development](docs/development.md) | Building from source (Rust, Strawberry Perl, Inno Setup), the test suites (headless UI, desktop pixel tests, golden files, coverage and mutation testing), the source layout, translations, schema migrations and releasing |
+| [Contributing](CONTRIBUTING.md) | Reporting bugs, suggesting features, submitting changes and the commit style |
+| [Changelog](CHANGELOG.md) | What changed in each version |
 
-The files are not code-signed. If Windows shows "Windows protected your PC" after a browser download, choose **More info → Run anyway**, or right-click the file → **Properties** → tick **Unblock**.
-
-## Your data
-
-On first launch the app asks where to keep:
-
-- **the database** — `avalio-lite.db`, everything you enter
-- **the logs** — `avalio-lite.log`, for diagnosing problems
-
-Both default to `Documents\avalio-lite`. Either can be moved later from **Settings**; the app copies, verifies, switches over, and only then deletes the original. **Open another database…** switches to working in an existing database file (one from another PC, say); to bring a backup's data into the app instead, use the Backup card below.
-
-The only thing stored in a fixed place is `%APPDATA%\avalio-lite\config.toml`, which holds those two locations. Uninstalling never deletes your database or logs.
-
-To back up, use **Settings → Backup → Export everything…**: it saves one `.avalio` file (encrypted with your PIN, if you set one) while the app stays open. **Restore from a backup…** replaces everything in the app with a backup (it asks first, and keeps your current PIN). **Add classes from a backup…** copies a backup's classes, pupils and marks into the app without changing what's already there; pupils with the same name are joined.
-
-### PIN and encryption
-
-In **Settings → PIN and encryption** you can set a PIN of 4 to 128 characters: digits, letters, spaces or symbols. The database file is then encrypted with it ([SQLCipher](https://www.zetetic.net/sqlcipher/): every page of the file is encrypted with AES-256 and checked for tampering), so the file can't be read without the PIN. The app asks for the PIN when it opens: type it, or click it on the on-screen keys (**ABC** switches them to letters, with ⇧ for capitals and a space bar; **#+=** to two pages of symbols, switched with **1/2**; **123** goes back to numbers); **Ctrl+L** (or your own shortcut) or **Lock** in the sidebar closes the database and shows the lock screen. After five wrong PINs, each further try waits 30 seconds.
-
-How strong the PIN is, is your call. The 30-second wait only applies inside the app: someone with a copy of the file can try guesses as fast as their computer allows (each guess is deliberately slow, but not slow enough for short PINs). A 4-digit PIN can be found in minutes, 8 digits in about a day on a gaming graphics card; a password of 12 or more characters with letters, or four random words, would take far longer than anyone can wait.
-
-While the app is open, the PIN is held in memory only as long as the database is unlocked, and wiped (overwritten with zeros) when it locks, closes or the PIN changes; SQLCipher wipes its own copies too. The PIN is never written to the settings file or the log.
-
-**If you forget the PIN, the data can't be recovered** — by anyone. Keep the PIN somewhere safe. **Forgot the PIN?** on the lock screen leaves it for the first-run screen, where you can open another database or start a new one in a different folder; the locked file stays where it is, untouched, and **Back to the lock screen** returns to it (a running 30-second wait keeps running). Removing the PIN (it asks for the current one) turns the encryption off again.
-
-## Development
-
-Requirements: Rust with the MSVC toolchain (the version is pinned in `rust-toolchain.toml`; rustup installs it on first build); [Strawberry Perl](https://strawberryperl.com/) (`winget install StrawberryPerl.StrawberryPerl`), because SQLCipher's OpenSSL is compiled from source — Git's bundled Perl lacks modules it needs, and Perl is only used at build time; and, for the installer, [Inno Setup 6](https://jrsoftware.org/isinfo.php). Keep the checkout in a short path: OpenSSL's build fails on paths over Windows' 260-character limit.
-
-```powershell
-cargo run                  # debug build, keeps a console for log output
-cargo clippy --all-targets -- -D warnings
-cargo run --example demo_data -- D:\somewhere\avalio-lite.db gl   # sample classes to try the app with (en or gl)
-```
-
-Set `LOG_LEVEL` (`error`, `warn`, `info`, `debug`, `trace`) to change log verbosity; the default is `info`. Set `AVALIO_LITE_CONFIG_DIR` to keep the settings file somewhere other than `%APPDATA%\avalio-lite`, e.g. to try the app on scratch data; the first-run screen then suggests that folder for the data too.
-
-### Tests
-
-```powershell
-cargo test                       # the default suite: logic, database, files, the UI headless
-.\scripts\coverage.ps1           # the same under coverage; fails below the line-coverage gate
-.\scripts\coverage.ps1 -Branches # plus the branch-coverage gate (nightly toolchain); what release.ps1 runs
-cargo mutants --gitignore true --jobserver false --in-place --file src/lock.rs -- --test lock   # mutation testing, one module and its tests at a time
-cargo test --test desktop -- --ignored --test-threads=1   # the real app in its real window
-cargo test regression            # only the regression tests, one per fixed bug
-```
-
-- **Default suite** (`tests/`, one file per module): unit and property tests (proptest) for the logic; integration tests on real databases and folders; golden files for every saved format (`tests/golden/`); a step-by-step migration walk; the entry point and quit path; error logging; the version; and the UI (`tests/ui.rs`), the real window on Slint's headless backend, clicked and typed into through its controls' accessible labels, with dialogs answered by a fake.
-- **Desktop tests** (`tests/desktop.rs`) open real windows, so they are left out of `cargo test`. They start the app through `examples/app_driver.rs` on scratch data, click and type through Windows messages, check colours and positions pixel by pixel, and compare every screen in light and dark, at the normal and the minimum window size, and in Galician at the minimum size, with reviewed baselines in `tests/desktop/baselines/`. Baselines are per Windows display scale (`<screen>-<look>@<scale>.png`), and the pixel checks measure in logical pixels, so they hold at any scale; at a scale with no baselines, or on another machine whose fonts render differently, the snapshots fail with the command that records them. Record them the same way, at that scale. After a deliberate change to the look, rewrite them with `$env:AVALIO_UPDATE_BASELINES = "1"`, open every changed image and check nothing is clipped, wrapped or cut off before committing; a failure saves the screen and a marked diff in `target\desktop-failures\` (for a screen that never stops changing, its last two frames and what still changes).
-- **Golden files** change only with a format: `$env:AVALIO_UPDATE_GOLDEN = "1"; cargo test --test golden` rewrites the current-format samples. Samples of older formats are never rewritten.
-- **Coverage** needs `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview`. Raise the gates in `scripts\coverage.ps1` (`$MinLines`, and `$MinBranches` for `-Branches`) as coverage grows; never lower them. Branch data needs the nightly toolchain (`rustup toolchain install nightly --component llvm-tools-preview`); `-Branches` without it fails with that hint rather than skipping the check. The script lists, with the reason for each, the few lines left uncovered on purpose (the real exe and its Windows dialogs, which a desktop test covers instead, and double faults); any other uncovered line needs a test. If the coverage build kept stale code from an earlier build (a file then reports more executable lines than it has), the script says so, cleans it and measures again.
-- **Mutation testing** (`cargo install cargo-mutants`) changes the code one small edit at a time and checks that some test fails; run it now and then on the logic modules (not `src/app/`), with `--in-place` so it reuses the already built `target\` instead of rebuilding OpenSSL in a copy. Don't edit sources while it runs. Every mutant it reports as missed needs a test, unless it can't change behaviour; those are listed with the reason in `.cargo/mutants.toml`.
-
-### Layout
-
-```
-src/
-  gradebook/    classes, pupils, columns, cells (SQL) and grade calculation (compute.rs); no UI code
-  app/          window startup, UI callbacks, lock screen, theme and language switching, the Backup card (backup.rs)
-    state/      data locations, the open database and its PIN (protection.rs)
-    gradebook/  connects the sheet UI to src/gradebook
-  db/           SQLite connection, copy/verify, schema migrations
-  backup.rs     .avalio backup files
-  spreadsheet/  Excel export and import of a class sheet
-  config.rs     config.toml: data locations and view preferences
-  error.rs      the app's error type
-  lock.rs       PIN rules and guess limiting
-  logging.rs    file logger whose folder can change at runtime
-  shortcuts.rs  keyboard shortcuts: the actions, their keys and the rules for config.toml
-  storage.rs    safe cross-drive file moves
-  i18n/         interface language: Rust-side texts and error messages per language
-ui/             Slint UI with its own light and dark theme (theme.slint); gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts, backup.slint the Backup card's actions
-lang/           translations of the UI strings, lang/<code>/LC_MESSAGES/avalio-lite.po, bundled into the exe
-assets/         logo (SVG source, generated .ico/.png; regenerate with cargo run --example render_logo -- <preview folder>)
-examples/       demo_data: builds a sample database; app_driver: runs the app for the desktop tests; render_logo: the icon files
-migrations/     numbered SQL schema files, embedded in the exe
-installer/      Inno Setup script
-scripts/        release, coverage gate, Perl setup
-tests/          integration tests, one file per module
-  common/       fixtures shared by the tests and the app driver
-  golden/       saved-format samples
-  desktop/      desktop-test baselines
-  desktop_support/  desktop-test harness: Win32 window, pixels, driver client
-```
-
-Any text added to the UI with `@tr("…")` needs an entry in every `lang/*/…/avalio-lite.po`, and any text built in Rust needs a translation in `src/i18n/`; `tests/i18n.rs` fails until both are complete.
-
-Schema changes go in a new `migrations/NNN_*.sql` file added to the list in `src/db/migrations.rs`; shipped migrations are never edited. Before rewriting the golden samples for it, copy `tests/golden/db-current.db` to `db-v<previous version>.db` and add an upgrade test for that sample in `tests/golden.rs`, so files users already have stay covered.
-
-### Release
-
-```powershell
-.\scripts\release.ps1
-```
-
-Runs the default suite under its coverage gate and the desktop tests, builds the optimized exe, and writes both versioned files to `dist\`. The version comes from `Cargo.toml`. Then tag the release commit `vX.Y.Z` and publish a release with both files and the version's CHANGELOG section on GitHub, GitLab and Codeberg.
+**Built with** [Rust](https://www.rust-lang.org/), the [Slint](https://slint.dev/) UI toolkit, and [SQLite](https://sqlite.org/) with [SQLCipher](https://www.zetetic.net/sqlcipher/) encryption.
 
 ## License
 
-[PayBack License (PBL)](LICENSE). Contributions welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+avalio lite is released under the [PayBack License (PBL) v2.0](LICENSE): free for personal and non-commercial use.

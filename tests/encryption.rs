@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/10/29 04:09:18.662337
+//+ Revised: 	2026/11/02 14:00:10.053892
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -252,4 +252,63 @@ fn a_leftover_rekey_file_that_cannot_be_removed_stops_the_pin_change() {
     assert!(matches!(state.set_pin("246810", "246810"), Err(AppError::Io { .. })));
     assert!(!state.is_protected());
     assert_eq!(pupil_names(&state), [SECRET]);
+}
+
+/// Where a re-key keeps the old file while the new one is put in place.
+fn kept_aside(path: &Path) -> std::path::PathBuf {
+    avalio_lite::storage::with_suffix(path, ".previous")
+}
+
+#[test]
+fn regression_a_new_file_that_will_not_open_leaves_the_old_database_in_use() {
+    // the old file (kept aside) was deleted even when the new one then failed to open, losing the
+    // only intact copy
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    let path = fixture.path("data").join(DATABASE_FILE_NAME);
+    let calls = std::cell::Cell::new(0);
+    let failing_once = |path: &Path, key: Option<&str>| {
+        calls.set(calls.get() + 1);
+        if calls.get() == 1 { Err(AppError::WrongPin) } else { db::open_existing(path, key) }
+    };
+    let result = state.replace_using(None, Some("1234"), &failing_once);
+    assert!(matches!(result, Err(AppError::WrongPin)), "{result:?}");
+    assert!(!state.is_protected(), "back on the old, unencrypted file");
+    assert!(!db::is_encrypted(&path).unwrap());
+    assert!(!kept_aside(&path).exists());
+    let secrets: i64 = state
+        .connection()
+        .unwrap()
+        .query_row("SELECT count(*) FROM pupils WHERE name = ?1", [SECRET], |row| row.get(0))
+        .unwrap();
+    assert_eq!(secrets, 1, "the old data is intact and open");
+}
+
+#[test]
+fn the_old_file_is_kept_and_named_when_it_cannot_be_put_back() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    let path = fixture.path("data").join(DATABASE_FILE_NAME);
+    let blocker = path.clone();
+    let failing = move |_: &Path, _: Option<&str>| {
+        // a folder where the new file was makes removing it fail, so the old one can't go back
+        fs::remove_file(&blocker).unwrap();
+        fs::create_dir(&blocker).unwrap();
+        Err(AppError::WrongPin)
+    };
+    let result = state.replace_using(None, Some("1234"), &failing);
+    let kept = kept_aside(&path);
+    assert!(
+        matches!(&result, Err(AppError::KeptAside { kept: named, path: target }) if *named == kept && *target == path),
+        "the user is told where the data is: {result:?}"
+    );
+    assert!(file_contains(&kept, SECRET), "the old copy is still there, data and all");
+    let message = avalio_lite::i18n::error_message(avalio_lite::i18n::Language::English, result.as_ref().unwrap_err());
+    assert!(
+        message.contains(&kept.display().to_string()) && message.contains(&path.display().to_string()),
+        "{message}"
+    );
+    let galician =
+        avalio_lite::i18n::error_message(avalio_lite::i18n::Language::Galician, result.as_ref().unwrap_err());
+    assert!(galician.contains(&kept.display().to_string()) && galician.starts_with("Non funcionou"), "{galician}");
 }

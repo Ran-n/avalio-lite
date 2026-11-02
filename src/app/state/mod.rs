@@ -1,12 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.365284
-//+ Revised: 	2026/10/29 14:13:27.429431
+//+ Revised: 	2026/11/02 14:00:09.167512
 // -----------------------------------------------------------------------------
 
 mod protection;
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
@@ -14,12 +15,18 @@ use rusqlite::Connection;
 use crate::backup::{self, AddSummary, OpenedBackup};
 use crate::config::{AppConfig, ConfigStore, DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use crate::db;
-use crate::error::{AppError, Folder, Result};
+use crate::error::{AppError, Folder, Result, io_at};
 use crate::i18n::{self, Language};
 use crate::lock::Pin;
-use crate::logging::FileLogger;
+use crate::logging::{self, FileLogger};
 use crate::shortcuts::{Action, KeyCombo, ShortcutProblem, Shortcuts};
 use crate::storage;
+
+/// SQLite's plain header is 16 bytes; a shorter file can't be a database of any kind.
+const MIN_DATABASE_BYTES: u64 = 16;
+
+/// An encrypted database is made of whole pages, the smallest SQLCipher page being 512 bytes.
+const SMALLEST_PAGE: u64 = 512;
 
 /// A backup being restored or added from is copied next to the database under this suffix.
 const RESTORE_SUFFIX: &str = ".restore";
@@ -146,12 +153,12 @@ impl AppState {
             log::warn!("database missing at {}", config.database_path.display());
             return Startup::NeedsSetup(SetupReason::DatabaseMissing(config.database_path));
         }
-        match db::is_encrypted(&config.database_path) {
-            Ok(true) => {
+        match existing_kind(&config.database_path) {
+            Ok(FileKind::Encrypted) => {
                 self.config = Some(config);
                 return Startup::Locked;
             }
-            Ok(false) => {}
+            Ok(FileKind::Plain) => {}
             Err(error) => {
                 log::error!("could not read the database: {error}");
                 return Startup::NeedsSetup(SetupReason::DatabaseUnusable(i18n::error_message(
@@ -201,12 +208,15 @@ impl AppState {
     }
 
     /// Switches to the database in `config`: opens it, or, when it is encrypted, closes the
-    /// current one and waits for its PIN.
+    /// current one and waits for its PIN. A file that is already there must be an avalio-lite
+    /// database; it is checked before anything changes, so a stray file leaves the app as it was.
     fn choose(&mut self, config: AppConfig) -> Result<Opened> {
+        let kind = if config.database_path.exists() { Some(existing_kind(&config.database_path)?) } else { None };
         self.adopt_shortcuts(&config);
-        if db::is_encrypted(&config.database_path)? {
-            self.reopen_logger(&config.log_dir);
+        if kind == Some(FileKind::Encrypted) {
+            let log_dir = config.log_dir.clone();
             self.save_config(config)?;
+            self.reopen_logger(&log_dir);
             self.close_connection();
             return Ok(Opened::Locked);
         }
@@ -345,10 +355,35 @@ impl AppState {
             self.reopen_logger(&current.log_dir);
             return Err(error);
         }
+        let destination_file = destination_dir.join(LOG_FILE_NAME);
+        if let Err(error) = self.save_config(AppConfig { log_dir: destination_dir.to_path_buf(), ..current.clone() }) {
+            // the settings still name the old folder, so the log goes back there
+            if destination_file.is_file()
+                && let Err(undo) = storage::move_file(&destination_file, &source)
+            {
+                log::error!("could not move the log back to {}: {undo}", source.display());
+                self.reopen_logger(destination_dir);
+            } else {
+                self.reopen_logger(&current.log_dir);
+            }
+            return Err(error);
+        }
+        // the old log goes first: reopening sets a large log aside under the same `.1` name
+        self.move_rotated_log(&current.log_dir, destination_dir);
         self.reopen_logger(destination_dir);
-        self.save_config(AppConfig { log_dir: destination_dir.to_path_buf(), ..current.clone() })?;
         log::info!("moved logs from {} to {}", current.log_dir.display(), destination_dir.display());
         Ok(())
+    }
+
+    /// Takes the old log (`.1`) along to the new folder. It is only history, so a failure is logged
+    /// and leaves it where it was.
+    fn move_rotated_log(&self, from: &Path, to: &Path) {
+        let (old, moved) = (logging::rotated_path(from), logging::rotated_path(to));
+        if old.is_file()
+            && let Err(error) = storage::move_file(&old, &moved)
+        {
+            log::warn!("the old log {} stayed where it was: {error}", old.display());
+        }
     }
 
     /// Closes the database and the log file; called on every quit path.
@@ -359,8 +394,9 @@ impl AppState {
     }
 
     fn activate(&mut self, config: AppConfig, connection: Connection) -> Result<()> {
-        self.reopen_logger(&config.log_dir);
+        let log_dir = config.log_dir.clone();
         self.save_config(config)?;
+        self.reopen_logger(&log_dir);
         self.key = None;
         self.replace_connection(connection)
     }
@@ -394,6 +430,33 @@ impl AppState {
         if let Err(error) = self.logger.open(log_dir) {
             log::error!("could not open the log file in {}: {error}", log_dir.display());
         }
+    }
+}
+
+/// What an existing database file is, once it is known to be an avalio-lite database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileKind {
+    Plain,
+    Encrypted,
+}
+
+/// Checks that the existing file at `path` can be an avalio-lite database before anything opens
+/// it, since opening runs the migrations and would turn any empty or foreign file into one.
+/// A plain file needs avalio's schema; an encrypted one can't be read without its PIN, so it
+/// must at least be whole pages (as in `backup`). Empty and tiny files are never databases.
+fn existing_kind(path: &Path) -> Result<FileKind> {
+    let not_a_database = || AppError::NotADatabase(path.to_path_buf());
+    let length = fs::metadata(path).map_err(io_at(path))?.len();
+    if length < MIN_DATABASE_BYTES {
+        return Err(not_a_database());
+    }
+    if db::is_encrypted(path)? {
+        return if length % SMALLEST_PAGE == 0 { Ok(FileKind::Encrypted) } else { Err(not_a_database()) };
+    }
+    match db::stored_version(path, None) {
+        Ok(0) | Err(AppError::WrongPin) => Err(not_a_database()),
+        Ok(_) => Ok(FileKind::Plain),
+        Err(error) => Err(error),
     }
 }
 

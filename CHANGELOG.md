@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/01 15:56:10.356006 )
+[//]: # (+ Revised: 	2026/11/02 14:03:51.591191 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,43 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- A pupil who is in no class (they left their last class, or their only class was deleted) is marked "no class" in **⋯ → Add from another class**, with × to delete them for good after a confirmation
+- Menus work from the keyboard: the first option is focused when one opens, arrows move, Enter picks, Esc closes; a column's settings panel focuses its title when it opens and closes with Esc
+- Enter in the Repeat PIN field of Settings sets or changes the PIN, like the button
+- Screen readers read calculated marks (and whether they are provisional)
+- The log is set aside as `avalio-lite.log.1` once it passes 5 MB, when the app starts
+
+### Changed
+
+- Calculated marks are shown rounded half up (6.125 shows 6.13, as a rounded column does), and pass or fail by the mark shown: a final grade that shows as 5 out of 10 passes
+- Scores, weights and maximums accept only plain numbers (digits with one decimal point or comma, and a minus sign); `1e1` or `+5` no longer count as numbers
+- A test's weight goes up to 1000 %, a maximum up to 10 000
+- Classes, and the pupils offered in **Add from another class**, are listed alphabetically ignoring accents and case ("Álvaro" with the A's, Ñ after N); a class's own pupils keep their order. Names in another case ("ÁLVARO", "álvaro"), or with accents stored as separate marks, are recognised as the same name in imports and backups
+- Errors are told in plain words in the app's language, without the technical text behind them (which goes to the log), and show on the page that is open
+- Percentages are written "50 %" in Galician
+
+### Fixed
+
+- Changing, setting or removing the PIN, or restoring a backup, deleted the previous database even when the new one then failed to open; the previous one is now put back, or, if another program holds the files, kept aside and named in the message
+- A database file that was empty, cut short or not an avalio-lite database was set up as a new, empty one; it is now reported, and choosing such a file changes nothing
+- A settings file that couldn't be read was overwritten; it is now kept as `config.toml.bad`
+- Moving the logs could leave the log and the settings pointing at different folders when saving the settings failed; the log is now moved back (if even that fails, the log says where it is). Moving a large log no longer leaves the old `.1` log behind
+- A move that failed part way left a partial copy behind; a copy is now checked before the original is deleted
+- Adding classes from a backup failed when it had two pupils with the same name as one pupil already here, and could join two of its pupils into one
+- A backup copy cut short (a full disk) was left next to the database
+- Imported times of day became the date 1899-12-31, negative durations read "-1:-30:-05", and numbers worked out by Excel formulas kept their binary noise (7.299999999999999)
+- A workbook that made the reader fail inside would have closed the app; it is now reported as a file that can't be read
+- After deleting "Test 1", the next new test was called "Test 2" a second time
+- A damaged plain database said "Wrong PIN"
+- Deleting a class, column or pupil that was already gone reported success
+- After restoring a backup or opening another database, an open column panel could attach to an unrelated column of the new file
+- A name that was briefly empty or taken while being retyped left the field out of step with what was saved; leaving the field now puts the saved name back
+- A new class or pupil name that was refused was cleared from the field
+- Some errors and hints (Ctrl+L without a PIN, a failed theme change from the sheet) were shown on a page that wasn't open
+- Galician messages for one class or pupil used the plural verb
 
 ## [0.3.0] - 2026-11-01
 

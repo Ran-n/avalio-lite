@@ -13,6 +13,8 @@ component Sidebar inherits Rectangle {
     in property <bool> pin-set;
     callback lock-now();
     callback toggle-theme();
+    // the page is about to change, so what the last page said is out of date
+    callback navigating();
 
     width: 236px;
     background: Theme.surface;
@@ -53,6 +55,7 @@ component Sidebar inherits Rectangle {
                 detail: class.pupil-count;
                 selected: root.section == Section.sheet && Gradebook.current-class-id == class.id;
                 clicked => {
+                    root.navigating();
                     root.section = Section.sheet;
                     Gradebook.select-class(class.id);
                 }
@@ -66,9 +69,11 @@ component Sidebar inherits Rectangle {
                 boxed: false;
                 placeholder: @tr("New class");
                 accepted(text) => {
+                    root.navigating();
                     root.section = Section.sheet;
-                    Gradebook.create-class(text);
-                    self.clear();
+                    if (Gradebook.create-class(text)) {
+                        self.clear();
+                    }
                 }
             }
             Text {
@@ -102,7 +107,10 @@ component Sidebar inherits Rectangle {
             icon: IconKind.gear;
             label: @tr("Settings");
             selected: root.section == Section.settings;
-            clicked => { root.section = Section.settings; }
+            clicked => {
+                root.navigating();
+                root.section = Section.settings;
+            }
         }
     }
 }
@@ -111,8 +119,9 @@ export component Shell inherits Rectangle {
     in-out property <Section> section: Section.sheet;
     in property <string> database-path;
     in property <string> log-folder;
-    in property <string> error-message;
-    in property <string> status-message;
+    // the message of the last action, shown on whichever page is open and dropped when the page changes
+    in-out property <string> error-message;
+    in-out property <string> status-message;
     in property <string> language-code;
     in property <bool> pin-set;
     in-out property <string> pin-current;
@@ -138,11 +147,21 @@ export component Shell inherits Rectangle {
             pin-set: root.pin-set;
             lock-now => { root.lock-now(); }
             toggle-theme => { root.choose-theme(!Theme.dark); }
+            navigating => {
+                root.error-message = "";
+                root.status-message = "";
+            }
         }
         Rectangle {
             horizontal-stretch: 1;
-            if root.section == Section.sheet && Gradebook.current-class-id >= 0: SheetPage { }
-            if root.section == Section.sheet && Gradebook.current-class-id < 0: NoClassPage { }
+            if root.section == Section.sheet && Gradebook.current-class-id >= 0: SheetPage {
+                error-message: root.error-message;
+                status-message: root.status-message;
+            }
+            if root.section == Section.sheet && Gradebook.current-class-id < 0: NoClassPage {
+                error-message: root.error-message;
+                status-message: root.status-message;
+            }
             if root.section == Section.settings: SettingsPage {
                 database-path: root.database-path;
                 log-folder: root.log-folder;

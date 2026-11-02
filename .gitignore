@@ -13,3 +13,7 @@ mutants.out*/
 
 # Claude Code's local state (worktrees, scratch copies), which cargo-mutants would otherwise copy
 /.claude/
+
+# exports and backups a manual run may drop here
+*.xlsx
+*.avalio

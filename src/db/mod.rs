@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.812550
-//+ Revised: 	2026/10/29 14:13:27.867109
+//+ Revised: 	2026/11/02 08:27:49.831616
 // -----------------------------------------------------------------------------
 
 //! The database file. SQLite through SQLCipher: without a key it is a plain SQLite file;
@@ -30,7 +30,11 @@ const NO_KEY: &str = "";
 pub fn open(path: &Path, key: Option<&str>) -> Result<Connection> {
     storage::ensure_parent(path)?;
     let mut connection = Connection::open(path)?;
-    apply_key(&connection, key)?;
+    apply_key(&connection, key).map_err(|error| match (error, key) {
+        // a plain file had no PIN to get wrong: it is damaged, or not a database at all
+        (AppError::WrongPin, None) if !is_encrypted(path).unwrap_or(true) => AppError::NotADatabase(path.to_path_buf()),
+        (error, _) => error,
+    })?;
     connection.pragma_update(None, "foreign_keys", true)?;
     connection.pragma_update(None, "journal_mode", "WAL")?;
     migrations::migrate(&mut connection)?;
@@ -51,11 +55,16 @@ pub fn open_existing(path: &Path, key: Option<&str>) -> Result<Connection> {
 pub fn is_encrypted(path: &Path) -> Result<bool> {
     let mut header = [0u8; 16];
     let read = match File::open(path) {
-        Ok(mut file) => file.read(&mut header).map_err(io_at(path))?,
+        // read_exact: a single read may legally stop short of 16 bytes
+        Ok(mut file) => match file.read_exact(&mut header) {
+            Ok(()) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => false,
+            Err(error) => return Err(io_at(path)(error)),
+        },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(io_at(path)(error)),
     };
-    Ok(read == header.len() && &header != PLAINTEXT_HEADER)
+    Ok(read && &header != PLAINTEXT_HEADER)
 }
 
 /// Writes a complete copy of the open database to `destination`, encrypted with `key`

@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.468773
-//+ Revised: 	2026/10/29 15:46:51.461785
+//+ Revised: 	2026/11/02 14:00:09.393911
 // -----------------------------------------------------------------------------
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, Params, params};
 
-use super::model::{Pupil, clean_name};
+use super::model::{Pupil, clean_name, name_match_key, name_sort_key};
 use super::update_one;
 use crate::error::Result;
 
@@ -16,7 +16,7 @@ pub fn list_class_pupils(connection: &Connection, class_id: i64) -> Result<Vec<P
         connection,
         "SELECT p.id, p.name FROM pupils p JOIN class_pupils cp ON cp.pupil_id = p.id
          WHERE cp.class_id = ?1 ORDER BY cp.position",
-        class_id,
+        [class_id],
     )
 }
 
@@ -26,9 +26,37 @@ pub fn pupils_not_in_class(connection: &Connection, class_id: i64) -> Result<Vec
         connection,
         "SELECT id, name FROM pupils
          WHERE id NOT IN (SELECT pupil_id FROM class_pupils WHERE class_id = ?1)
-         ORDER BY name COLLATE NOCASE",
-        class_id,
+         ORDER BY id",
+        [class_id],
     )
+    .map(|mut pupils| {
+        // sorted here: SQLite's NOCASE only folds A to Z, which put "Álvaro" after "Zoe"
+        pupils.sort_by_cached_key(|pupil| name_sort_key(&pupil.name));
+        pupils
+    })
+}
+
+/// Pupils in no class at all: left their last class, or their only class was deleted.
+pub fn pupils_in_no_class(connection: &Connection) -> Result<Vec<Pupil>> {
+    let mut pupils = query_pupils(
+        connection,
+        "SELECT id, name FROM pupils WHERE id NOT IN (SELECT pupil_id FROM class_pupils) ORDER BY id",
+        [],
+    )?;
+    pupils.sort_by_cached_key(|pupil| name_sort_key(&pupil.name));
+    Ok(pupils)
+}
+
+/// Deletes a pupil who is in no class, name and all. A pupil still in a class is refused
+/// (`NotEditable`): they leave their classes first, which is where their marks go.
+pub fn delete_pupil_in_no_class(connection: &Connection, pupil_id: i64) -> Result<()> {
+    update_one(
+        connection,
+        "DELETE FROM pupils WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM class_pupils WHERE pupil_id = ?1)",
+        [pupil_id],
+    )?;
+    log::info!("deleted pupil {pupil_id}, who was in no class");
+    Ok(())
 }
 
 pub fn add_new_pupil(connection: &Connection, class_id: i64, name: &str) -> Result<i64> {
@@ -49,12 +77,12 @@ pub fn insert_new_pupil(connection: &Connection, class_id: i64, name: &str) -> R
     Ok(pupil_id)
 }
 
-/// Every pupil called `name`, ignoring case and outer spaces.
+/// Every pupil called `name`, ignoring case (in any alphabet, unlike SQLite's NOCASE) and
+/// outer spaces.
 pub fn pupils_named(connection: &Connection, name: &str) -> Result<Vec<Pupil>> {
-    let mut statement = connection.prepare("SELECT id, name FROM pupils WHERE name = ?1 COLLATE NOCASE ORDER BY id")?;
-    let pupils = statement
-        .query_map([name.trim()], |row| Ok(Pupil { id: row.get(0)?, name: row.get(1)? }))?
-        .collect::<rusqlite::Result<_>>()?;
+    let key = name_match_key(name);
+    let mut pupils = query_pupils(connection, "SELECT id, name FROM pupils ORDER BY id", [])?;
+    pupils.retain(|pupil| name_match_key(&pupil.name) == key);
     Ok(pupils)
 }
 
@@ -76,8 +104,11 @@ pub fn rename_pupil(connection: &Connection, pupil_id: i64, name: &str) -> Resul
 
 /// Takes the pupil out of one class (their marks there go too); they stay in other classes.
 pub fn remove_from_class(connection: &Connection, class_id: i64, pupil_id: i64) -> Result<()> {
-    connection
-        .execute("DELETE FROM class_pupils WHERE class_id = ?1 AND pupil_id = ?2", params![class_id, pupil_id])?;
+    update_one(
+        connection,
+        "DELETE FROM class_pupils WHERE class_id = ?1 AND pupil_id = ?2",
+        params![class_id, pupil_id],
+    )?;
     log::info!("removed pupil {pupil_id} from class {class_id}");
     Ok(())
 }
@@ -91,10 +122,10 @@ fn enroll(connection: &Connection, class_id: i64, pupil_id: i64) -> Result<()> {
     Ok(())
 }
 
-fn query_pupils(connection: &Connection, sql: &str, class_id: i64) -> Result<Vec<Pupil>> {
+fn query_pupils(connection: &Connection, sql: &str, parameters: impl Params) -> Result<Vec<Pupil>> {
     let mut statement = connection.prepare(sql)?;
     let pupils = statement
-        .query_map([class_id], |row| Ok(Pupil { id: row.get(0)?, name: row.get(1)? }))?
+        .query_map(parameters, |row| Ok(Pupil { id: row.get(0)?, name: row.get(1)? }))?
         .collect::<rusqlite::Result<_>>()?;
     Ok(pupils)
 }
