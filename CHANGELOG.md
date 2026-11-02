@@ -12,6 +12,8 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-02
+
 ### Added
 
 - A pupil who is in no class (they left their last class, or their only class was deleted) is marked "no class" in **⋯ → Add from another class**, with × to delete them for good after a confirmation
