@@ -3,12 +3,20 @@
 # the profile in Cargo.toml without debug info, for quicker rebuilds per mutant
 profile = "mutants"
 
-# The UI wiring is checked by tests/ui.rs and the desktop tests, not by mutation testing.
-exclude_globs = ["src/app/**", "src/main.rs"]
+# The UI wiring (src/app/, the src/window/ kit and each feature's ui module) is checked by
+# tests/ui.rs and the desktop tests, not by mutation testing. The app state in src/state/ is
+# logic, and is mutation-tested.
+exclude_globs = ["src/app/**", "src/window/**", "src/*/ui.rs", "src/*/ui/**", "src/main.rs"]
+
+# A timeout is a mutant the tests caught by hanging, not a missed one: the three in default_title
+# (columns.rs) turn its search for a free title into an endless loop. Don't list those here.
 
 # Mutants that cannot change what the app does, so no test can catch them:
 exclude_re = [
     # < and <= differ only when the weights miss 100 % by exactly the tolerance, which float sums
     # never land on
     "replace < with <= in weights_add_up",
+    # a file under 16 bytes is refused further on anyway (too short for the plain header, and not
+    # whole pages), so the early length check in existing_kind only saves opening it
+    "replace < with (==|<=) in existing_kind",
 ]

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.102653
-//+ Revised: 	2026/11/02 08:27:51.107489
+//+ Revised: 	2026/11/03 08:27:18.274923
 // -----------------------------------------------------------------------------
 
 //! Error paths must reach the log at the right level, not just the screen. The app's own logger
@@ -12,9 +12,10 @@ mod common;
 use std::fs;
 use std::sync::Mutex;
 
-use avalio_lite::app::state::Startup;
-use avalio_lite::config::LOG_FILE_NAME;
-use avalio_lite::logging::{self, FileLogger};
+use avalio_lite::app;
+use avalio_lite::platform::config::LOG_FILE_NAME;
+use avalio_lite::platform::logging::{self, FileLogger};
+use avalio_lite::state::Startup;
 use avalio_lite::ui::Gradebook;
 use common::{Fixture, Ui};
 use slint::ComponentHandle;
@@ -45,7 +46,7 @@ fn an_unreadable_settings_file_is_a_warning() {
     let log = logged(|| {
         fixture.state().start();
     });
-    assert!(has_line(&log, "WARN", "avalio_lite::app::state", "settings file unreadable"), "{log}");
+    assert!(has_line(&log, "WARN", "avalio_lite::state", "settings file unreadable"), "{log}");
 }
 
 #[test]
@@ -56,7 +57,7 @@ fn a_missing_database_is_a_warning() {
     let log = logged(|| {
         fixture.state().start();
     });
-    assert!(has_line(&log, "WARN", "avalio_lite::app::state", "database missing"), "{log}");
+    assert!(has_line(&log, "WARN", "avalio_lite::state", "database missing"), "{log}");
 }
 
 #[test]
@@ -68,7 +69,7 @@ fn a_database_that_cannot_be_read_is_an_error() {
         let startup = fixture.state().start();
         assert!(matches!(startup, Startup::NeedsSetup(_)));
     });
-    assert!(has_line(&log, "ERROR", "avalio_lite::app::state", "could not read the database"), "{log}");
+    assert!(has_line(&log, "ERROR", "avalio_lite::state", "could not read the database"), "{log}");
 }
 
 #[test]
@@ -77,7 +78,7 @@ fn a_failed_sheet_action_is_a_warning_naming_the_action() {
         let ui = Ui::with_database();
         ui.session.window.global::<Gradebook>().invoke_create_class("".into());
     });
-    assert!(has_line(&log, "WARN", "avalio_lite::app::gradebook", "create class failed"), "{log}");
+    assert!(has_line(&log, "WARN", "avalio_lite::gradebook::ui", "create class failed"), "{log}");
 }
 
 #[test]
@@ -86,7 +87,7 @@ fn an_unknown_language_from_the_picker_is_an_error() {
         let ui = Ui::with_database();
         ui.session.window.invoke_choose_language("xx".into());
     });
-    assert!(has_line(&log, "ERROR", "avalio_lite::app::callbacks", "unknown language code \"xx\""), "{log}");
+    assert!(has_line(&log, "ERROR", "avalio_lite::app::settings", "unknown language code \"xx\""), "{log}");
 }
 
 #[test]
@@ -102,7 +103,7 @@ fn a_failed_unlock_other_than_a_wrong_pin_is_an_error() {
         ui.session.window.invoke_unlock("2468".into());
         assert!(!ui.session.window.get_unlock_error().is_empty(), "the lock screen says so too");
     });
-    assert!(has_line(&log, "ERROR", "avalio_lite::app::lock_screen", "unlocking failed"), "{log}");
+    assert!(has_line(&log, "ERROR", "avalio_lite::lock::ui", "unlocking failed"), "{log}");
 }
 
 #[test]
@@ -117,7 +118,7 @@ fn a_locked_database_that_is_gone_is_an_error() {
         ui.session.window.invoke_unlock("2468".into());
         assert!(ui.session.window.get_setup_required());
     });
-    assert!(has_line(&log, "ERROR", "avalio_lite::app::lock_screen", "the locked database is gone"), "{log}");
+    assert!(has_line(&log, "ERROR", "avalio_lite::lock::ui", "the locked database is gone"), "{log}");
 }
 
 #[test]
@@ -128,7 +129,7 @@ fn a_refused_pin_change_is_a_warning() {
         ui.session.window.set_pin_repeat("12".into());
         ui.session.window.invoke_set_pin();
     });
-    assert!(has_line(&log, "WARN", "avalio_lite::app::lock_screen", "PIN change failed"), "{log}");
+    assert!(has_line(&log, "WARN", "avalio_lite::lock::ui", "PIN change failed"), "{log}");
 }
 
 #[test]
@@ -141,7 +142,7 @@ fn a_failed_move_is_a_warning() {
         ui.dialogs.pick_folder_next(Some(&in_the_way));
         ui.session.window.invoke_move_logs();
     });
-    assert!(has_line(&log, "WARN", "avalio_lite::app::callbacks", "move logs failed"), "{log}");
+    assert!(has_line(&log, "WARN", "avalio_lite::app::settings", "move logs failed"), "{log}");
 }
 
 /// Setting, using, changing and removing a PIN logs what happened, never the PIN itself.
@@ -160,7 +161,7 @@ fn the_pin_never_reaches_the_log() {
         state.remove_pin(SECOND).unwrap();
         state.shutdown();
     });
-    assert!(has_line(&log, "INFO", "avalio_lite::app::state", "database unlocked"), "{log}");
+    assert!(has_line(&log, "INFO", "avalio_lite::state", "database unlocked"), "{log}");
     assert!(!log.contains(FIRST) && !log.contains(SECOND), "{log}");
 }
 
@@ -178,4 +179,18 @@ fn regression_a_friendly_error_still_logs_its_technical_source() {
     });
     let line = log.lines().find(|line| line.contains("saving the theme failed")).expect(&log);
     assert!(line.contains("could not"), "{line}");
+}
+
+#[test]
+fn a_screen_that_cannot_be_read_is_a_warning_and_the_window_keeps_its_size() {
+    let log = logged(|| {
+        let ui = Ui::with_database();
+        let before = ui.session.window.window().size();
+        app::placement::apply_with(&ui.session.window, Err("GetMonitorInfoW failed".to_owned()));
+        assert_eq!(ui.session.window.window().size(), before, "Slint's size stays");
+        assert!(!ui.session.window.window().is_maximized());
+        assert!(!ui.session.window.get_setup_required(), "the app still shows its sheet");
+    });
+    assert!(has_line(&log, "WARN", "avalio_lite::app::placement", "couldn't read the screen's work area"), "{log}");
+    assert!(log.contains("GetMonitorInfoW failed"), "the failing call is named:\n{log}");
 }

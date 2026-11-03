@@ -1,0 +1,44 @@
+import { Theme } from "../theme.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { Card } from "../components/surfaces.slint";
+
+export component PathBox inherits Rectangle {
+    in property <string> path;
+
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    background: Theme.raised;
+    Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        text: root.path;
+        overflow: elide;
+        vertical-alignment: center;
+        color: Theme.text;
+    }
+}
+
+// Where the database is: moving it, or opening another one.
+export component DatabaseCard inherits Card {
+    in property <string> database-path;
+    callback move-database();
+    callback switch-database();
+
+    title: @tr("Database");
+    description: @tr("Every class, pupil and mark is in this file.");
+    PathBox { path: root.database-path; }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        ActionButton {
+            text: @tr("Move…");
+            clicked => { root.move-database(); }
+        }
+        ActionButton {
+            text: @tr("Open another database…");
+            kind: ButtonKind.ghost;
+            clicked => { root.switch-database(); }
+        }
+    }
+}

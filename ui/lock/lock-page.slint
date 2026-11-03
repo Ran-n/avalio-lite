@@ -1,0 +1,192 @@
+import { Theme } from "../theme.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { TextField } from "../components/fields.slint";
+import { BrandMark } from "../components/icons.slint";
+import { Key, Keys, LetterKey, NumberPad } from "keypad.slint";
+
+// Covers the whole app until the right PIN is typed: with the keyboard, or by clicking the
+// on-screen keys: numbers, or (after "ABC") letters and (after "#+=") symbols, for PINs that are
+// passwords. The symbols come in two pages, switched where Shift sits on the letter keys.
+export component LockPage inherits Rectangle {
+    in-out property <string> pin;
+    in property <string> error-message;
+    callback unlock(string);
+    callback erase();
+    // leaves the lock screen for the setup screen, without touching the locked file
+    callback forgot-pin();
+
+    property <Keys> keys: Keys.numbers;
+    property <bool> capitals;
+    property <bool> second-symbols;
+    property <bool> letters: root.keys == Keys.letters;
+    property <[string]> top-row: !root.letters ? (root.second-symbols ? ["~", "`", "^", "<", ">", "º", "ª", "·", "¬", "€"] : ["!", "@", "#", "$", "%", "&", "*", "(", ")", "-"])
+        : ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
+    property <[string]> middle-row: !root.letters ? (root.second-symbols ? ["¿", "¡", "£", "´", "¨", "©", "§", "ç", "¢", "¥"] : ["_", "=", "+", "[", "]", "{", "}", ";", ":", "'"])
+        : ["a", "s", "d", "f", "g", "h", "j", "k", "l", "ñ"];
+    property <[string]> bottom-row: !root.letters ? (root.second-symbols ? ["«", "»", "¶", "×", "÷", "±", "µ"] : ["\"", ",", ".", "/", "?", "\\", "|"])
+        : ["z", "x", "c", "v", "b", "n", "m"];
+
+    background: Theme.canvas;
+    // keep clicks from reaching the app underneath
+    TouchArea { }
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                // wide enough for ten letter keys while the letter keyboard shows
+                width: root.keys == Keys.numbers ? 340px : 540px;
+                background: Theme.surface;
+                border-radius: Theme.radius-l;
+                border-width: 1px;
+                border-color: Theme.line;
+                drop-shadow-blur: 40px;
+                drop-shadow-offset-y: 16px;
+                drop-shadow-color: Theme.shadow;
+                VerticalLayout {
+                    padding: 32px;
+                    spacing: 18px;
+                    HorizontalLayout {
+                        alignment: center;
+                        BrandMark { }
+                    }
+                    Text {
+                        text: @tr("avalio lite is locked");
+                        font-size: Theme.text-l;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        color: Theme.text;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        field := TextField {
+                            horizontal-stretch: 1;
+                            input-type: InputType.password;
+                            alignment: TextHorizontalAlignment.center;
+                            font-size: 22px;
+                            placeholder: @tr("PIN");
+                            text <=> root.pin;
+                            accepted(text) => { root.unlock(text); }
+                            init => { self.focus-input(); }
+                        }
+                        Key {
+                            label: "✓";
+                            spoken-label: @tr("Unlock");
+                            emphasized: true;
+                            key-width: 56px;
+                            key-height: field.height;
+                            pressed => { root.unlock(root.pin); }
+                        }
+                    }
+                    if root.error-message != "": Text {
+                        text: root.error-message;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        color: Theme.fail;
+                    }
+                    if root.keys == Keys.numbers: NumberPad {
+                        typed(text) => { root.pin += text; }
+                        show-letters => { root.keys = Keys.letters; field.focus-input(); }
+                        erase => { root.erase(); field.focus-input(); }
+                    }
+                    if root.keys != Keys.numbers: VerticalLayout {
+                        spacing: 8px;
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            for letter in root.top-row: LetterKey {
+                                letter: letter;
+                                capitals: root.letters && root.capitals;
+                                typed(text) => { root.pin += text; }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            for letter in root.middle-row: LetterKey {
+                                letter: letter;
+                                capitals: root.letters && root.capitals;
+                                typed(text) => { root.pin += text; }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            if root.letters: Key {
+                                label: "⇧";
+                                spoken-label: @tr("Capital letters");
+                                active: root.capitals;
+                                key-width: 63px;
+                                key-height: 52px;
+                                pressed => { root.capitals = !root.capitals; field.focus-input(); }
+                            }
+                            if !root.letters: Key {
+                                label: root.second-symbols ? "2/2" : "1/2";
+                                spoken-label: @tr("More symbols");
+                                key-width: 63px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.second-symbols = !root.second-symbols; field.focus-input(); }
+                            }
+                            for letter in root.bottom-row: LetterKey {
+                                letter: letter;
+                                capitals: root.letters && root.capitals;
+                                typed(text) => { root.pin += text; }
+                            }
+                            Key {
+                                label: "←";
+                                spoken-label: @tr("Erase");
+                                key-width: 63px;
+                                key-height: 52px;
+                                pressed => { root.erase(); field.focus-input(); }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            Key {
+                                label: "123";
+                                spoken-label: @tr("Numbers");
+                                key-width: 90px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.keys = Keys.numbers; field.focus-input(); }
+                            }
+                            if root.letters: Key {
+                                label: "#+=";
+                                spoken-label: @tr("Symbols");
+                                key-width: 90px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.keys = Keys.symbols; field.focus-input(); }
+                            }
+                            if !root.letters: Key {
+                                label: "ABC";
+                                spoken-label: @tr("Letters");
+                                key-width: 90px;
+                                key-height: 52px;
+                                label-size: 17px;
+                                pressed => { root.keys = Keys.letters; field.focus-input(); }
+                            }
+                            Key {
+                                label: "";
+                                spoken-label: @tr("Space");
+                                key-width: 282px;
+                                key-height: 52px;
+                                pressed => { root.pin += " "; field.focus-input(); }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        ActionButton {
+                            text: @tr("Forgot the PIN?");
+                            kind: ButtonKind.ghost;
+                            clicked => { root.forgot-pin(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

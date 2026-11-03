@@ -1,14 +1,17 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.826999
-//+ Revised: 	2026/10/29 14:12:16.511551
+//+ Revised: 	2026/11/03 11:13:31.411696
 // -----------------------------------------------------------------------------
 
 //! Interface language. Slint strings are translated from `lang/<code>/LC_MESSAGES/avalio-lite.po`;
 //! text produced in Rust (errors, questions, default titles) is translated here, one `match`
 //! arm per language so a missing translation is a compile error.
 
+mod english;
 mod errors;
+mod galician;
+mod labels;
 mod messages;
 pub mod shortcuts;
 
@@ -17,7 +20,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use serde::{Deserialize, Serialize};
 
 pub use errors::error_message;
-pub use messages::{ExportLabels, Message, column_type_name, default_column_title, export_labels, text};
+pub use labels::{ExportLabels, column_type_name, default_column_title, export_labels};
+pub use messages::{Message, text};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Language {

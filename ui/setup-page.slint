@@ -1,5 +1,8 @@
 import { Theme } from "theme.slint";
-import { ActionButton, BrandMark, ButtonKind, FolderField, MessageBanner } from "components.slint";
+import { ActionButton, ButtonKind } from "components/buttons.slint";
+import { FolderField } from "components/fields.slint";
+import { BrandMark } from "components/icons.slint";
+import { MessageBanner } from "components/surfaces.slint";
 
 // left-locked: the user left the lock screen ("Forgot the PIN?"); the locked file stays as it is
 export enum SetupNotice { first-run, database-missing, config-unreadable, database-unusable, left-locked }

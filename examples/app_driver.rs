@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.921715
-//+ Revised: 	2026/11/02 08:27:48.850959
+//+ Revised: 	2026/11/03 08:27:15.519961
 // -----------------------------------------------------------------------------
 
 //! Runs the real app, in its real window, for the desktop tests (`tests/desktop.rs`), against a
@@ -14,6 +14,8 @@
 //!
 //!   {"cmd":"ping"}                                   the window's scale factor
 //!   {"cmd":"size","width":1000,"height":600}         logical size of the window
+//!   {"cmd":"minimum","width":1000,"height":582}      lowers the window's minimum size, as the app does
+//!                                                    on a screen too small for it
 //!   {"cmd":"theme","dark":true}                      light or dark look, without saving the choice
 //!   {"cmd":"locate","label":"Create database"}       where the controls with that label are (and a
 //!                                                    field's text), and where an open popup menu
@@ -32,10 +34,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use avalio_lite::app::{self, Session};
-use avalio_lite::config::ConfigStore;
+use avalio_lite::app::{self, Session, placement};
 use avalio_lite::i18n::Language;
-use avalio_lite::logging;
+use avalio_lite::platform::config::ConfigStore;
+use avalio_lite::platform::logging;
 use avalio_lite::ui::{Gradebook, Theme, Tone};
 use common::FakeDialogs;
 use common::controls;
@@ -64,6 +66,9 @@ fn main() -> ExitCode {
         }
     };
     let window = session.window.clone_strong();
+    // the app opens on the monitor under the mouse; the tests pin it to the primary one, so the display
+    // scale under test is the one set there, wherever the user's mouse is
+    placement::apply_with(&window, placement::work_area_at(placement::PRIMARY_SCREEN));
     DRIVEN.with(|driven| *driven.borrow_mut() = Some((session, dialogs)));
 
     std::thread::spawn(|| {
@@ -119,7 +124,14 @@ fn handle(line: &str) -> Result<Value, String> {
             "size" => {
                 let width = command["width"].as_f64().ok_or("missing width")? as f32;
                 let height = command["height"].as_f64().ok_or("missing height")? as f32;
+                // a window the app opened maximised (on a small screen) takes a size only once restored
+                window.window().set_maximized(false);
                 window.window().set_size(slint::LogicalSize::new(width, height));
+                Ok(json!({}))
+            }
+            "minimum" => {
+                window.set_fit_min_width(command["width"].as_f64().ok_or("missing width")? as f32);
+                window.set_fit_min_height(command["height"].as_f64().ok_or("missing height")? as f32);
                 Ok(json!({}))
             }
             "theme" => {
@@ -212,6 +224,7 @@ fn state(session: &Session) -> Value {
         "columns": columns,
         "rows": rows,
         "panel_index": gradebook.get_panel_index(),
+        "sidebar_collapsed": gradebook.get_sidebar_collapsed(),
         "database_open": session.state.borrow().connection().is_some(),
     })
 }

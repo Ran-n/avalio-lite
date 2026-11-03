@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/11/02 14:00:10.053892
+//+ Revised: 	2026/11/03 08:27:17.807971
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -12,10 +12,10 @@ use std::path::Path;
 mod common;
 use common::Fixture;
 
-use avalio_lite::app::state::{AppState, Opened, Startup};
-use avalio_lite::config::DATABASE_FILE_NAME;
-use avalio_lite::db;
 use avalio_lite::error::AppError;
+use avalio_lite::platform::config::DATABASE_FILE_NAME;
+use avalio_lite::platform::db;
+use avalio_lite::state::{AppState, Opened, Startup};
 
 const SECRET: &str = "Ana Pérez secret note";
 
@@ -256,7 +256,7 @@ fn a_leftover_rekey_file_that_cannot_be_removed_stops_the_pin_change() {
 
 /// Where a re-key keeps the old file while the new one is put in place.
 fn kept_aside(path: &Path) -> std::path::PathBuf {
-    avalio_lite::storage::with_suffix(path, ".previous")
+    avalio_lite::platform::storage::with_suffix(path, ".previous")
 }
 
 #[test]

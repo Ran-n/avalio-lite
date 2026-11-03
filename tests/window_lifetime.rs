@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 04:09:17.087739
-//+ Revised: 	2026/10/29 04:09:19.047650
+//+ Revised: 	2026/11/03 08:27:20.468905
 // -----------------------------------------------------------------------------
 
 //! A UI callback that fires after its window is gone does nothing and says so in the debug log.
@@ -14,9 +14,9 @@ use std::cell::Cell;
 use std::fs;
 use std::rc::Rc;
 
-use avalio_lite::app::with_window;
-use avalio_lite::config::LOG_FILE_NAME;
-use avalio_lite::logging::{self, LOG_LEVEL_ENV};
+use avalio_lite::platform::config::LOG_FILE_NAME;
+use avalio_lite::platform::logging::{self, LOG_LEVEL_ENV};
+use avalio_lite::window::with_window;
 use common::Ui;
 
 #[test]
@@ -42,5 +42,5 @@ fn a_callback_after_the_window_closed_is_logged_at_debug() {
 
     assert!(!ran.get(), "does nothing once the window is gone");
     let log = fs::read_to_string(dir.path().join(LOG_FILE_NAME)).unwrap();
-    assert!(log.contains("[DEBUG   ] avalio_lite::app: callback after the window closed"), "{log}");
+    assert!(log.contains("[DEBUG   ] avalio_lite::window: callback after the window closed"), "{log}");
 }

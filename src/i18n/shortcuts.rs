@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:46.754890
-//+ Revised: 	2026/10/29 02:54:48.647043
+//+ Revised: 	2026/11/02 21:48:10.557063
 // -----------------------------------------------------------------------------
 
 use super::Language;
@@ -14,6 +14,7 @@ pub fn action_label(language: Language, action: Action) -> &'static str {
             Action::Lock => "Lock",
             Action::ToggleTheme => "Switch between light and dark",
             Action::ToggleColumnSettings => "Show or hide weights and scales",
+            Action::ToggleSidebar => "Collapse or expand the sidebar",
             Action::OpenSettings => "Open Settings",
             Action::NextClass => "Next class",
             Action::PreviousClass => "Previous class",
@@ -22,6 +23,7 @@ pub fn action_label(language: Language, action: Action) -> &'static str {
             Action::Lock => "Bloquear",
             Action::ToggleTheme => "Cambiar entre claro e escuro",
             Action::ToggleColumnSettings => "Amosar ou agochar pesos e escalas",
+            Action::ToggleSidebar => "Contraer ou expandir a barra lateral",
             Action::OpenSettings => "Abrir os axustes",
             Action::NextClass => "Clase seguinte",
             Action::PreviousClass => "Clase anterior",

@@ -1,0 +1,189 @@
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Gradebook } from "gradebook.slint";
+import { TextField } from "components/fields.slint";
+import { FocusRing, KeyboardPress } from "components/focus.slint";
+import { BrandMark, Icon, IconKind } from "components/icons.slint";
+import { IconNavItem, NavItem } from "components/navigation.slint";
+import { Shortcuts } from "shortcuts.slint";
+
+// Which page the shell shows.
+export enum Section { sheet, settings }
+
+// The button folding the sidebar to its icon rail, or opening it again.
+component SidebarToggle inherits Rectangle {
+    in property <bool> collapsed;
+    callback clicked();
+
+    width: 28px;
+    height: 28px;
+    border-radius: Theme.radius-s;
+    background: touch.has-hover ? Theme.raised : transparent;
+    accessible-role: button;
+    accessible-label: root.collapsed ? @tr("Expand the sidebar") : @tr("Collapse the sidebar");
+    Icon {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        kind: root.collapsed ? IconKind.chevron-right : IconKind.chevron-left;
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+export component Sidebar inherits Rectangle {
+    in-out property <Section> section;
+    in property <bool> pin-set;
+    callback lock-now();
+    callback toggle-theme();
+    // the page is about to change, so what the last page said is out of date
+    callback navigating();
+    // folded to a 64 px rail of icons and short class names (Gradebook.toggle-sidebar, Ctrl+B);
+    // the texts go as soon as it starts folding, so nothing wraps while the width animates
+    property <bool> collapsed: Gradebook.sidebar-collapsed;
+
+    width: root.collapsed ? 64px : 236px;
+    animate width { duration: 150ms; easing: ease-out; }
+    clip: true;
+    background: Theme.surface;
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.line;
+    }
+    VerticalLayout {
+        padding: 12px;
+        padding-top: 18px;
+        spacing: 2px;
+        if !root.collapsed: HorizontalLayout {
+            spacing: 10px;
+            padding-left: 8px;
+            padding-bottom: 20px;
+            BrandMark { }
+            Text {
+                text: "avalio lite";
+                font-size: 17px;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                color: Theme.text;
+            }
+            VerticalLayout {
+                alignment: center;
+                SidebarToggle {
+                    collapsed: false;
+                    clicked => { Gradebook.toggle-sidebar(); }
+                }
+            }
+        }
+        if root.collapsed: VerticalLayout {
+            spacing: 8px;
+            padding-bottom: 12px;
+            HorizontalLayout {
+                alignment: center;
+                BrandMark { }
+            }
+            HorizontalLayout {
+                alignment: center;
+                SidebarToggle {
+                    collapsed: true;
+                    clicked => { Gradebook.toggle-sidebar(); }
+                }
+            }
+        }
+        if !root.collapsed: Text {
+            text: @tr("Classes");
+            font-size: Theme.text-s;
+            font-weight: 600;
+            color: Theme.faint;
+            height: 26px;
+            x: 10px;
+        }
+        ListView {
+            vertical-stretch: 1;
+            for class in Gradebook.classes: NavItem {
+                label: class.name;
+                detail: class.pupil-count;
+                compact: root.collapsed;
+                short-label: class.short-name;
+                selected: root.section == Section.sheet && Gradebook.current-class-id == class.id;
+                clicked => {
+                    root.navigating();
+                    root.section = Section.sheet;
+                    Gradebook.select-class(class.id);
+                }
+            }
+        }
+        Rectangle {
+            height: Theme.control-height;
+            // kept in both modes, so the folded "+" has a field to focus once the sidebar opens
+            new-class := TextField {
+                x: 28px;
+                width: parent.width - 28px;
+                visible: !root.collapsed;
+                boxed: false;
+                placeholder: @tr("New class");
+                accepted(text) => {
+                    root.navigating();
+                    root.section = Section.sheet;
+                    if (Gradebook.create-class(text)) {
+                        self.clear();
+                    }
+                }
+            }
+            if !root.collapsed: Text {
+                x: 12px;
+                height: parent.height;
+                vertical-alignment: center;
+                text: "+";
+                font-size: Theme.text-l;
+                color: new-class.has-focus ? Theme.accent : Theme.muted;
+            }
+            // a name can't be typed into 64 px, so the folded "+" opens the sidebar on the field
+            if root.collapsed: NavItem {
+                height: parent.height;
+                label: @tr("New class");
+                compact: true;
+                short-label: "+";
+                clicked => {
+                    Gradebook.toggle-sidebar();
+                    new-class.focus-input();
+                }
+            }
+        }
+        Rectangle {
+            height: 17px;
+            Rectangle {
+                y: 8px;
+                height: 1px;
+                background: Theme.line;
+            }
+        }
+        if root.pin-set: IconNavItem {
+            icon: IconKind.lock;
+            label: @tr("Lock ({})", Shortcuts.lock-keys);
+            compact: root.collapsed;
+            clicked => { root.lock-now(); }
+        }
+        IconNavItem {
+            icon: Theme.dark ? IconKind.sun : IconKind.moon;
+            label: Theme.dark ? @tr("Light mode") : @tr("Dark mode");
+            compact: root.collapsed;
+            clicked => { root.toggle-theme(); }
+        }
+        IconNavItem {
+            icon: IconKind.gear;
+            label: @tr("Settings");
+            compact: root.collapsed;
+            selected: root.section == Section.settings;
+            clicked => {
+                root.navigating();
+                root.section = Section.settings;
+            }
+        }
+    }
+}

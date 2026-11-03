@@ -1,0 +1,114 @@
+// Text input: the text field and the folder field with its Browse button.
+
+import { Theme } from "../theme.slint";
+import { ActionButton } from "buttons.slint";
+
+// Single-line text field. `boxed: false` makes it blend into the page until focused,
+// for titles and names that are edited in place.
+export component TextField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    // what a screen reader calls the field; the placeholder unless the field has a visible label
+    in property <string> spoken-label: root.placeholder;
+    in property <bool> boxed: true;
+    in property <length> font-size: Theme.text-m;
+    in property <int> font-weight: 400;
+    in property <TextHorizontalAlignment> alignment: TextHorizontalAlignment.left;
+    in property <InputType> input-type: InputType.text;
+    // For a field that saves as you type: the value that is saved. The text is put back to it when
+    // the field loses focus or Enter is pressed while the text differs (a half-typed or refused
+    // value), so the field never stays out of step with what was kept.
+    in property <bool> restores: false;
+    in property <string> saved;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    // the text was put back to the saved value, so an error about the refused one is out of date
+    callback restored();
+
+    height: max(Theme.control-height, root.font-size * 1.9);
+    border-radius: Theme.radius-s;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : root.boxed ? Theme.line-strong : transparent;
+    background: root.boxed || input.has-focus ? Theme.surface : transparent;
+    clip: true;
+    Text {
+        x: input.x;
+        width: input.width;
+        height: parent.height;
+        visible: root.text == "";
+        text: root.placeholder;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        horizontal-alignment: root.alignment;
+        vertical-alignment: center;
+        color: Theme.faint;
+    }
+    input := TextInput {
+        x: root.boxed || self.has-focus ? 10px : 0px;
+        width: parent.width - 2 * self.x;
+        height: parent.height;
+        text <=> root.text;
+        single-line: true;
+        input-type: root.input-type;
+        accessible-label: root.spoken-label;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        horizontal-alignment: root.alignment;
+        vertical-alignment: center;
+        color: Theme.text;
+        selection-background-color: Theme.accent-soft;
+        selection-foreground-color: Theme.text;
+        edited => { root.edited(self.text); }
+        accepted => {
+            root.restore();
+            root.accepted(self.text);
+        }
+        changed has-focus => {
+            if (!self.has-focus) {
+                root.restore();
+            }
+        }
+    }
+
+    function restore() {
+        if (root.restores && input.text != root.saved) {
+            input.text = root.saved;
+            root.restored();
+        }
+    }
+
+    public function clear() {
+        input.text = "";
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+}
+
+export component FolderField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> value;
+    callback browse();
+
+    spacing: 6px;
+    Text {
+        text: root.label;
+        color: Theme.muted;
+        font-size: Theme.text-s;
+        font-weight: 600;
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        TextField {
+            text <=> root.value;
+            spoken-label: root.label;
+            horizontal-stretch: 1;
+        }
+        ActionButton {
+            text: @tr("Browse…");
+            clicked => { root.browse(); }
+        }
+    }
+}

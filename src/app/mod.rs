@@ -1,19 +1,15 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.224094
-//+ Revised: 	2026/11/02 08:27:49.392172
+//+ Revised: 	2026/11/03 08:27:15.657429
 // -----------------------------------------------------------------------------
 
-mod backup;
-mod callbacks;
-pub mod dialogs;
-mod gradebook;
-mod language;
-mod lock_screen;
-mod shortcuts;
-pub mod state;
-mod theme;
-mod view;
+//! Starts the app and wires the features to the window: the composition root. The setup and
+//! Settings screens live here; each feature's own wiring is in its `ui` module.
+
+pub mod placement;
+mod settings;
+mod setup;
 
 use std::cell::RefCell;
 use std::process::ExitCode;
@@ -21,50 +17,14 @@ use std::rc::Rc;
 
 use slint::ComponentHandle;
 
-use crate::config::{ConfigStore, Preferences};
 use crate::i18n::{self, Language, Message};
-use crate::logging::{self, FileLogger};
+use crate::platform::config::{ConfigStore, Preferences};
+use crate::platform::logging::{self, FileLogger};
+use crate::state::{AppState, Startup};
 use crate::ui::AppWindow;
-use dialogs::{Dialogs, NativeDialogs};
-use state::{AppState, Startup};
-
-pub type SharedState = Rc<RefCell<AppState>>;
-pub type SharedDialogs = Rc<dyn Dialogs>;
-
-/// Wraps a UI callback so it runs with the window, and only while the window is alive: the window
-/// is held weakly (a strong one inside its own callback would keep it alive forever). A callback
-/// that fires after the window is gone does nothing, and says so in the debug log.
-macro_rules! window_callbacks {
-    ($($name:ident($($argument:ident: $type:ident),*);)*) => {$(
-        pub fn $name<$($type),*>(
-            window: &AppWindow,
-            mut action: impl FnMut(&AppWindow $(, $type)*) + 'static,
-        ) -> impl FnMut($($type),*) + 'static {
-            let weak = window.as_weak();
-            move |$($argument),*| {
-                if let Some(window) = alive(&weak) {
-                    action(&window $(, $argument)*);
-                }
-            }
-        }
-    )*};
-}
-
-window_callbacks! {
-    with_window();
-    with_window1(a: A);
-    with_window2(a: A, b: B);
-    with_window3(a: A, b: B, c: C);
-    with_window5(a: A, b: B, c: C, d: D, e: E);
-}
-
-fn alive(weak: &slint::Weak<AppWindow>) -> Option<AppWindow> {
-    let window = weak.upgrade();
-    if window.is_none() {
-        log::debug!("callback after the window closed");
-    }
-    window
-}
+use crate::window::dialogs::NativeDialogs;
+use crate::window::{SharedDialogs, SharedState, language, theme, view};
+use crate::{backup, gradebook, lock, shortcuts, spreadsheet};
 
 /// A window wired to its state and showing the screen startup chose, not yet running.
 pub struct Session {
@@ -114,12 +74,16 @@ pub fn open(
     let window = AppWindow::new().map_err(|error| error.to_string())?;
     language::apply(&window, preferences.language.unwrap_or(system_language));
     theme::apply_preference(&window, &preferences);
-    callbacks::wire(&window, &state, &dialogs);
-    backup::wire(&window, &state, &dialogs);
-    gradebook::wire(&window, &state, &dialogs);
-    lock_screen::wire(&window, &state);
-    shortcuts::wire(&window, &state);
+    setup::wire(&window, &state, &dialogs);
+    settings::wire(&window, &state, &dialogs);
+    backup::ui::wire(&window, &state, &dialogs);
+    gradebook::ui::wire(&window, &state, &dialogs);
+    spreadsheet::ui::wire(&window, &state, &dialogs);
+    lock::ui::wire(&window, &state);
+    shortcuts::ui::wire(&window, &state);
     show_startup(&window, &state);
+    // before run() shows the window, so it appears in its place; every screen shares the window
+    placement::apply(&window);
     Ok(Session { window, state })
 }
 
@@ -143,15 +107,15 @@ fn show_startup(window: &AppWindow, state: &Rc<RefCell<AppState>>) {
             if let Some(config) = state.borrow().config() {
                 view::show_main(window, config);
             }
-            lock_screen::show_unprotected(window);
-            gradebook::show_database(window, state);
+            lock::ui::show_unprotected(window);
+            gradebook::ui::show_database(window, state);
         }
         // the classes load once the PIN has opened the database
         Startup::Locked => {
             if let Some(config) = state.borrow().config() {
                 view::show_main(window, config);
             }
-            lock_screen::show_locked(window);
+            lock::ui::show_locked(window);
         }
         Startup::NeedsSetup(reason) => view::show_setup(window, &reason),
     }

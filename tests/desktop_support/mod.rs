@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/11/02 08:27:50.985834
+//+ Revised: 	2026/11/03 08:27:17.702483
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -19,7 +19,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
-use avalio_lite::config::CONFIG_DIR_ENV;
+use avalio_lite::platform::config::CONFIG_DIR_ENV;
 use serde_json::{Value, json};
 
 use pixels::{Image, Rect, Rgb};
@@ -30,8 +30,9 @@ const UPDATE_ENV: &str = "AVALIO_UPDATE_BASELINES";
 /// How long typed text may take to show up in a field, and how often a field is typed into.
 const TYPING_WAIT: Duration = Duration::from_secs(3);
 const TYPING_ATTEMPTS: u32 = 2;
-/// Pixels a blinking text caret changes between two captures (about 2 x 24, with some to spare).
-const CARET_PIXELS: usize = 64;
+/// The most, in logical pixels, a blinking text caret covers: a line about 1 wide and 31 high (2
+/// physical pixels wide from 125 %), with some to spare.
+const CARET_SIZE: (f64, f64) = (3.0, 40.0);
 /// Per channel: anti-aliasing may wobble by a step or two between runs.
 const PIXEL_TOLERANCE: u8 = 12;
 /// Share of the screen allowed to differ before a snapshot fails (a blinking caret, say).
@@ -139,6 +140,12 @@ impl App {
         self.settle();
     }
 
+    /// Lowers the window's minimum logical size, as the app does on a screen too small for the
+    /// usual one, so `resize` can go below it.
+    pub fn minimum(&mut self, width: u32, height: u32) {
+        self.send(json!({ "cmd": "minimum", "width": width, "height": height }));
+    }
+
     /// Light or dark, without saving it: only what the screen looks like.
     pub fn theme(&mut self, dark: bool) {
         self.send(json!({ "cmd": "theme", "dark": dark }));
@@ -201,6 +208,11 @@ impl App {
                 height: physical(found["height"].as_f64().unwrap()),
             })
             .collect()
+    }
+
+    /// Whether a popup (a menu) is open.
+    pub fn popup_is_open(&mut self) -> bool {
+        self.send(json!({ "cmd": "locate", "label": "" }))["popup"].is_object()
     }
 
     /// A real click on the option labelled `label` of the open popup menu.
@@ -298,6 +310,12 @@ impl App {
         self.settle();
     }
 
+    /// Presses `virtual_key` with Ctrl held, as Windows delivers it.
+    pub fn press_with_control(&mut self, virtual_key: u16) {
+        self.window.press_with_control(virtual_key);
+        self.settle();
+    }
+
     pub fn press_escape(&mut self) {
         const VK_ESCAPE: u16 = 0x1B;
         self.window.press(VK_ESCAPE);
@@ -340,9 +358,13 @@ impl App {
         for _ in 0..20 {
             std::thread::sleep(Duration::from_millis(120));
             let current = self.window.capture();
-            // a focused field's caret blinks on and off for as long as it has focus, so a
-            // caret's worth of change still counts as settled
-            if current.difference(&previous, 0).0 <= CARET_PIXELS {
+            // a focused field's caret blinks on and off for as long as it has focus, so a change
+            // no bigger than one caret still counts as settled; a page still scrolling or fading
+            // changes a wider area, however few pixels it moves
+            let settled = current
+                .changed_area(&previous)
+                .is_none_or(|area| area.width <= self.px(CARET_SIZE.0) && area.height <= self.px(CARET_SIZE.1));
+            if settled {
                 return current;
             }
             previous = current;
@@ -394,7 +416,9 @@ impl App {
                 image.width, image.height, expected.width, expected.height
             );
         }
-        let (changed, marked) = image.difference(&expected, PIXEL_TOLERANCE);
+        // positions are whole physical pixels only at a whole display scale
+        let shift = if self.scale.fract() == 0.0 { 0 } else { 1 };
+        let (changed, marked) = image.difference_within(&expected, PIXEL_TOLERANCE, shift);
         let allowed = (f64::from(image.width * image.height) * CHANGED_SHARE) as usize;
         if changed > allowed {
             image.save(&failures.join(file.replace(".png", "-actual.png")));

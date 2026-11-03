@@ -1,0 +1,87 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { MessageBanner } from "../components/surfaces.slint";
+import { AppearanceCard } from "appearance-card.slint";
+import { BackupCard } from "backup-card.slint";
+import { DatabaseCard } from "database-card.slint";
+import { LanguageCard } from "language-card.slint";
+import { LogsCard } from "logs-card.slint";
+import { PinCard } from "pin-card.slint";
+import { ShortcutsCard } from "shortcuts-card.slint";
+
+export component SettingsPage inherits Rectangle {
+    in property <string> database-path;
+    in property <string> log-folder;
+    in property <string> error-message;
+    in property <string> status-message;
+    in property <string> language-code;
+    in property <bool> pin-set;
+    in-out property <string> pin-current;
+    in-out property <string> pin-new;
+    in-out property <string> pin-repeat;
+    callback move-database();
+    callback move-logs();
+    callback switch-database();
+    callback choose-language(string);
+    callback choose-theme(bool);
+    callback set-pin();
+    callback change-pin();
+    callback remove-pin();
+
+    ScrollView {
+        VerticalLayout {
+            padding: 32px;
+            padding-top: 26px;
+            spacing: 16px;
+            alignment: start;
+            Text {
+                text: @tr("Settings");
+                font-size: Theme.text-xl;
+                font-weight: 600;
+                color: Theme.text;
+            }
+            HorizontalLayout {
+                alignment: start;
+                VerticalLayout {
+                    width: 640px;
+                    spacing: 16px;
+                    MessageBanner {
+                        message: root.error-message;
+                        is-error: true;
+                    }
+                    MessageBanner {
+                        message: root.status-message;
+                        is-error: false;
+                    }
+                    AppearanceCard {
+                        choose-theme(dark) => { root.choose-theme(dark); }
+                    }
+                    LanguageCard {
+                        language-code: root.language-code;
+                        choose-language(code) => { root.choose-language(code); }
+                    }
+                    ShortcutsCard { }
+                    PinCard {
+                        pin-set: root.pin-set;
+                        current <=> root.pin-current;
+                        new-pin <=> root.pin-new;
+                        repeat <=> root.pin-repeat;
+                        set-pin => { root.set-pin(); }
+                        change-pin => { root.change-pin(); }
+                        remove-pin => { root.remove-pin(); }
+                    }
+                    DatabaseCard {
+                        database-path: root.database-path;
+                        move-database => { root.move-database(); }
+                        switch-database => { root.switch-database(); }
+                    }
+                    BackupCard { }
+                    LogsCard {
+                        log-folder: root.log-folder;
+                        move-logs => { root.move-logs(); }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,17 +1,16 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.917995
-//+ Revised: 	2026/11/02 08:27:50.006912
+//+ Revised: 	2026/11/03 09:16:51.992423
 // -----------------------------------------------------------------------------
 
 use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::compute::{FULL_WEIGHT, parse_number, weight_total};
-use super::model::{Column, ColumnKind, ColumnType, clean_name};
+use super::model::{Column, ColumnKind, ColumnTitles, ColumnType, clean_name};
 use super::update_one;
 use crate::error::{AppError, NumberField, Result};
-use crate::i18n::{Language, default_column_title};
 
 pub const DEFAULT_MAX_SCORE: f64 = 10.0;
 pub const MAX_DECIMALS: u8 = 3;
@@ -37,13 +36,18 @@ pub fn list_columns(connection: &Connection, class_id: i64) -> Result<Vec<Column
 }
 
 /// Adds a column at the end with defaults: a test takes the weight still missing to reach 100 %,
-/// a rounded column rounds the last numeric column. The title is in `language` and can be renamed.
-pub fn add_column(connection: &Connection, class_id: i64, column_type: ColumnType, language: Language) -> Result<i64> {
+/// a rounded column rounds the last numeric column. `titles` words the title, which can be renamed.
+pub fn add_column(
+    connection: &Connection,
+    class_id: i64,
+    column_type: ColumnType,
+    titles: impl ColumnTitles,
+) -> Result<i64> {
     let existing = list_columns(connection, class_id)?;
     insert_column(
         connection,
         class_id,
-        &default_title(column_type, &existing, language),
+        &default_title(column_type, &existing, &titles),
         default_kind(column_type, &existing),
     )
 }
@@ -184,11 +188,11 @@ fn default_kind(column_type: ColumnType, existing: &[Column]) -> ColumnKind {
 
 /// Tests are numbered on from how many there are, skipping a title already in use ("Test 2"
 /// after "Test 1" was deleted).
-fn default_title(column_type: ColumnType, existing: &[Column], language: Language) -> String {
+fn default_title(column_type: ColumnType, existing: &[Column], titles: &impl ColumnTitles) -> String {
     let same_type = existing.iter().filter(|column| column.kind.column_type() == column_type).count();
     let taken = |title: &str| existing.iter().any(|column| column.title.to_lowercase() == title.to_lowercase());
     (same_type + 1..)
-        .map(|number| default_column_title(language, column_type, number))
+        .map(|number| titles.default_title(column_type, number))
         .find(|title| column_type != ColumnType::Test || !taken(title))
         .unwrap_or_default()
 }

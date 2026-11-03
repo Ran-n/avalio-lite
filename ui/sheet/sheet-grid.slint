@@ -1,0 +1,148 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ColumnType, Gradebook } from "../gradebook.slint";
+import { TextField } from "../components/fields.slint";
+import { ColumnHeader } from "../column-header.slint";
+import { GridCell } from "../grid-cell.slint";
+import { NameCell } from "name-cell.slint";
+
+// The sheet: a card holding the grid of pupils and columns, scrolling when it outgrows the window.
+export component SheetGrid inherits Rectangle {
+    // where the column panel's left edge is, in window coordinates; the grid keeps columns left of it
+    in property <length> panel-left;
+    property <length> name-width: 210px;
+    property <length> cell-width: 128px;
+    property <length> wide-cell-width: 176px;
+
+    public function focus-new-pupil() {
+        new-pupil.focus-input();
+    }
+
+    // Scrolls the sheet sideways just enough for the column at `x` (in the grid) of `width` to be
+    // whole on screen, left of the column panel where the panel covers the sheet; a column already
+    // in view doesn't move it.
+    function reveal(x: length, width: length) {
+        let covered = max(0px, sheet-view.absolute-position.x + sheet-view.width - root.panel-left);
+        let room = max(0px, sheet-view.width - covered);
+        let left = -sheet-view.content-x;
+        let target = x < left ? x : x + width > left + room ? x + width - room : left;
+        sheet-view.content-x = -max(0px, min(target, sheet-view.content-width - sheet-view.width));
+    }
+
+    // its natural size is the whole grid; it shrinks (and scrolls) when the window is smaller
+    preferred-width: grid-lines.width + 2px;
+    preferred-height: grid-lines.height + 2px;
+    min-width: min(grid-lines.width + 2px, 320px);
+    min-height: min(grid-lines.height + 2px, 180px);
+    max-width: grid-lines.width + 2px;
+    max-height: grid-lines.height + 2px;
+    background: Theme.surface;
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: Theme.line;
+    drop-shadow-blur: 16px;
+    drop-shadow-offset-y: 4px;
+    drop-shadow-color: Theme.shadow;
+    clip: true;
+    sheet-view := ScrollView {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        content-width: grid-lines.width;
+        content-height: grid-lines.height;
+        grid-lines := Rectangle {
+            x: 0px;
+            y: 0px;
+            width: grid.preferred-width;
+            height: grid.preferred-height;
+            background: Theme.line;
+            grid := VerticalLayout {
+                spacing: 1px;
+                HorizontalLayout {
+                    spacing: 1px;
+                    Rectangle {
+                        width: root.name-width;
+                        background: Theme.raised;
+                        Text {
+                            x: 16px;
+                            y: 12px;
+                            text: @tr("Pupil");
+                            font-weight: 600;
+                            font-size: 14px;
+                            color: Theme.muted;
+                        }
+                    }
+                    for column[c] in Gradebook.columns: ColumnHeader {
+                        width: column.kind == ColumnType.info ? root.wide-cell-width : root.cell-width;
+                        column: column;
+                        index: c;
+                        // the column whose settings the panel shows is kept in view, also
+                        // when the panel steps to it or moves it (headers are rebuilt then)
+                        property <bool> shown-in-panel: c == Gradebook.panel-index;
+                        init => {
+                            if (self.shown-in-panel) {
+                                root.reveal(self.x, self.width);
+                            }
+                        }
+                        changed shown-in-panel => {
+                            if (self.shown-in-panel) {
+                                root.reveal(self.x, self.width);
+                            }
+                        }
+                    }
+                }
+                for row[r] in Gradebook.rows: HorizontalLayout {
+                    spacing: 1px;
+                    NameCell {
+                        width: root.name-width;
+                        pupil: row;
+                    }
+                    for cell[c] in row.cells: GridCell {
+                        width: Gradebook.columns[c].kind == ColumnType.info ? root.wide-cell-width : root.cell-width;
+                        text: cell.text;
+                        spoken-label: row.name + ", " + Gradebook.columns[c].title;
+                        invalid: cell.invalid;
+                        tone: cell.tone;
+                        provisional: cell.provisional;
+                        computed: Gradebook.columns[c].kind != ColumnType.info && Gradebook.columns[c].kind != ColumnType.test;
+                        numeric: Gradebook.columns[c].kind != ColumnType.info;
+                        edited(text) => { Gradebook.cell-edited(r, c, text); }
+                    }
+                }
+                HorizontalLayout {
+                    Rectangle {
+                        width: root.name-width;
+                        height: Theme.row-height;
+                        background: Theme.surface;
+                        Text {
+                            x: 16px;
+                            height: parent.height;
+                            vertical-alignment: center;
+                            text: "+";
+                            font-size: Theme.text-l;
+                            color: new-pupil.has-focus ? Theme.accent : Theme.faint;
+                        }
+                        new-pupil := TextField {
+                            x: 36px;
+                            y: (parent.height - self.height) / 2;
+                            width: parent.width - 46px;
+                            boxed: false;
+                            placeholder: @tr("Add pupil…");
+                            accepted(text) => {
+                                if (Gradebook.add-new-pupil(text)) {
+                                    self.clear();
+                                }
+                            }
+                        }
+                    }
+                    // fills the rest of the last row so no grid lines show through
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        background: Theme.surface;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,22 +1,22 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.961496
-//+ Revised: 	2026/11/02 14:00:09.747867
+//+ Revised: 	2026/11/03 08:27:17.441688
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-use avalio_lite::config::{AppConfig, CONFIG_FILE_NAME, ConfigStore, Preferences, default_data_dir};
 use avalio_lite::error::AppError;
 use avalio_lite::i18n::Language;
+use avalio_lite::platform::config::{AppConfig, CONFIG_FILE_NAME, ConfigStore, Preferences, default_data_dir};
 
 fn sample() -> AppConfig {
     AppConfig {
         database_path: PathBuf::from(r"D:\data\avalio-lite.db"),
         log_dir: PathBuf::from(r"D:\logs"),
-        preferences: Preferences { show_column_settings: false, language: None, theme: None },
+        preferences: Preferences { show_column_settings: false, language: None, theme: None, sidebar_collapsed: false },
         shortcuts: BTreeMap::new(),
     }
 }
@@ -166,8 +166,8 @@ fn any_language() -> impl proptest::strategy::Strategy<Value = Option<Language>>
     proptest::option::of(proptest::sample::select(avalio_lite::i18n::LANGUAGES.to_vec()))
 }
 
-fn any_theme() -> impl proptest::strategy::Strategy<Value = Option<avalio_lite::config::ThemeChoice>> {
-    use avalio_lite::config::ThemeChoice;
+fn any_theme() -> impl proptest::strategy::Strategy<Value = Option<avalio_lite::platform::config::ThemeChoice>> {
+    use avalio_lite::platform::config::ThemeChoice;
     proptest::option::of(proptest::sample::select(vec![ThemeChoice::Light, ThemeChoice::Dark]))
 }
 
@@ -179,6 +179,7 @@ proptest::proptest! {
         database in r"[A-Z]:\\[[^\p{C}]&&[^\\/:*?<>|]]{1,20}\\[a-z ]{1,12}\.db",
         logs in r"[A-Z]:\\[[^\p{C}]&&[^\\/:*?<>|]]{1,20}",
         show in proptest::bool::ANY,
+        collapsed in proptest::bool::ANY,
         language in any_language(),
         theme in any_theme(),
         shortcuts in proptest::collection::btree_map("[a-z-]{1,22}", "[ -~]{0,16}", 0..4),
@@ -188,7 +189,7 @@ proptest::proptest! {
         let config = AppConfig {
             database_path: PathBuf::from(database),
             log_dir: PathBuf::from(logs),
-            preferences: Preferences { show_column_settings: show, language, theme },
+            preferences: Preferences { show_column_settings: show, language, theme, sidebar_collapsed: collapsed },
             shortcuts,
         };
         store.save(&config).unwrap();
@@ -260,4 +261,26 @@ fn an_unreadable_settings_file_that_is_gone_by_the_save_needs_no_copy() {
     store.save(&sample()).unwrap();
     assert!(!dir.path().join("config.toml.bad").exists(), "nothing was left to keep");
     assert_eq!(store.load().unwrap(), Some(sample()));
+}
+
+#[test]
+fn a_settings_file_without_the_sidebar_preference_opens_it_expanded() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ConfigStore::in_dir(dir.path());
+    std::fs::write(
+        store.path(),
+        r"database_path = 'D:\data\avalio-lite.db'
+log_dir = 'D:\logs'
+
+[preferences]
+show_column_settings = true
+",
+    )
+    .unwrap();
+    assert!(!store.load().unwrap().unwrap().preferences.sidebar_collapsed);
+
+    let mut collapsed = sample();
+    collapsed.preferences.sidebar_collapsed = true;
+    store.save(&collapsed).unwrap();
+    assert!(store.load().unwrap().unwrap().preferences.sidebar_collapsed, "true round-trips");
 }

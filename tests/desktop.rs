@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/11/02 08:27:50.929376
+//+ Revised: 	2026/11/03 08:27:17.613461
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -85,7 +85,7 @@ fn located(app: &mut App, label: &str) -> Rect {
 /// runs in, so the settings page shows the same paths on every run.
 fn relative_paths(fixture: &Fixture) {
     let mut config = fixture.store().load().unwrap().unwrap();
-    config.database_path = PathBuf::from("data").join(avalio_lite::config::DATABASE_FILE_NAME);
+    config.database_path = PathBuf::from("data").join(avalio_lite::platform::config::DATABASE_FILE_NAME);
     config.log_dir = PathBuf::from("logs");
     fixture.store().save(&config).unwrap();
 }
@@ -258,6 +258,11 @@ fn the_sheet() {
     app.quit();
 }
 
+/// The column panel's buttons, by what a screen reader says (the Move buttons' keys included).
+const PANEL_CONTROLS: [&str; 6] =
+    ["Close", "Previous column (Alt+←)", "Next column (Alt+→)", "Move left (Ctrl+←)", "Move right (Ctrl+→)", "Delete"];
+const VK_LEFT: u16 = 0x25;
+
 #[test]
 #[ignore = "desktop: opens the real window; run with --ignored"]
 fn the_column_panel_and_menus() {
@@ -267,23 +272,37 @@ fn the_column_panel_and_menus() {
     app.click("Exam 1");
     assert_eq!(app.state()["panel_index"], 0);
     every_look(&mut app, "column-panel", |app, image, _, _| {
-        for control in ["Close", "‹ Move left", "Move right ›", "Delete", "Bonus test"] {
+        for control in PANEL_CONTROLS.iter().chain(&["Bonus test"]) {
             assert_on_screen(image, located(app, control), control);
         }
     });
-    app.click("Move right ›");
+    app.click("Next column (Alt+→)");
+    assert_eq!(app.state()["panel_index"], 1, "a real click on › showed the next column");
+    app.click("Previous column (Alt+←)");
+    assert_eq!(app.state()["panel_index"], 0);
+    app.click("Move right (Ctrl+→)");
     let state = app.state();
     assert_eq!(state["columns"][1], "Exam 1", "a real click moved the column: {state}");
-    app.click("Close");
+    app.press_with_control(VK_LEFT);
+    let state = app.state();
+    assert_eq!(state["columns"][0], "Exam 1", "Ctrl+← moved it back: {state}");
+    // Escape closes the panel after a click in it, from the real window too
+    app.press_escape();
+    assert_eq!(app.state()["panel_index"], -1, "Escape closed the panel");
 
-    app.click("+ Add column");
-    every_look(&mut app, "add-column-menu", |app, image, _, _| {
-        for option in ["Test", "Info", "Final grade", "Average", "Rounded"] {
-            let found = app.locate_in_menu(option);
-            assert_eq!(found.len(), 1, "{option}");
-            assert_on_screen(image, found[0], option);
-        }
-    });
+    // resizing closes an open menu, so it opens again at each size
+    every_look_after(
+        &mut app,
+        "add-column-menu",
+        |app| app.click("+ Add column"),
+        |app, image, _, _| {
+            for option in ["Test", "Info", "Final grade", "Average", "Rounded"] {
+                let found = app.locate_in_menu(option);
+                assert_eq!(found.len(), 1, "{option}");
+                assert_on_screen(image, found[0], option);
+            }
+        },
+    );
     app.click_in_menu("Info");
     assert_eq!(app.state()["columns"].as_array().unwrap().len(), 7, "a real click added a column");
     app.quit();
@@ -291,7 +310,7 @@ fn the_column_panel_and_menus() {
     let mut app = App::start(&config(&fixture), "gl");
     app.click("Exam 1");
     let image = galician_look(&mut app, "column-panel");
-    for english in ["Close", "‹ Move left", "Move right ›", "Delete"] {
+    for english in PANEL_CONTROLS {
         let label = common::galician(english);
         assert_on_screen(&image, located(&mut app, &label), &label);
     }
@@ -405,7 +424,15 @@ fn close_with_a_cancelled_export(app: &mut App, export: &str) {
 }
 
 /// The sheet's "⋯" menu while every pupil is already in the class.
-const SHEET_MENU: [&str; 4] = ["Hide weights & scales", "Export to Excel…", "Import from Excel…", "Delete class"];
+const SHEET_MENU: [&str; 7] = [
+    "Duplicate class",
+    "Duplicate with pupils",
+    "Duplicate with pupils and marks",
+    "Hide weights & scales",
+    "Export to Excel…",
+    "Import from Excel…",
+    "Delete class",
+];
 
 #[test]
 #[ignore = "desktop: opens the real window; run with --ignored"]
@@ -415,7 +442,7 @@ fn the_sheet_menu_and_an_import() {
     let fixture = with_sample_class();
     let workbook = sample_import(&fixture);
     let mut app = App::start(&config(&fixture), "en");
-    // an open popup keeps its place when the window is resized, so it opens again at each size
+    // resizing closes an open menu (resizing_closes_the_sheet_menus), so it opens at each size
     let open_menu = |app: &mut App| app.click("More actions");
     every_look_after(&mut app, "sheet-menu", open_menu, |app, image, _, _| {
         for option in SHEET_MENU {
@@ -470,7 +497,7 @@ fn settings() {
         }
         // the page scrolls; in the smallest window the shortcuts card ends below the fold
         if size == NORMAL {
-            for row in ["Lock", "Switch between light and dark", "Previous class"] {
+            for row in ["Lock", "Switch between light and dark", "Collapse or expand the sidebar"] {
                 assert_on_screen(image, located(app, row), row);
             }
         }
@@ -507,7 +534,7 @@ fn settings() {
     let state = app.state();
     assert!(state["status"].as_str().unwrap().starts_with("Logs moved to"), "{state}");
     app.quit();
-    assert!(fixture.path("moved-logs").join(avalio_lite::config::LOG_FILE_NAME).is_file());
+    assert!(fixture.path("moved-logs").join(avalio_lite::platform::config::LOG_FILE_NAME).is_file());
 
     let mut app = App::start(&config(&fixture), "gl");
     app.click("Axustes");
@@ -515,7 +542,7 @@ fn settings() {
     for control in ["Claro", "Escuro", "Galego", "English"] {
         assert_on_screen(&image, located(&mut app, control), control);
     }
-    app.scroll("Galego", -3);
+    app.scroll("Galego", -4);
     let image = galician_look(&mut app, "settings-shortcuts");
     for row in ["Bloquear", "Cambiar entre claro e escuro", "Amosar ou agochar pesos e escalas", "Clase anterior"] {
         assert_on_screen(&image, located(&mut app, row), row);
@@ -734,7 +761,7 @@ fn the_real_dialogs_open_and_close() {
     let fixture = Fixture::new();
     let mut app = Running(
         Command::new(desktop_support::app_exe())
-            .env(avalio_lite::config::CONFIG_DIR_ENV, fixture.path("config"))
+            .env(avalio_lite::platform::config::CONFIG_DIR_ENV, fixture.path("config"))
             .current_dir(fixture.root.path())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -756,4 +783,168 @@ fn the_real_dialogs_open_and_close() {
     window.close();
     let status = app.0.wait().expect("the app exits");
     assert!(status.success(), "a cancelled dialog and the close button quit cleanly: {status}");
+}
+
+/// The sidebar folded to its 64 px icon rail, by its button and by Ctrl+B: the sheet starts at
+/// the rail's edge, and every entry of the rail is on screen.
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_collapsed_sidebar() {
+    let _turn = desktop_support::turn();
+    let fixture = with_sample_class();
+    let mut app = App::start(&config(&fixture), "en");
+    app.click("Collapse the sidebar");
+    assert_eq!(app.state()["sidebar_collapsed"], true);
+    every_look(&mut app, "sidebar-collapsed", |app, image, dark, _| {
+        let theme = if dark { "Light mode" } else { "Dark mode" };
+        for control in ["Expand the sidebar", "2º ESO A", "New class", theme, "Settings"] {
+            assert_on_screen(image, located(app, control), control);
+        }
+        // the sheet's card starts right of the rail: its "+ Add pupil" sits well left of where the
+        // expanded sidebar alone would end
+        let rail = app.px(64.0);
+        // the class's rail entry, not the sheet's title of the same name
+        let entry = app.locate("2º ESO A").into_iter().min_by_key(|found| found.x).unwrap();
+        assert!(entry.right() <= rail, "the class entry stays inside the rail: {entry:?}");
+        // the sheet's title starts at the rail's edge plus the page's padding, where the expanded
+        // sidebar alone would reach past
+        let title = app.locate("2º ESO A").into_iter().max_by_key(|found| found.x).unwrap();
+        assert!(title.x < app.px(236.0), "the sheet took the room: its title is at {title:?}");
+    });
+    app.click("Expand the sidebar");
+    assert_eq!(app.state()["sidebar_collapsed"], false);
+    app.quit();
+
+    let mut app = App::start(&config(&fixture), "gl");
+    app.click(&common::galician("Collapse the sidebar"));
+    let image = galician_look(&mut app, "sidebar-collapsed");
+    for control in ["Expand the sidebar", "New class", "Settings"] {
+        let label = common::galician(control);
+        assert_on_screen(&image, located(&mut app, &label), &label);
+    }
+    app.click(&common::galician("Expand the sidebar"));
+    app.quit();
+}
+
+/// Resizing the window closes whichever sheet menu is open, instead of leaving it cut off at the
+/// place it opened at (regression).
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn resizing_closes_the_sheet_menus() {
+    type OpenMenu = fn(&mut App);
+    let _turn = desktop_support::turn();
+    let fixture = with_a_pupil_in_no_class();
+    let mut app = App::start(&config(&fixture), "en");
+    for dark in [false, true] {
+        app.theme(dark);
+        let menus: [(&str, OpenMenu); 3] = [
+            ("the ⋯ menu", |app| app.click("More actions")),
+            ("the add-column menu", |app| app.click("+ Add column")),
+            ("the pupil menu", |app| {
+                app.click("More actions");
+                app.click_in_popup("Add from another class…");
+            }),
+        ];
+        for (menu, open) in menus {
+            app.resize(NORMAL.0, NORMAL.1);
+            open(&mut app);
+            assert!(app.popup_is_open(), "{menu} opened");
+            app.resize(MINIMUM.0, MINIMUM.1);
+            assert!(!app.popup_is_open(), "resizing closed {menu} (dark: {dark})");
+        }
+    }
+    app.quit();
+}
+
+/// The real exe opens fully inside the work area of its screen, centred (src/app/placement.rs).
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_window_opens_inside_the_work_area() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CMONITORS};
+    let _turn = desktop_support::turn();
+    let fixture = with_sample_class();
+    let app = App::start(&config(&fixture), "en");
+    let (window, work) = (app.window.outer_rect(), app.window.work_area());
+    eprintln!(
+        "window ({}, {})–({}, {}) in the work area ({}, {})–({}, {})",
+        window.left, window.top, window.right, window.bottom, work.left, work.top, work.right, work.bottom
+    );
+    assert!(
+        window.left >= work.left
+            && window.top >= work.top
+            && window.right <= work.right
+            && window.bottom <= work.bottom,
+        "the window reaches past the work area"
+    );
+    let centre = |low: i32, high: i32| (low + high) as f64 / 2.0;
+    assert!((centre(window.left, window.right) - centre(work.left, work.right)).abs() <= 2.0, "not centred across");
+    assert!((centre(window.top, window.bottom) - centre(work.top, work.bottom)).abs() <= 2.0, "not centred down");
+    // SAFETY: a plain query.
+    if unsafe { GetSystemMetrics(SM_CMONITORS) } > 1 {
+        // starting on another screen means moving the user's own mouse there, which these tests never do
+        eprintln!("note: more than one monitor; the start on a second one is covered by tests/placement.rs only");
+    } else {
+        eprintln!("note: one monitor here, so the start on a second one isn't checked");
+    }
+    app.quit();
+}
+
+/// The smallest real-world screen (1366×768 at 125 %, taskbar out: 1092×582 logical, where the app
+/// opens maximised with its minimum lowered): every screen's controls stay reachable.
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn small_screens_stay_usable() {
+    const SMALL: (u32, u32) = (1092, 582);
+    let _turn = desktop_support::turn();
+    let fixture = with_sample_class();
+    let mut app = App::start(&config(&fixture), "en");
+    app.minimum(SMALL.0, SMALL.1);
+    app.resize(SMALL.0, SMALL.1);
+    app.theme(false);
+    let image = app.snapshot(&format!("sheet-light-{}x{}", SMALL.0, SMALL.1));
+    assert_eq!(
+        (image.width, image.height),
+        (app.px(SMALL.0 as f64), app.px(SMALL.1 as f64)),
+        "the window took the size"
+    );
+    for control in ["+ Add column", "More actions", "Settings"] {
+        assert_on_screen(&image, located(&mut app, control), control);
+    }
+
+    app.click("Exam 1");
+    let image = app.capture();
+    for control in PANEL_CONTROLS.iter().chain(&["Bonus test"]) {
+        assert_on_screen(&image, located(&mut app, control), control);
+    }
+    app.click("Close");
+
+    app.click("Settings");
+    let image = app.snapshot(&format!("settings-light-{}x{}", SMALL.0, SMALL.1));
+    for control in ["Light", "Dark", "Galego", "English"] {
+        assert_on_screen(&image, located(&mut app, control), control);
+    }
+    app.scroll_main(-10);
+    let image = app.capture();
+    assert_on_screen(&image, located(&mut app, "Encrypt with this PIN"), "Encrypt with this PIN");
+    app.scroll_main(-40);
+    let image = app.capture();
+    assert_on_screen(&image, located(&mut app, "Open another database…"), "Open another database…");
+    for (index, what) in ["the database's Move", "the logs' Move"].into_iter().enumerate() {
+        assert_on_screen(&image, app.locate("Move…")[index], what);
+    }
+    app.quit();
+
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_pin(PIN, PIN).unwrap();
+    state.shutdown();
+    relative_paths(&fixture);
+    let mut app = App::start(&config(&fixture), "en");
+    app.minimum(SMALL.0, SMALL.1);
+    app.resize(SMALL.0, SMALL.1);
+    let image = app.capture();
+    for key in ["1", "5", "9", "0", "Letters", "Erase", "Unlock", "Forgot the PIN?"] {
+        assert_on_screen(&image, located(&mut app, key), key);
+    }
+    app.quit();
 }

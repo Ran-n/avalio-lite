@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/11/02 14:00:09.863535
+//+ Revised: 	2026/11/03 08:27:20.381525
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -12,15 +12,15 @@ mod common;
 
 use std::fs;
 
-use avalio_lite::app::dialogs::FileKind;
 use avalio_lite::backup;
-use avalio_lite::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
-use avalio_lite::db;
 use avalio_lite::error::{AppError, Folder};
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{classes, columns, pupils};
 use avalio_lite::i18n::{self, Language, Message};
+use avalio_lite::platform::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
+use avalio_lite::platform::db;
 use avalio_lite::ui::{Gradebook, Section, SetupNotice, Theme, Tone};
+use avalio_lite::window::dialogs::FileKind;
 use common::controls;
 use common::{Fixture, Ui};
 use i_slint_backend_testing::ElementHandle;
@@ -213,7 +213,7 @@ fn open_settings(ui: &Ui) {
 /// The settings page, scrolled down to the PIN card (the shortcuts card sits above it).
 fn open_pin_settings(ui: &Ui) {
     open_settings(ui);
-    find(ui, "Galego").scroll(0.0, -320.0);
+    find(ui, "Galego").scroll(0.0, -380.0);
     assert!(shows(ui, "Repeat PIN"), "scrolled to the PIN card");
 }
 
@@ -681,7 +681,7 @@ fn settings_lists_the_shortcuts_in_the_current_language() {
     open_settings(&ui);
     assert!(shows_text(&ui, "Keyboard shortcuts"));
     let items = ui.session.window.global::<avalio_lite::ui::Shortcuts>().get_items();
-    assert_eq!(items.row_count(), 6);
+    assert_eq!(items.row_count(), 7);
     let theme = items.row_data(1).unwrap();
     assert_eq!(theme.label, "Switch between light and dark");
     assert_eq!(theme.keys.iter().collect::<Vec<_>>(), ["Ctrl", "Shift", "D"]);
@@ -765,7 +765,7 @@ fn reset_and_reset_all_bring_back_the_defaults() {
     open_settings(&ui);
     click_nth(&ui, "Change", 0);
     with_control(&ui, "k");
-    click_nth(&ui, "Change", 4);
+    click_nth(&ui, "Change", 5);
     key(&ui, Key::F8);
     assert_eq!(saved_shortcut(&ui, "next-class"), Some("F8".to_owned()));
     assert_eq!(elements(&ui, "Reset").len(), 2, "a Reset for each changed row");
@@ -1582,6 +1582,45 @@ fn deleting_a_class_asks_first() {
     assert_eq!(gradebook(&ui).get_class_name(), "2B", "the next class opens");
 }
 
+#[test]
+fn each_duplicate_option_creates_and_selects_the_copy() {
+    let ui = seeded();
+    let options = [
+        ("Duplicate class", "1A (2)", 0),
+        ("Duplicate with pupils", "1A (3)", 2),
+        ("Duplicate with pupils and marks", "1A (4)", 2),
+    ];
+    for (index, (option, copy, rows)) in options.into_iter().enumerate() {
+        click(&ui, "1A");
+        click(&ui, "More actions");
+        click_menu_option(&ui, option);
+        assert_eq!(gradebook(&ui).get_class_name(), copy, "{option}: the copy is selected");
+        assert_eq!(gradebook(&ui).get_rows().row_count(), rows, "{option}");
+        assert_eq!(gradebook(&ui).get_classes().row_count(), index + 2, "{option}: listed");
+        assert!(shows(&ui, copy), "{option}: in the sidebar");
+        assert!(ui.session.window.get_error_message().is_empty());
+    }
+}
+
+#[test]
+fn a_failed_duplicate_shows_the_banner() {
+    let ui = seeded();
+    ui.session
+        .state
+        .borrow()
+        .connection()
+        .unwrap()
+        .execute_batch(
+            "CREATE TEMP TRIGGER no_cells BEFORE INSERT ON sheet_columns BEGIN SELECT RAISE(ABORT, 'test'); END",
+        )
+        .unwrap();
+    click(&ui, "More actions");
+    click_menu_option(&ui, "Duplicate with pupils and marks");
+    assert!(!ui.session.window.get_error_message().is_empty(), "the error is shown");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM classes"), 1, "nothing was added");
+    assert_eq!(gradebook(&ui).get_class_name(), "1A", "the original stays open");
+}
+
 // ---------------------------------------------------------------------------------------------
 // Excel
 
@@ -1919,13 +1958,252 @@ fn weights_that_dont_add_up_warn_and_grey_the_final_grade() {
 fn columns_move_and_the_ends_are_disabled() {
     let ui = seeded();
     click(&ui, "Exam");
-    assert_eq!(find(&ui, "‹ Move left").accessible_enabled(), Some(false));
-    click(&ui, "Move right ›");
+    assert_eq!(find(&ui, "Move left (Ctrl+←)").accessible_enabled(), Some(false));
+    click(&ui, "Move right (Ctrl+→)");
     let titles: Vec<String> = gradebook(&ui).get_columns().iter().map(|column| column.title.to_string()).collect();
     assert_eq!(titles, ["Final grade", "Exam"]);
     assert_eq!(gradebook(&ui).get_panel_index(), 1, "the panel follows the column");
-    click(&ui, "‹ Move left");
+    click(&ui, "Move left (Ctrl+←)");
     assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().title, "Exam");
+}
+
+/// Class "1A" with Ana and Bea and four columns: tests "Exam" and "Quiz", a final grade, and a
+/// rounding of the final grade.
+fn four_columns() -> Ui {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let class = classes::create_class(connection, "1A").unwrap();
+        pupils::add_new_pupil(connection, class, "Ana").unwrap();
+        pupils::add_new_pupil(connection, class, "Bea").unwrap();
+        for (column_type, title) in
+            [(ColumnType::Test, "Exam"), (ColumnType::Test, "Quiz"), (ColumnType::Weighted, "Final grade")]
+        {
+            let id = columns::add_column(connection, class, column_type, Language::English).unwrap();
+            columns::rename_column(connection, id, title).unwrap();
+        }
+        columns::add_column(connection, class, ColumnType::Round, Language::English).unwrap();
+    }
+    state.shutdown();
+    Ui::open(fixture)
+}
+
+fn column_titles(ui: &Ui) -> Vec<String> {
+    gradebook(ui).get_columns().iter().map(|column| column.title.to_string()).collect()
+}
+
+/// Presses `text` with `modifier` (Alt, Control or Shift) held.
+fn with_modifier(ui: &Ui, modifier: Key, text: impl Into<SharedString>) {
+    let window = ui.session.window.window();
+    let held: SharedString = modifier.into();
+    window.dispatch_event(WindowEvent::KeyPressed { text: held.clone() });
+    key(ui, text);
+    window.dispatch_event(WindowEvent::KeyReleased { text: held });
+}
+
+fn panel_is_closed(ui: &Ui) -> bool {
+    gradebook(ui).get_panel_index() == -1
+}
+
+#[test]
+fn escape_closes_the_panel_from_the_weight_field() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    click(&ui, "Weight");
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+}
+
+#[test]
+fn escape_closes_the_panel_from_the_out_of_field() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    click(&ui, "Out of");
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+}
+
+#[test]
+fn escape_closes_the_panel_after_clicking_the_bonus_toggle() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    click(&ui, "Bonus test");
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+}
+
+#[test]
+fn escape_closes_the_panel_after_moving_the_column() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    click(&ui, "Move right (Ctrl+→)");
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+}
+
+#[test]
+fn escape_closes_the_panel_after_clicking_the_panels_blank_area() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    // a plain text of the panel: the click lands on the panel's background
+    click_element(&ElementHandle::find_by_accessible_label(&ui.session.window, "Type").next().unwrap());
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+}
+
+#[test]
+fn escape_closes_the_panel_from_the_decimals_field() {
+    let ui = four_columns();
+    click(&ui, "Rounded");
+    click(&ui, "Decimals");
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+}
+
+#[test]
+fn escape_closes_the_panel_from_the_rounds_combo_box() {
+    let ui = four_columns();
+    click(&ui, "Rounded");
+    click(&ui, "Decimals");
+    // back from Decimals to the combo box, which takes the focus without opening its list
+    with_modifier(&ui, Key::Shift, Key::Tab);
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+}
+
+#[test]
+fn escape_with_the_rounds_list_open_closes_only_the_list() {
+    let ui = four_columns();
+    click(&ui, "Rounded");
+    let rounds = ElementHandle::find_by_element_id(&ui.session.window, "ColumnPanel::rounds").next().unwrap();
+    click_element(&rounds);
+    key(&ui, Key::Escape);
+    assert!(!panel_is_closed(&ui), "the first Escape closes only the list");
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui), "the second closes the panel");
+}
+
+#[test]
+fn escape_with_a_refused_value_restores_it_and_closes() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    type_into(&ui, "Weight", "abc");
+    key(&ui, Key::Escape);
+    assert!(panel_is_closed(&ui));
+    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().weight, "100", "the saved weight stays");
+    assert!(ui.session.window.get_error_message().is_empty(), "no error is left showing");
+}
+
+#[test]
+fn escape_in_a_sheet_cell_leaves_the_panel_open() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    click(&ui, "Ana, Quiz");
+    key(&ui, Key::Escape);
+    assert_eq!(gradebook(&ui).get_panel_index(), 0, "Escape belongs to the cell");
+}
+
+#[test]
+fn the_arrow_buttons_step_the_panel_through_the_columns() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    click(&ui, "Next column (Alt+→)");
+    assert_eq!(gradebook(&ui).get_panel_index(), 1);
+    assert_eq!(gradebook(&ui).get_panel_column().row_data(0).unwrap().title, "Quiz");
+    click(&ui, "Previous column (Alt+←)");
+    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    assert_eq!(gradebook(&ui).get_panel_column().row_data(0).unwrap().title, "Exam");
+}
+
+#[test]
+fn alt_arrows_step_the_panel() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    click(&ui, "Weight");
+    with_modifier(&ui, Key::Alt, Key::RightArrow);
+    assert_eq!(gradebook(&ui).get_panel_index(), 1, "Alt+→ from inside the Weight field");
+    with_modifier(&ui, Key::Alt, Key::LeftArrow);
+    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+}
+
+#[test]
+fn the_ends_dim_the_arrow_and_ignore_the_key() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    assert_eq!(find(&ui, "Previous column (Alt+←)").accessible_enabled(), Some(false));
+    with_modifier(&ui, Key::Alt, Key::LeftArrow);
+    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    click(&ui, "Rounded");
+    assert_eq!(gradebook(&ui).get_panel_index(), 3);
+    assert_eq!(find(&ui, "Next column (Alt+→)").accessible_enabled(), Some(false));
+    with_modifier(&ui, Key::Alt, Key::RightArrow);
+    assert_eq!(gradebook(&ui).get_panel_index(), 3);
+}
+
+#[test]
+fn stepping_puts_a_refused_value_back() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    type_into(&ui, "Weight", "abc");
+    with_modifier(&ui, Key::Alt, Key::RightArrow);
+    with_modifier(&ui, Key::Alt, Key::LeftArrow);
+    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().weight, "100");
+    assert!(ui.session.window.get_error_message().is_empty(), "no error is left showing");
+}
+
+#[test]
+fn alt_arrows_dont_move_the_column() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    with_modifier(&ui, Key::Alt, Key::RightArrow);
+    assert_eq!(column_titles(&ui), ["Exam", "Quiz", "Final grade", "Rounded"]);
+}
+
+#[test]
+fn ctrl_arrows_move_the_column_and_keep_the_panel_on_it() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    with_modifier(&ui, Key::Control, Key::RightArrow);
+    with_modifier(&ui, Key::Control, Key::RightArrow);
+    assert_eq!(column_titles(&ui), ["Quiz", "Final grade", "Exam", "Rounded"]);
+    assert_eq!(gradebook(&ui).get_panel_index(), 2, "the panel stays on the column");
+    let state = ui.session.state.borrow();
+    let connection = state.connection().unwrap();
+    let class = classes::list_classes(connection).unwrap()[0].id;
+    let saved: Vec<String> =
+        columns::list_columns(connection, class).unwrap().into_iter().map(|column| column.title).collect();
+    assert_eq!(saved, ["Quiz", "Final grade", "Exam", "Rounded"], "the order is saved");
+}
+
+#[test]
+fn ctrl_arrows_work_from_inside_a_text_field() {
+    let ui = four_columns();
+    click(&ui, "Quiz");
+    click(&ui, "Title");
+    with_modifier(&ui, Key::Control, Key::LeftArrow);
+    assert_eq!(column_titles(&ui), ["Quiz", "Exam", "Final grade", "Rounded"]);
+    assert_eq!(gradebook(&ui).get_panel_column().row_data(0).unwrap().title, "Quiz", "the title is unchanged");
+}
+
+#[test]
+fn ctrl_arrows_stop_at_the_ends() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    with_modifier(&ui, Key::Control, Key::LeftArrow);
+    click(&ui, "Rounded");
+    with_modifier(&ui, Key::Control, Key::RightArrow);
+    assert_eq!(column_titles(&ui), ["Exam", "Quiz", "Final grade", "Rounded"]);
+    assert!(ui.session.window.get_error_message().is_empty());
+}
+
+#[test]
+fn ctrl_arrows_outside_the_panel_dont_move_columns() {
+    let ui = four_columns();
+    click(&ui, "Ana, Exam");
+    with_modifier(&ui, Key::Control, Key::RightArrow);
+    assert_eq!(column_titles(&ui), ["Exam", "Quiz", "Final grade", "Rounded"]);
 }
 
 #[test]
@@ -1969,6 +2247,105 @@ fn hiding_weights_and_scales_is_saved() {
     click(&ui, "More actions");
     click(&ui, "Show weights & scales");
     assert!(gradebook(&ui).get_show_column_settings());
+}
+
+#[test]
+fn the_sidebar_collapses_and_expands_and_remembers_it() {
+    let ui = seeded();
+    click(&ui, "Collapse the sidebar");
+    assert!(gradebook(&ui).get_sidebar_collapsed());
+    assert!(saved_preferences(&ui.fixture).sidebar_collapsed, "the choice is saved");
+    assert!(shows(&ui, "Expand the sidebar") && !shows(&ui, "Collapse the sidebar"));
+    click(&ui, "Ana, Exam");
+    with_keys(&ui, false, "b");
+    assert!(!gradebook(&ui).get_sidebar_collapsed(), "Ctrl+B expands it, even from a cell");
+    assert!(!saved_preferences(&ui.fixture).sidebar_collapsed);
+    with_keys(&ui, false, "b");
+    assert!(gradebook(&ui).get_sidebar_collapsed(), "and folds it again");
+}
+
+#[test]
+fn the_app_opens_with_the_sidebar_as_it_was_left() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_sidebar_collapsed(true).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    assert!(gradebook(&ui).get_sidebar_collapsed(), "a restart opens it folded");
+    assert!(shows(&ui, "Expand the sidebar"));
+}
+
+#[test]
+fn the_collapsed_plus_expands_and_focuses_the_new_class_field() {
+    let ui = seeded();
+    click(&ui, "Collapse the sidebar");
+    click(&ui, "New class");
+    assert!(!gradebook(&ui).get_sidebar_collapsed(), "the + opens the sidebar");
+    type_text(&ui, "2B");
+    press_enter(&ui);
+    assert_eq!(gradebook(&ui).get_class_name(), "2B", "the typing went to the New class field");
+}
+
+#[test]
+fn collapsed_entries_keep_full_accessible_labels() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    classes::create_class(state.connection().unwrap(), "1A").unwrap();
+    state.set_pin(PIN, PIN).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    unlock(&ui);
+    click(&ui, "Collapse the sidebar");
+    for label in ["1A", "Lock (Ctrl+L)", "Dark mode", "Settings", "New class", "Expand the sidebar"] {
+        assert!(shows(&ui, label), "{label} keeps its whole label folded");
+    }
+    let short: Vec<String> = gradebook(&ui).get_classes().iter().map(|class| class.short_name.to_string()).collect();
+    assert_eq!(short, ["1A"]);
+}
+
+#[test]
+fn a_failed_save_still_toggles_the_sidebar_and_shows_the_error() {
+    let ui = seeded();
+    let settings = ui.fixture.store().path().to_path_buf();
+    let mut permissions = fs::metadata(&settings).unwrap().permissions();
+    permissions.set_readonly(true);
+    fs::set_permissions(&settings, permissions.clone()).unwrap();
+
+    click(&ui, "Collapse the sidebar");
+    assert!(gradebook(&ui).get_sidebar_collapsed(), "the sidebar folds for this session");
+    assert!(!ui.session.window.get_error_message().is_empty(), "the error is shown");
+    assert!(!saved_preferences(&ui.fixture).sidebar_collapsed, "nothing was remembered");
+
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+    fs::set_permissions(&settings, permissions).unwrap();
+}
+
+#[test]
+fn tab_reaches_the_folded_rail_and_enter_or_space_presses_it() {
+    let ui = seeded();
+    click(&ui, "Collapse the sidebar");
+    let theme = ui.session.window.global::<Theme>();
+    // the rail in order: expand, the class, New class, the theme, Settings
+    for _ in 0..4 {
+        key(&ui, Key::Tab);
+    }
+    press_enter(&ui);
+    assert!(theme.get_dark(), "Tab went through the rail to the theme button");
+    key(&ui, " ");
+    assert!(!theme.get_dark(), "Space pressed it again");
+    key(&ui, Key::Tab);
+    press_enter(&ui);
+    assert!(shows_text(&ui, "Appearance"), "the next Tab stop is Settings");
+}
+
+#[test]
+fn tab_reaches_the_expand_button_and_enter_opens_the_sidebar() {
+    let ui = seeded();
+    click(&ui, "Collapse the sidebar");
+    key(&ui, Key::Tab);
+    press_enter(&ui);
+    assert!(!gradebook(&ui).get_sidebar_collapsed(), "the first Tab stop is the expand button");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2140,7 +2517,9 @@ fn regression_column_panel_buttons_fit_in_galician() {
     click(&ui, "Exam 1");
     let close = find(&ui, &common::galician("Close"));
     let panel_right = close.absolute_position().x + close.size().width + 24.0;
-    for english in ["‹ Move left", "Move right ›", "Delete"] {
+    for english in
+        ["Move left (Ctrl+←)", "Move right (Ctrl+→)", "Delete", "Previous column (Alt+←)", "Next column (Alt+→)"]
+    {
         let label = common::galician(english);
         let control = find(&ui, &label);
         let right = control.absolute_position().x + control.size().width;
@@ -2315,12 +2694,20 @@ fn regression_the_more_menu_works_from_the_keyboard() {
     let ui = seeded();
     click(&ui, "More actions");
     press_enter(&ui);
-    assert!(!gradebook(&ui).get_show_column_settings(), "the first option toggles the weights and scales");
+    assert_eq!(gradebook(&ui).get_class_name(), "1A (2)", "the first option duplicates the class");
+    // back on 1A, whose pupils are all in it, so "Add from another class" isn't offered
+    click(&ui, "1A");
+    click(&ui, "More actions");
+    key(&ui, Key::DownArrow);
+    key(&ui, Key::DownArrow);
+    key(&ui, Key::DownArrow);
+    press_enter(&ui);
+    assert!(!gradebook(&ui).get_show_column_settings(), "the fourth option toggles the weights and scales");
     click(&ui, "More actions");
     key(&ui, Key::UpArrow);
     key(&ui, Key::Escape);
     assert!(!shows(&ui, "Delete class"), "Escape closes the menu");
-    assert_eq!(gradebook(&ui).get_classes().row_count(), 1);
+    assert_eq!(gradebook(&ui).get_classes().row_count(), 2, "nothing more was added or deleted");
 }
 
 #[test]

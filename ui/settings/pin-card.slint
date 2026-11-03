@@ -1,0 +1,74 @@
+import { Theme } from "../theme.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { TextField } from "../components/fields.slint";
+import { Card } from "../components/surfaces.slint";
+import { Shortcuts } from "../shortcuts.slint";
+
+export component PinField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> value;
+    callback accepted();
+
+    spacing: 6px;
+    // in a taller parent the label stays on the field instead of drifting apart from it
+    alignment: start;
+    Text { text: root.label; font-size: Theme.text-s; font-weight: 600; color: Theme.muted; }
+    TextField {
+        width: 180px;
+        input-type: InputType.password;
+        spoken-label: root.label;
+        text <=> root.value;
+        accepted => { root.accepted(); }
+    }
+}
+
+export component PinCard inherits Card {
+    in property <bool> pin-set;
+    in-out property <string> current;
+    in-out property <string> new-pin;
+    in-out property <string> repeat;
+    callback set-pin();
+    callback change-pin();
+    callback remove-pin();
+
+    title: @tr("PIN and encryption");
+    description: root.pin-set
+        ? @tr("The database file is encrypted with your PIN. The app asks for it when it opens; lock it any time with the Lock button or {}.", Shortcuts.lock-keys)
+        : @tr("Encrypt the database file with a PIN of 4 or more characters, digits or letters. Someone with a copy of the file can try guesses without limit: a short PIN only stops a quick look, a long password with letters stops everyone. If you forget it, nobody can recover the data, so keep it somewhere safe.");
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: start;
+        if root.pin-set: PinField { label: @tr("Current PIN"); value <=> root.current; }
+        PinField { label: root.pin-set ? @tr("New PIN") : @tr("PIN"); value <=> root.new-pin; }
+        // Enter does what the card's main button does
+        PinField {
+            label: @tr("Repeat PIN");
+            value <=> root.repeat;
+            accepted => {
+                if (root.pin-set) {
+                    root.change-pin();
+                } else {
+                    root.set-pin();
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        if !root.pin-set: ActionButton {
+            text: @tr("Encrypt with this PIN");
+            kind: ButtonKind.primary;
+            clicked => { root.set-pin(); }
+        }
+        if root.pin-set: ActionButton {
+            text: @tr("Change PIN");
+            clicked => { root.change-pin(); }
+        }
+        if root.pin-set: ActionButton {
+            text: @tr("Remove PIN and encryption");
+            kind: ButtonKind.danger;
+            clicked => { root.remove-pin(); }
+        }
+    }
+}

@@ -1,0 +1,63 @@
+import { Theme } from "../theme.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { Card } from "../components/surfaces.slint";
+import { Backup } from "../backup.slint";
+import { PinField } from "pin-card.slint";
+
+// Exporting everything, restoring a backup or adding its classes, and the backup's PIN prompt.
+export component BackupCard inherits Card {
+    title: @tr("Backup");
+    description: @tr("Save everything (every class, pupil, column and mark) in one .avalio file, to keep it safe or take it to another computer. With a PIN, the file is encrypted with it.");
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        ActionButton {
+            text: @tr("Export everything…");
+            kind: ButtonKind.primary;
+            clicked => { Backup.export-everything(); }
+        }
+        ActionButton {
+            text: @tr("Restore from a backup…");
+            kind: ButtonKind.ghost;
+            clicked => { Backup.restore(); }
+        }
+        ActionButton {
+            text: @tr("Add classes from a backup…");
+            kind: ButtonKind.ghost;
+            clicked => { Backup.add-classes(); }
+        }
+    }
+    if Backup.pin-needed: VerticalLayout {
+        spacing: 8px;
+        alignment: start;
+        Text {
+            // one line, which fits at the minimum window width in every language: a wrapped
+            // Text in this nested layout asks for the height of several lines
+            text: @tr("This backup is encrypted. Type the PIN it was made with.");
+            color: Theme.text;
+        }
+        PinField {
+            label: @tr("Backup PIN");
+            value <=> Backup.pin;
+            accepted => { Backup.pin-entered(); }
+        }
+        if Backup.pin-error != "": Text {
+            text: Backup.pin-error;
+            color: Theme.fail;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            ActionButton {
+                text: @tr("Continue");
+                kind: ButtonKind.primary;
+                clicked => { Backup.pin-entered(); }
+            }
+            ActionButton {
+                text: @tr("Cancel");
+                kind: ButtonKind.ghost;
+                clicked => { Backup.pin-cancelled(); }
+            }
+        }
+    }
+}

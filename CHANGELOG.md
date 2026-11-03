@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/02 14:03:51.591191 )
+[//]: # (+ Revised: 	2026/11/03 15:53:02.818726 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,27 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- ⋯ → Duplicate class, with or without its pupils and marks; the copy is named e.g. "1A (2)" and opens at once
+- The sidebar folds to a narrow strip of icons with the « button or Ctrl+B, giving the sheet more width; the choice is remembered
+- ‹ and › in a column's settings panel, and Alt+← / Alt+→, open the next or previous column's settings without closing the panel
+- Ctrl+← and Ctrl+→ move a column left or right while its settings panel is open
+- Desktop test baselines for 125 % and 150 % display scaling
+
+### Changed
+
+- The app's core state moved out of the UI code and was split by concern; no visible change
+- Source reorganised by feature; no visible change
+- Tests strengthened after mutation testing: every mutant in the grade calculation, columns, cells, migrations, file moves, PIN rules, languages and app state is caught
+- The desktop tests open the window on the primary monitor, so the display scale they test no longer depends on where the mouse is; a test also guards the module dependency rules
+
+### Fixed
+
+- The sheet's menus no longer stay open, partly cut off, when the window is resized
+- Escape now closes a column's settings panel after a click in it and from every one of its fields
+- The window no longer opens partly off-screen on smaller or scaled displays: it opens centred on the current screen, sized to fit, and maximised when the screen is too small
 
 ## [0.4.0] - 2026-11-02
 

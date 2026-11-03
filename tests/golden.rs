@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/10/29 14:12:18.060333
+//+ Revised: 	2026/11/03 08:27:18.349782
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -15,12 +15,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use avalio_lite::config::{AppConfig, ConfigStore, Preferences, ThemeChoice};
-use avalio_lite::db::{self, migrations};
 use avalio_lite::error::AppError;
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{cells, classes, columns, pupils, sheet};
 use avalio_lite::i18n::Language;
+use avalio_lite::platform::config::{AppConfig, ConfigStore, Preferences, ThemeChoice};
+use avalio_lite::platform::db::{self, migrations};
 use rusqlite::Connection;
 
 const UPDATE_ENV: &str = "AVALIO_UPDATE_GOLDEN";
@@ -53,6 +53,7 @@ fn current_config() -> AppConfig {
             show_column_settings: false,
             language: Some(Language::Galician),
             theme: Some(ThemeChoice::Dark),
+            sidebar_collapsed: true,
         },
         shortcuts: [("lock".to_owned(), "Ctrl+K".to_owned())].into(),
     }

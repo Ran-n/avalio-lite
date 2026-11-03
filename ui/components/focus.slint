@@ -1,0 +1,26 @@
+// Keyboard focus: pressing Enter or Space on a focused control, and the ring that shows focus.
+
+import { Theme } from "../theme.slint";
+
+// Makes a custom control reachable with Tab and pressable with Enter or Space, like a standard
+// button. It takes no space and ignores clicks, so the mouse keeps going to the control's TouchArea.
+export component KeyboardPress inherits FocusScope {
+    callback pressed();
+
+    x: 0px;
+    width: 0px;
+    focus-on-click: false;
+    key-pressed(event) => {
+        if (event.text == Key.Space || event.text == Key.Return) {
+            root.pressed();
+            return accept;
+        }
+        return reject;
+    }
+}
+
+// Outline shown around a control while it has keyboard focus.
+export component FocusRing inherits Rectangle {
+    border-width: 2px;
+    border-color: Theme.accent;
+}

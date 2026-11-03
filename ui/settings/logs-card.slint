@@ -1,0 +1,20 @@
+import { ActionButton } from "../components/buttons.slint";
+import { Card } from "../components/surfaces.slint";
+import { PathBox } from "database-card.slint";
+
+// Where the log file is, and moving it.
+export component LogsCard inherits Card {
+    in property <string> log-folder;
+    callback move-logs();
+
+    title: @tr("Logs");
+    description: @tr("A record of what the app did, useful when something goes wrong.");
+    PathBox { path: root.log-folder; }
+    HorizontalLayout {
+        alignment: start;
+        ActionButton {
+            text: @tr("Move…");
+            clicked => { root.move-logs(); }
+        }
+    }
+}

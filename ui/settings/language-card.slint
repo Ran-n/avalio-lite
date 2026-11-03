@@ -1,0 +1,26 @@
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { Card } from "../components/surfaces.slint";
+
+// The interface language.
+export component LanguageCard inherits Card {
+    in property <string> language-code;
+    callback choose-language(string);
+
+    title: @tr("Language");
+    description: @tr("The language of the app. Names and marks you type stay as they are.");
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        // language names are written in their own language, so they are not translated
+        ActionButton {
+            text: "Galego";
+            kind: root.language-code == "gl" ? ButtonKind.primary : ButtonKind.secondary;
+            clicked => { root.choose-language("gl"); }
+        }
+        ActionButton {
+            text: "English";
+            kind: root.language-code == "en" ? ButtonKind.primary : ButtonKind.secondary;
+            clicked => { root.choose-language("en"); }
+        }
+    }
+}

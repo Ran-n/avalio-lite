@@ -179,6 +179,24 @@ msgstr "+{} % extra"
 msgid "Add from another class…"
 msgstr "Engadir doutra clase…"
 
+msgid "Duplicate class"
+msgstr "Duplicar clase"
+
+msgid "Same columns and settings, no pupils"
+msgstr "As mesmas columnas e axustes, sen alumnos"
+
+msgid "Duplicate with pupils"
+msgstr "Duplicar con alumnos"
+
+msgid "Same columns and pupils, empty marks"
+msgstr "As mesmas columnas e alumnos, sen notas"
+
+msgid "Duplicate with pupils and marks"
+msgstr "Duplicar con alumnos e notas"
+
+msgid "An exact copy"
+msgstr "Unha copia exacta"
+
 msgid "Appearance"
 msgstr "Aparencia"
 
@@ -384,3 +402,21 @@ msgstr "sen clase"
 
 msgid "Delete {}"
 msgstr "Eliminar a {}"
+
+msgid "Collapse the sidebar"
+msgstr "Contraer a barra lateral"
+
+msgid "Expand the sidebar"
+msgstr "Expandir a barra lateral"
+
+msgid "Previous column (Alt+←)"
+msgstr "Columna anterior (Alt+←)"
+
+msgid "Next column (Alt+→)"
+msgstr "Columna seguinte (Alt+→)"
+
+msgid "Move left (Ctrl+←)"
+msgstr "Mover á esquerda (Ctrl+←)"
+
+msgid "Move right (Ctrl+→)"
+msgstr "Mover á dereita (Ctrl+→)"

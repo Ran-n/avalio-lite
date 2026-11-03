@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.661079 )
-[//]: # (+ Revised: 	2026/11/01 21:11:24.661079 )
+[//]: # (+ Revised: 	2026/11/02 21:48:09.688691 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite user guide
@@ -12,7 +12,7 @@ Everything the app does, screen by screen. To download and install it, see the [
 
 ## Getting started
 
-1. **Choose your folders.** On first launch the app asks where to keep the database and the logs (both default to `Documents\avalio-lite`; see [Your data](#your-data)).
+1. **Choose your folders.** On first launch the app asks where to keep the database and the logs (both default to `Documents\avalio-lite`; see [Your data](#your-data)). The window opens centred on the screen you started it from, sized to fit; on small screens it opens maximised.
 2. **Add a class.** Type a name in **+ New class** in the sidebar and press Enter.
 3. **Add pupils.** Type a name in the last row of the sheet and press Enter.
 4. **Add columns.** Use **+ Add column**, for example two tests and a final grade, then click a header to set its weight and maximum.
@@ -30,7 +30,9 @@ Everything the app does, screen by screen. To download and install it, see the [
 
 ### Columns
 
-Add columns with **+ Add column**. Click a column's header to open its settings on the right: title, weight, maximum, bonus, rounding, move left / right, and delete. The header shows the title and small tags such as `50%` and `/10`. **⋯ → Hide weights & scales** hides those tags, and the app remembers the choice.
+Add columns with **+ Add column**. Click a column's header to open its settings on the right: title, weight, maximum, bonus, rounding, move left / right, and delete. Esc closes the panel. ‹ and › at the top of the panel (or Alt+← and Alt+→) open the settings of the column to the left or right, and Ctrl+← and Ctrl+→ move the column while its panel is open. The header shows the title and small tags such as `50%` and `/10`. **⋯ → Hide weights & scales** hides those tags, and the app remembers the choice.
+
+**⋯ → Duplicate class** copies a class's columns and settings; **Duplicate with pupils** brings the same pupils with empty marks (for a new term), and **Duplicate with pupils and marks** makes an exact copy. The copy is called e.g. *1A (2)*; rename it in place.
 
 | Column | Holds |
 |---|---|
@@ -59,6 +61,7 @@ To back up all classes at once, use a [backup](#backups) instead.
 ### Appearance and language
 
 - **Light and dark:** use the moon / sun button at the bottom of the sidebar, or **Settings → Appearance**. The app follows the Windows setting until you pick one.
+- **Narrow sidebar:** the « button at the top of the sidebar (or Ctrl+B) folds it to a strip of icons, giving the sheet more room; » opens it again. The app remembers which you chose.
 - **Language:** the app comes in **Galician** and **English**. It follows the Windows language until you pick one in **Settings → Language**. In Galician, calculated marks use a decimal comma (8,5).
 
 ### Keyboard
@@ -72,9 +75,12 @@ Shortcuts work anywhere on the main screen, even while you're typing in a cell, 
 | Ctrl+L | Lock | `lock` |
 | Ctrl+Shift+D | Switch between light and dark | `toggle-theme` |
 | Ctrl+H | Show or hide weights and scales | `toggle-column-settings` |
+| Ctrl+B | Collapse or expand the sidebar | `toggle-sidebar` |
 | Ctrl+, | Open Settings (again: back to the sheet) | `open-settings` |
 | Ctrl+PageDown | Next class | `next-class` |
 | Ctrl+PageUp | Previous class | `previous-class` |
+
+In a column's panel, Ctrl+←/→ moves the column and Alt+←/→ opens the next column's settings; these are fixed.
 
 To change a shortcut, press **Change** next to it in **Settings → Keyboard shortcuts**, then press the new keys (Esc cancels). The change is saved at once. **Reset** restores one shortcut and **Reset all** restores every one. Keys that another shortcut already uses are refused, not taken over. You can also close the app and add the shortcut to `config.toml` under `[shortcuts]`, e.g. `lock = "Ctrl+K"`.
 

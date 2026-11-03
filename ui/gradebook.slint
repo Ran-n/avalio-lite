@@ -1,10 +1,14 @@
 // Data and actions of the classes and their sheets, shared by every screen that needs them.
 
 export enum ColumnType { info, test, weighted, average, round }
+// what a duplicated class brings along (gradebook::model::DuplicateContents)
+export enum DuplicateContents { columns, columns-and-pupils, everything }
 
 export struct ClassItem {
     id: int,
     name: string,
+    // what the folded sidebar shows: the first 3 characters
+    short-name: string,
     pupil-count: int,
 }
 
@@ -57,6 +61,8 @@ export global Gradebook {
     in property <[AddablePupil]> addable-pupils;
     // when false, column headers show only titles (no weight / scale tags)
     in property <bool> show-column-settings: true;
+    // the sidebar folded to its icon rail
+    in property <bool> sidebar-collapsed: false;
 
     // the class at a glance, from its final grade column
     in property <bool> has-summary;
@@ -70,6 +76,7 @@ export global Gradebook {
     in property <int> panel-index: -1;
 
     callback toggle-column-settings();
+    callback toggle-sidebar();
     callback open-column-panel(int);
     callback close-column-panel();
     callback select-class(int);
@@ -78,6 +85,7 @@ export global Gradebook {
     // true when the class was created, so the field it was typed in can be emptied
     callback create-class(string) -> bool;
     callback rename-class(string);
+    callback duplicate-class(DuplicateContents);
     // an in-place field put its text back to the saved value, so the error about the refused text is gone
     callback field-restored();
     callback delete-class();
