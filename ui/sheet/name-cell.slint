@@ -1,0 +1,39 @@
+import { Theme } from "../theme.slint";
+import { Gradebook, RowItem } from "../gradebook.slint";
+import { IconButton } from "../components/buttons.slint";
+import { TextField } from "../components/fields.slint";
+
+export component NameCell inherits Rectangle {
+    in property <RowItem> pupil;
+
+    height: Theme.row-height;
+    background: Theme.surface;
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 10px;
+        spacing: 4px;
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                glyph: "×";
+                tooltip: @tr("Remove from this class");
+                destructive: true;
+                clicked => { Gradebook.remove-pupil(root.pupil.pupil-id); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            TextField {
+                boxed: false;
+                text: root.pupil.name;
+                spoken-label: @tr("Pupil");
+                restores: true;
+                saved: root.pupil.name;
+                restored => { Gradebook.field-restored(); }
+                edited(text) => { Gradebook.rename-pupil(root.pupil.pupil-id, text); }
+            }
+        }
+    }
+}
+
+// "5 pupils   Class average 7.4   4 passing   1 failing", plus weight warnings.

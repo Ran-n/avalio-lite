@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.371587 )
-[//]: # (+ Revised: 	2026/11/02 08:27:48.682159 )
+[//]: # (+ Revised: 	2026/11/03 12:32:48.357885 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 Thank you for your interest in contributing.
@@ -55,6 +55,8 @@ Open an issue and include:
 4. Check that `.\scripts\coverage.ps1 -Branches` (line and branch gates; needs the nightly toolchain) and `cargo test --test desktop -- --ignored --test-threads=1` pass
 5. Commit following the style below
 6. Open a pull request against `main` and describe *why* the change is needed
+
+Keep to the dependency rules in [docs/design-decisions.md](docs/design-decisions.md) (D4); `cargo test` checks them.
 
 One concern per PR — do not bundle unrelated changes.
 

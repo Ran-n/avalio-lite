@@ -1,0 +1,114 @@
+import { ListView } from "std-widgets.slint";
+import { ColumnType, DuplicateContents, Gradebook } from "../gradebook.slint";
+import { IconButton } from "../components/buttons.slint";
+import { Menu, MenuSurface } from "../components/menu.slint";
+import { NavItem } from "../components/navigation.slint";
+
+// What the sheet's pop-up menus hold; the page opens and places them.
+
+// The add-column menu: the column types, each with what it is for.
+export component ColumnMenuContent inherits MenuSurface {
+    callback close();
+
+    Menu {
+        entries: [
+            { id: 0, title: @tr("Test"), hint: @tr("A mark out of a maximum that counts towards the final grade") },
+            { id: 1, title: @tr("Info"), hint: @tr("Free text, such as notes") },
+            { id: 2, title: @tr("Final grade"), hint: @tr("Adds up the tests by their weights") },
+            { id: 3, title: @tr("Average"), hint: @tr("Mean of the marked tests") },
+            { id: 4, title: @tr("Rounded"), hint: @tr("Another column rounded to whole marks or decimals") },
+        ];
+        dismissed => { root.close(); }
+        chosen(id) => {
+            root.close();
+            Gradebook.add-column(id == 0 ? ColumnType.test : id == 1 ? ColumnType.info
+                : id == 2 ? ColumnType.weighted : id == 3 ? ColumnType.average : ColumnType.round);
+        }
+    }
+}
+
+// The sheet's ⋯ menu.
+export component MoreMenuContent inherits MenuSurface {
+    callback close();
+    callback add-from-another-class();
+
+    Menu {
+        // "Add from another class" is only offered while some pupil could be added
+        entries: Gradebook.addable-pupils.length > 0 ? [
+            { id: 0, title: @tr("Add from another class…") },
+            { id: 5, title: @tr("Duplicate class"), hint: @tr("Same columns and settings, no pupils") },
+            { id: 6, title: @tr("Duplicate with pupils"), hint: @tr("Same columns and pupils, empty marks") },
+            { id: 7, title: @tr("Duplicate with pupils and marks"), hint: @tr("An exact copy") },
+            { id: 1, title: Gradebook.show-column-settings ? @tr("Hide weights & scales") : @tr("Show weights & scales") },
+            { id: 2, title: @tr("Export to Excel…") },
+            { id: 3, title: @tr("Import from Excel…") },
+            { id: 4, title: @tr("Delete class"), destructive: true },
+        ] : [
+            { id: 5, title: @tr("Duplicate class"), hint: @tr("Same columns and settings, no pupils") },
+            { id: 6, title: @tr("Duplicate with pupils"), hint: @tr("Same columns and pupils, empty marks") },
+            { id: 7, title: @tr("Duplicate with pupils and marks"), hint: @tr("An exact copy") },
+            { id: 1, title: Gradebook.show-column-settings ? @tr("Hide weights & scales") : @tr("Show weights & scales") },
+            { id: 2, title: @tr("Export to Excel…") },
+            { id: 3, title: @tr("Import from Excel…") },
+            { id: 4, title: @tr("Delete class"), destructive: true },
+        ];
+        dismissed => { root.close(); }
+        chosen(id) => {
+            root.close();
+            if (id == 0) {
+                root.add-from-another-class();
+            } else if (id == 1) {
+                Gradebook.toggle-column-settings();
+            } else if (id == 2) {
+                Gradebook.export-sheet();
+            } else if (id == 3) {
+                Gradebook.import-sheet();
+            } else if (id == 5) {
+                Gradebook.duplicate-class(DuplicateContents.columns);
+            } else if (id == 6) {
+                Gradebook.duplicate-class(DuplicateContents.columns-and-pupils);
+            } else if (id == 7) {
+                Gradebook.duplicate-class(DuplicateContents.everything);
+            } else {
+                Gradebook.delete-class();
+            }
+        }
+    }
+}
+
+// The pupils that can be added from another class, or deleted when they are in none.
+export component PupilMenuContent inherits MenuSurface {
+    callback close();
+
+    ListView {
+        x: 6px;
+        y: 6px;
+        width: parent.width - 12px;
+        height: parent.height - 12px;
+        for pupil[index] in Gradebook.addable-pupils: HorizontalLayout {
+            NavItem {
+                label: pupil.name;
+                detail: pupil.no-class ? @tr("no class") : "";
+                clicked => {
+                    root.close();
+                    Gradebook.add-existing-pupil(index);
+                }
+            }
+            // a pupil in no class can be deleted for good; the menu stays open for more
+            if pupil.no-class: VerticalLayout {
+                alignment: center;
+                IconButton {
+                    glyph: "×";
+                    tooltip: @tr("Delete {}", pupil.name);
+                    destructive: true;
+                    clicked => {
+                        Gradebook.delete-pupil-in-no-class(index);
+                        if (Gradebook.addable-pupils.length == 0) {
+                            root.close();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

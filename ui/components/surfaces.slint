@@ -1,0 +1,85 @@
+// Banners, cards, tags and key caps.
+
+import { Theme } from "../theme.slint";
+
+export component MessageBanner inherits Rectangle {
+    in property <string> message;
+    in property <bool> is-error;
+
+    visible: root.message != "";
+    height: self.visible ? label.preferred-height + 20px : 0px;
+    border-radius: Theme.radius-s;
+    background: root.is-error ? Theme.fail-soft : Theme.pass-soft;
+    Rectangle {
+        x: 0px;
+        width: 3px;
+        background: root.is-error ? Theme.fail : Theme.pass;
+    }
+    label := Text {
+        x: 14px;
+        width: parent.width - 28px;
+        text: root.message;
+        wrap: word-wrap;
+        vertical-alignment: center;
+        color: Theme.text;
+    }
+}
+
+// A card on the settings page.
+export component Card inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+
+    background: Theme.surface;
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: Theme.line;
+    VerticalLayout {
+        padding: 20px;
+        spacing: 10px;
+        Text { text: root.title; font-size: Theme.text-l; font-weight: 600; color: Theme.text; }
+        if root.description != "": Text { text: root.description; wrap: word-wrap; color: Theme.muted; }
+        @children
+    }
+}
+
+// Small rounded label for column facts such as "50%" or "/10".
+export component Tag inherits Rectangle {
+    in property <string> text;
+    in property <bool> highlighted;
+
+    height: 20px;
+    width: label.preferred-width + 14px;
+    border-radius: 6px;
+    border-width: root.highlighted ? 0px : 1px;
+    border-color: Theme.line;
+    background: root.highlighted ? Theme.accent-soft : Theme.surface;
+    label := Text {
+        text: root.text;
+        font-size: 12px;
+        font-weight: 500;
+        color: root.highlighted ? Theme.accent : Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// One key of a keyboard shortcut ("Ctrl", "Shift", "L"), drawn like a key cap.
+export component KeyCap inherits Rectangle {
+    in property <string> text;
+
+    height: 24px;
+    width: max(24px, label.preferred-width + 14px);
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.line;
+    background: Theme.raised;
+    label := Text {
+        text: root.text;
+        font-size: 12px;
+        font-weight: 600;
+        color: Theme.muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

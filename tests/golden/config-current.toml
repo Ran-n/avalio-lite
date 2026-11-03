@@ -5,6 +5,7 @@ log_dir = 'D:\Marks\logs'
 show_column_settings = false
 language = "gl"
 theme = "dark"
+sidebar_collapsed = true
 
 [shortcuts]
 lock = "Ctrl+K"

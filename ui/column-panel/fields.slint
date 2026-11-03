@@ -1,0 +1,43 @@
+import { Theme } from "../theme.slint";
+import { Gradebook } from "../gradebook.slint";
+import { TextField } from "../components/fields.slint";
+
+export component FieldLabel inherits Text {
+    font-size: Theme.text-s;
+    font-weight: 600;
+    color: Theme.muted;
+}
+
+// A labelled number box with an optional unit after it ("%").
+export component NumberField inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    // what is saved for the column, which the field goes back to when left with something else
+    in property <string> saved;
+    in property <string> unit;
+    callback edited(string);
+
+    spacing: 6px;
+    FieldLabel { text: root.label; }
+    // the box's height, so the layout leaves room for it under the label
+    Rectangle {
+        height: Theme.control-height;
+        TextField {
+            text: root.value;
+            spoken-label: root.label;
+            restores: true;
+            saved: root.saved;
+            restored => { Gradebook.field-restored(); }
+            edited(text) => { root.edited(text); }
+        }
+        if root.unit != "": Text {
+            x: parent.width - self.width - 12px;
+            height: parent.height;
+            text: root.unit;
+            vertical-alignment: center;
+            color: Theme.faint;
+        }
+    }
+}
+
+// Everything about one column, opened by clicking its header.

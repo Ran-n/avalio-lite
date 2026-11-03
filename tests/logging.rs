@@ -1,13 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.250028
-//+ Revised: 	2026/11/02 14:00:10.121611
+//+ Revised: 	2026/11/03 08:27:18.648895
 // -----------------------------------------------------------------------------
 
 use std::fs;
 
-use avalio_lite::config::LOG_FILE_NAME;
-use avalio_lite::logging::{FileLogger, format_record, level_from};
+use avalio_lite::platform::config::LOG_FILE_NAME;
+use avalio_lite::platform::logging::{FileLogger, format_record, level_from};
 use log::{Level, LevelFilter, Log, Record};
 
 fn record_for<'a>(target: &'a str, level: Level, args: std::fmt::Arguments<'a>) -> Record<'a> {
@@ -24,10 +24,10 @@ fn level_defaults_to_info_and_parses_env_values() {
 
 #[test]
 fn format_matches_house_style() {
-    let line = format_record(&record_for("avalio_lite::db", Level::Warn, format_args!("hello")));
+    let line = format_record(&record_for("avalio_lite::platform::db", Level::Warn, format_args!("hello")));
     let (timestamp, rest) = line.split_at(19);
     assert!(chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S").is_ok());
-    assert_eq!(rest, " [WARN    ] avalio_lite::db: hello\n");
+    assert_eq!(rest, " [WARN    ] avalio_lite::platform::db: hello\n");
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn regression_a_log_over_the_limit_is_set_aside_at_startup() {
     logger.open_with_limit(dir.path(), 100).unwrap();
     logger.log(&record_for("avalio_lite", Level::Info, format_args!("fresh")));
     logger.close();
-    let rotated = avalio_lite::logging::rotated_path(dir.path());
+    let rotated = avalio_lite::platform::logging::rotated_path(dir.path());
     assert_eq!(fs::read(&rotated).unwrap(), vec![b'y'; 101]);
     assert!(fs::read_to_string(&file).unwrap().contains("fresh"));
     // only one old file is kept: the next rotation replaces it
@@ -137,7 +137,7 @@ impl std::io::Write for Failing {
 fn lost_lines_are_counted_and_reported_once_the_file_works_again() {
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use avalio_lite::logging::write_line;
+    use avalio_lite::platform::logging::write_line;
     let lost = AtomicU64::new(0);
     assert!(!write_line(&mut Failing, &lost, "one\n"));
     assert!(!write_line(&mut Failing, &lost, "two\n"));
@@ -147,7 +147,10 @@ fn lost_lines_are_counted_and_reported_once_the_file_works_again() {
     let text = String::from_utf8(file).unwrap();
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 2, "the note is a line of its own: {text:?}");
-    assert!(lines[0].ends_with("[WARNING ] avalio_lite::logging: 2 log line(s) could not be written"), "{text:?}");
+    assert!(
+        lines[0].ends_with("[WARNING ] avalio_lite::platform::logging: 2 log line(s) could not be written"),
+        "{text:?}"
+    );
     assert_eq!(lines[1], "three");
     assert_eq!(lost.load(Ordering::Relaxed), 0);
 }
@@ -158,7 +161,7 @@ fn a_large_log_that_cannot_be_set_aside_keeps_growing() {
     let log = dir.path().join(LOG_FILE_NAME);
     fs::write(&log, "x".repeat(200)).unwrap();
     // a folder where the old log would go makes setting it aside fail
-    let rotated = avalio_lite::logging::rotated_path(dir.path());
+    let rotated = avalio_lite::platform::logging::rotated_path(dir.path());
     fs::create_dir(&rotated).unwrap();
     fs::write(rotated.join("keep"), b"").unwrap();
     let logger = FileLogger::new(LevelFilter::Info);

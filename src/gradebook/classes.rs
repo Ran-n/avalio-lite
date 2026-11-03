@@ -1,13 +1,15 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/11/02 08:27:49.946904
+//+ Revised: 	2026/11/02 21:48:10.415944
 // -----------------------------------------------------------------------------
+
+use std::collections::HashMap;
 
 use rusqlite::{Connection, ErrorCode, params};
 
-use super::model::{ClassSummary, clean_name, name_sort_key};
-use super::update_one;
+use super::model::{ClassSummary, ColumnKind, DuplicateContents, clean_name, name_sort_key};
+use super::{cells, columns, pupils, sheet, update_one};
 use crate::error::{AppError, Result};
 
 pub fn list_classes(connection: &Connection) -> Result<Vec<ClassSummary>> {
@@ -58,6 +60,50 @@ pub fn free_class_name(connection: &Connection, name: &str) -> Result<String> {
         }
         number += 1;
     }
+}
+
+/// Copies a class into a new one named by `free_class_name` ("1A (2)"), with its columns and,
+/// depending on `contents`, its pupils (shared, not new ones) and typed marks. All or nothing.
+/// Returns the copy's id.
+pub fn duplicate_class(connection: &Connection, class_id: i64, contents: DuplicateContents) -> Result<i64> {
+    let transaction = connection.unchecked_transaction()?;
+    let name = free_class_name(&transaction, &class_name(&transaction, class_id)?)?;
+    let new_id = create_class(&transaction, &name)?;
+    let original = sheet::load_sheet(&transaction, class_id)?;
+
+    let mut column_ids = HashMap::new();
+    for column in &original.columns {
+        let kind = match column.kind {
+            // the source may sit to the right, so it is set once every column has its new id
+            ColumnKind::Round { decimals, .. } => ColumnKind::Round { source: None, decimals },
+            kind => kind,
+        };
+        column_ids.insert(column.id, columns::insert_column(&transaction, new_id, &column.title, kind)?);
+    }
+    for column in &original.columns {
+        if let ColumnKind::Round { source: Some(source), .. } = column.kind {
+            columns::set_round_source(&transaction, column_ids[&column.id], Some(column_ids[&source]))?;
+        }
+    }
+
+    if contents != DuplicateContents::Columns {
+        // enrolling appends, so this keeps the row order
+        for row in &original.rows {
+            pupils::add_existing_pupil(&transaction, new_id, row.pupil.id)?;
+        }
+    }
+    if contents == DuplicateContents::Everything {
+        for row in &original.rows {
+            for (column, value) in original.columns.iter().zip(&row.values) {
+                if !column.kind.is_computed() && !value.is_empty() {
+                    cells::set_cell(&transaction, column_ids[&column.id], row.pupil.id, value)?;
+                }
+            }
+        }
+    }
+    transaction.commit()?;
+    log::info!("duplicated class {class_id} as {new_id} ({contents:?})");
+    Ok(new_id)
 }
 
 pub fn rename_class(connection: &Connection, class_id: i64, name: &str) -> Result<()> {

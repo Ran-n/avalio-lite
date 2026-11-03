@@ -1,13 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.116536
-//+ Revised: 	2026/11/02 08:27:50.863579
+//+ Revised: 	2026/11/03 10:00:19.411964
 // -----------------------------------------------------------------------------
 
 use std::fs;
 
-use avalio_lite::db::{self, migrations};
 use avalio_lite::error::AppError;
+use avalio_lite::platform::db::{self, migrations};
 use rusqlite::Connection;
 
 mod common;
@@ -508,4 +508,16 @@ fn regression_a_damaged_plain_file_is_not_a_wrong_pin() {
     let random = dir.path().join("random.db");
     fs::write(&random, [0x5Au8; 4096]).unwrap();
     assert!(matches!(db::open(&random, None), Err(AppError::WrongPin)));
+}
+
+#[test]
+fn has_whole_pages_checks_the_page_size() {
+    let dir = tempfile::tempdir().unwrap();
+    for (length, whole) in [(512, true), (1024, true), (513, false), (100, false)] {
+        let path = dir.path().join(format!("{length}.db"));
+        fs::write(&path, vec![0u8; length]).unwrap();
+        assert_eq!(db::has_whole_pages(&path).unwrap(), whole, "{length} bytes");
+    }
+    let missing = dir.path().join("missing.db");
+    assert!(matches!(db::has_whole_pages(&missing), Err(AppError::Io { path, .. }) if path == missing));
 }

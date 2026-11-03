@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/11/02 08:27:48.738261 )
+[//]: # (+ Revised: 	2026/11/02 21:48:08.748110 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 <p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
@@ -231,6 +231,7 @@ The full technical documentation lives in separate files:
 |---|---|
 | [User guide](docs/user-guide.md) | Every feature in detail: column types and the grade formulas, accepted marks and limits, Excel import/export, keyboard shortcuts and `config.toml`, data and log locations, backups, PIN encryption (SQLCipher, AES-256) and how strong a PIN to choose |
 | [Development](docs/development.md) | Building from source (Rust, Strawberry Perl, Inno Setup), the test suites (headless UI, desktop pixel tests, golden files, coverage and mutation testing), the source layout, translations, schema migrations and releasing |
+| [Design decisions](docs/design-decisions.md) | Why the code is laid out as it is: feature folders, the dependency rules, file sizes |
 | [Contributing](CONTRIBUTING.md) | Reporting bugs, suggesting features, submitting changes and the commit style |
 | [Changelog](CHANGELOG.md) | What changed in each version |
 

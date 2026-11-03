@@ -1,0 +1,196 @@
+import { ComboBox } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ColumnItem, ColumnType, Gradebook } from "../gradebook.slint";
+import { ActionButton, ButtonKind, Toggle } from "../components/buttons.slint";
+import { TextField } from "../components/fields.slint";
+import { FieldLabel, NumberField } from "fields.slint";
+import { MoveButtons, PanelTitle, WeightsHint } from "parts.slint";
+
+export component ColumnPanel inherits Rectangle {
+    in property <ColumnItem> column;
+    in property <int> index;
+    property <bool> is-first: root.index == 0;
+    property <bool> is-last: root.index == Gradebook.columns.length - 1;
+
+    width: Theme.panel-width;
+    // the title is the first thing to change, so the keyboard starts there
+    init => { title-field.focus-input(); }
+    background: Theme.surface;
+    drop-shadow-blur: 40px;
+    drop-shadow-offset-x: -12px;
+    drop-shadow-color: Theme.shadow;
+    Rectangle {
+        x: 0px;
+        width: 1px;
+        background: Theme.line;
+    }
+
+    // the neighbouring column's settings, as clicking its header does; nothing past either end
+    function show-column(index: int) {
+        if (index >= 0 && index < Gradebook.columns.length) {
+            Gradebook.open-column-panel(index);
+        }
+    }
+
+    // moves the column one place, as the Move buttons do; nothing past either end
+    function move(step: int) {
+        if ((step < 0 && !root.is-first) || (step > 0 && !root.is-last)) {
+            Gradebook.move-column(root.column.id, step);
+        }
+    }
+
+    // The panel's keys come first, before any field in it can take them: Escape closes the panel
+    // wherever the focus is in it, Alt+←/→ shows the previous or next column, Ctrl+←/→ moves the
+    // column (in the fields too: titles are short, and Home/End still move the cursor). Every
+    // other key goes on to the field.
+    scope := FocusScope {
+        capture-key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                Gradebook.close-column-panel();
+                return accept;
+            }
+            if (event.text == Key.LeftArrow || event.text == Key.RightArrow) {
+                let step = event.text == Key.LeftArrow ? -1 : 1;
+                if (event.modifiers.alt && !event.modifiers.control && !event.modifiers.shift) {
+                    root.show-column(root.index + step);
+                    return accept;
+                }
+                if (event.modifiers.control && !event.modifiers.alt && !event.modifiers.shift) {
+                    root.move(step);
+                    return accept;
+                }
+            }
+            return reject;
+        }
+        // swallows clicks so they don't reach the sheet underneath, and keeps the keys in the panel
+        TouchArea {
+            clicked => { scope.focus(); }
+        }
+        VerticalLayout {
+            padding: 24px;
+            spacing: 18px;
+            // the settings take only the room they need; the space left goes above the buttons
+            VerticalLayout {
+                vertical-stretch: 0;
+                spacing: 18px;
+                PanelTitle {
+                    title: root.column.title;
+                    is-first: root.is-first;
+                    is-last: root.is-last;
+                    previous => { root.show-column(root.index - 1); }
+                    next => { root.show-column(root.index + 1); }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    FieldLabel { text: @tr("Title"); }
+                    title-field := TextField {
+                        text: root.column.title;
+                        spoken-label: @tr("Title");
+                        restores: true;
+                        saved: Gradebook.columns[root.index].title;
+                        restored => { Gradebook.field-restored(); }
+                        edited(text) => { Gradebook.rename-column(root.column.id, text); }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 4px;
+                    FieldLabel { text: @tr("Type"); }
+                    Text {
+                        wrap: word-wrap;
+                        color: Theme.muted;
+                        text: root.column.kind == ColumnType.info ? @tr("Info: free text, such as notes")
+                            : root.column.kind == ColumnType.test ? @tr("Test: a mark out of a maximum that counts towards the final grade")
+                            : root.column.kind == ColumnType.weighted ? @tr("Final grade: adds up the tests by their weights")
+                            : root.column.kind == ColumnType.average ? @tr("Average: the mean of the marked tests")
+                            : @tr("Rounded: another column rounded to whole marks or decimals");
+                    }
+                }
+                if root.column.kind == ColumnType.test: VerticalLayout {
+                    spacing: 18px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        NumberField {
+                            label: @tr("Weight");
+                            unit: "%";
+                            value: root.column.weight;
+                            saved: Gradebook.columns[root.index].weight;
+                            edited(text) => { Gradebook.set-weight(root.column.id, text); }
+                        }
+                        NumberField {
+                            label: @tr("Out of");
+                            value: root.column.max-score;
+                            saved: Gradebook.columns[root.index].max-score;
+                            edited(text) => { Gradebook.set-max-score(root.column.id, text); }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 2px;
+                            Text { text: @tr("Bonus test"); font-weight: 600; color: Theme.text; }
+                            Text { text: @tr("Counts on top of the 100%"); font-size: Theme.text-s; color: Theme.muted; }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Toggle {
+                                checked: root.column.bonus;
+                                label: @tr("Bonus test");
+                                toggled(on) => {
+                                    Gradebook.set-bonus(root.column.id, on);
+                                    // a click leaves the keys with the panel, so Escape still closes it
+                                    scope.focus();
+                                }
+                            }
+                        }
+                    }
+                }
+                if root.column.kind == ColumnType.weighted || root.column.kind == ColumnType.average: NumberField {
+                    label: @tr("Out of");
+                    value: root.column.max-score;
+                    saved: Gradebook.columns[root.index].max-score;
+                    edited(text) => { Gradebook.set-max-score(root.column.id, text); }
+                }
+                if root.column.kind == ColumnType.round: VerticalLayout {
+                    spacing: 18px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        FieldLabel { text: @tr("Rounds"); }
+                        rounds := ComboBox {
+                            model: Gradebook.round-sources;
+                            current-index: root.column.source-index;
+                            selected => { Gradebook.set-round-source(root.column.id, self.current-index); }
+                        }
+                    }
+                    NumberField {
+                        label: @tr("Decimals");
+                        value: root.column.decimals;
+                        saved: Gradebook.columns[root.index].decimals;
+                        edited(text) => { Gradebook.set-decimals(root.column.id, text); }
+                    }
+                }
+                if root.column.kind == ColumnType.test || root.column.kind == ColumnType.weighted: WeightsHint { }
+            }
+            Rectangle { vertical-stretch: 1; }
+            // the move buttons share the panel's width; Delete gets a row of its own, so all three
+            // fit even with Galician's longer labels. Their keys are said by screen readers and shown
+            // in the faint line below, the same in every language.
+            MoveButtons {
+                is-first: root.is-first;
+                is-last: root.is-last;
+                moved(step) => {
+                    root.move(step);
+                    scope.focus();
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                ActionButton {
+                    text: @tr("Delete");
+                    kind: ButtonKind.danger;
+                    clicked => { Gradebook.delete-column(root.column.id); }
+                }
+            }
+        }
+    }
+}

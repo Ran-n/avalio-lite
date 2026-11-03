@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.842742
-//+ Revised: 	2026/10/28 15:53:06.842742
+//+ Revised: 	2026/11/03 08:27:17.945040
 // -----------------------------------------------------------------------------
 
 //! `app::run_with`, the whole app as `main` starts it: on Slint's headless backend with a real
@@ -16,7 +16,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use avalio_lite::app;
-use avalio_lite::config::{self, CONFIG_DIR_ENV, LOG_FILE_NAME};
+use avalio_lite::platform::config::{self, CONFIG_DIR_ENV, LOG_FILE_NAME};
 use common::{FakeDialogs, Fixture};
 
 #[test]

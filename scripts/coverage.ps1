@@ -6,28 +6,31 @@
 # Raise MinLines as coverage grows; never lower it.
 #
 # Lines left uncovered on purpose (everything else the report lists needs a test):
-#   src\main.rs, src\app\mod.rs run(), src\app\dialogs.rs NativeDialogs
+#   src\main.rs, src\app\mod.rs run(), src\window\dialogs.rs NativeDialogs
 #       the real exe and its Windows dialogs; every other test swaps in fake dialogs. Covered by the
 #       desktop test the_real_dialogs_open_and_close, which isn't part of this measurement.
-#   src\app\language.rs, the error log of select_bundled_translation
+#   src\app\placement.rs work_area, GetCursorPos failing (it falls back to the primary screen)
+#       Windows only refuses it outside an interactive desktop, where the window can't open anyway.
+#   src\window\language.rs, the error log of select_bundled_translation
 #       the translations are compiled into the exe for every language the picker offers.
-#   src\app\state\mod.rs, "did not close cleanly" (twice); src\backup.rs, "the backup copy did not
+#   src\state\mod.rs close_connection and src\state\locations.rs move_database, "did not close
+#   cleanly"; src\backup\open.rs, "the backup copy did not
 #   close cleanly"
 #       SQLite only refuses to close with statements still open, and the app never keeps one.
-#   src\db\mod.rs discard, "could not remove"; src\spreadsheet\export.rs "could not remove the
+#   src\platform\db\mod.rs discard, "could not remove"; src\spreadsheet\export\mod.rs "could not remove the
 #   incomplete export"
 #       a cleanup failing right after an earlier failure (a double fault), on a file the app
-#       created a moment before. The same for src\storage.rs move_file, "could not remove the
-#       copy", src\config.rs, "could not remove" the temporary settings file, and
-#       src\app\state\mod.rs move_logs, "could not move the log back", and
-#       src\app\state\protection.rs put_back, renaming the old file back failing right after the
+#       created a moment before. The same for src\platform\storage.rs move_file, "could not remove the
+#       copy", src\platform\config.rs, "could not remove" the temporary settings file, and
+#       src\state\locations.rs move_logs, "could not move the log back", and
+#       src\state\protection.rs put_back, renaming the old file back failing right after the
 #       new one failed to go in (removing the new one first failing is tested, in roll_back).
-#   src\storage.rs copy_complete, a copy of another size than its original
+#   src\platform\storage.rs copy_complete, a copy of another size than its original
 #       fs::copy reports any write it can't finish; the check is there for a disk that says it did.
-#   src\spreadsheet\import.rs read_table, the reader panicking
+#   src\spreadsheet\import\read.rs read_table, the reader panicking
 #       no file is known to make the workbook reader panic; the guard is for one that would.
-#   src\app\state\protection.rs, reopening fails after the files were swapped (and the
-#   lock_screen.rs and src\app\backup.rs restore branches that then ask for the PIN again)
+#   src\state\protection.rs, reopening fails after the files were swapped (and the
+#   src\lock\ui.rs and src\backup\ui\restore.rs restore branches that then ask for the PIN again)
 #       the swapped-in file passed its check a moment earlier; only another program grabbing it in
 #       between can make it fail.
 param([switch]$Branches)

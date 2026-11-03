@@ -1,15 +1,15 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/11/02 08:27:51.228250
+//+ Revised: 	2026/11/03 12:01:54.371072
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use avalio_lite::error::{AppError, Folder, NumberField};
-use avalio_lite::gradebook::model::ColumnType;
+use avalio_lite::gradebook::model::{ColumnTitles, ColumnType};
 use avalio_lite::i18n::shortcuts::{action_label, display, key_names};
 use avalio_lite::i18n::{
     LANGUAGES, Language, Message, column_type_name, current, default_column_title, error_message, export_labels,
@@ -26,9 +26,22 @@ fn manifest_path(relative: &str) -> PathBuf {
 
 /// Every string passed to @tr(...) in the UI, with plural forms joined as "singular|plural".
 fn ui_strings() -> BTreeSet<String> {
+    ui_strings_in(&manifest_path("ui"))
+}
+
+/// The @tr strings of every .slint file under `root`, subfolders included.
+fn ui_strings_in(root: &Path) -> BTreeSet<String> {
     let mut found = BTreeSet::new();
-    for entry in fs::read_dir(manifest_path("ui")).unwrap() {
-        let source = fs::read_to_string(entry.unwrap().path()).unwrap();
+    for entry in fs::read_dir(root).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            found.extend(ui_strings_in(&path));
+            continue;
+        }
+        if path.extension().is_none_or(|extension| extension != "slint") {
+            continue;
+        }
+        let source = fs::read_to_string(&path).unwrap();
         for chunk in source.split("@tr(").skip(1) {
             let mut quoted = chunk.split('"');
             let singular = quoted.nth(1).unwrap().to_owned();
@@ -384,7 +397,7 @@ fn import_messages_count_in_every_language() {
 /// The file dialogs filter by kind: a spreadsheet opens from any program, but is saved as .xlsx.
 #[test]
 fn file_kinds_have_extensions_and_translated_filters() {
-    use avalio_lite::app::dialogs::FileKind;
+    use avalio_lite::window::dialogs::FileKind;
     assert_eq!(FileKind::Spreadsheet.open_extensions(), ["xlsx", "xls", "ods"]);
     assert_eq!(FileKind::Spreadsheet.save_extensions(), ["xlsx"]);
     assert_eq!(FileKind::Database.open_extensions(), ["db"]);
@@ -490,4 +503,30 @@ fn regression_technical_error_text_is_replaced_by_friendly_sentences() {
     assert!(english(&errors[7]).contains("damaged"));
     assert!(english(&errors[11]).contains("damaged") && english(&errors[11]).contains("D:\\x"));
     assert!(english(&errors[14]).contains("isn't a workbook"));
+}
+
+#[test]
+fn language_names_columns_like_default_column_title() {
+    let types = [ColumnType::Info, ColumnType::Test, ColumnType::Weighted, ColumnType::Average, ColumnType::Round];
+    for language in [Language::English, Language::Galician] {
+        for column_type in types {
+            for number in 1..=3 {
+                assert_eq!(
+                    language.default_title(column_type, number),
+                    default_column_title(language, column_type, number),
+                    "{language:?} {column_type:?} {number}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn ui_strings_include_nested_folders() {
+    let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("a.slint"), r#"Text { text: @tr("Top"); }"#).unwrap();
+    fs::create_dir(root.path().join("sub")).unwrap();
+    fs::write(root.path().join("sub").join("b.slint"), r#"Text { text: @tr("Nested"); }"#).unwrap();
+    fs::write(root.path().join("sub").join("notes.txt"), r#"@tr("Ignored")"#).unwrap();
+    assert_eq!(ui_strings_in(root.path()), BTreeSet::from(["Top".to_owned(), "Nested".to_owned()]));
 }

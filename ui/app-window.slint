@@ -1,13 +1,13 @@
 import { Palette } from "std-widgets.slint";
 import { SetupNotice, SetupPage } from "setup-page.slint";
 import { Section, Shell } from "shell.slint";
-import { LockPage } from "lock-page.slint";
-import { AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone } from "gradebook.slint";
+import { LockPage } from "lock/lock-page.slint";
+import { AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, DuplicateContents, Gradebook, RowItem, Tone } from "gradebook.slint";
 import { Theme } from "theme.slint";
 import { ShortcutAction, ShortcutItem, Shortcuts } from "shortcuts.slint";
 import { Backup } from "backup.slint";
 
-export { SetupNotice, Section, AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, Gradebook, RowItem, Tone, Theme }
+export { SetupNotice, Section, AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, DuplicateContents, Gradebook, RowItem, Tone, Theme }
 export { ShortcutAction, ShortcutItem, Shortcuts, Backup }
 
 export component AppWindow inherits Window {
@@ -67,8 +67,12 @@ export component AppWindow inherits Window {
     background: Theme.canvas;
     default-font-family: "Segoe UI";
     default-font-size: 15px;
-    min-width: 1000px;
-    min-height: 600px;
+    // the minimum size; src/app/placement.rs lowers it on a screen too small for it (and keeps
+    // these numbers and the preferred size in its constants)
+    in property <length> fit-min-width: 1000px;
+    in property <length> fit-min-height: 600px;
+    min-width: root.fit-min-width;
+    min-height: root.fit-min-height;
     preferred-width: 1280px;
     preferred-height: 800px;
 
@@ -133,6 +137,8 @@ export component AppWindow inherits Window {
                 root.choose-theme(!Theme.dark);
             } else if (action == ShortcutAction.toggle-column-settings) {
                 Gradebook.toggle-column-settings();
+            } else if (action == ShortcutAction.toggle-sidebar) {
+                Gradebook.toggle-sidebar();
             } else if (action == ShortcutAction.open-settings) {
                 root.error-message = "";
                 root.status-message = "";

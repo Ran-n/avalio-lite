@@ -1,15 +1,15 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/11/02 14:10:25.002217
+//+ Revised: 	2026/11/03 09:16:52.148562
 // -----------------------------------------------------------------------------
 
-use avalio_lite::db;
 use avalio_lite::error::AppError;
 use avalio_lite::gradebook::columns::{self, Direction};
-use avalio_lite::gradebook::model::{ColumnKind, ColumnType};
+use avalio_lite::gradebook::model::{ColumnKind, ColumnTitles, ColumnType};
 use avalio_lite::gradebook::{cells, classes, pupils, sheet};
 use avalio_lite::i18n::Language;
+use avalio_lite::platform::db;
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -99,6 +99,9 @@ fn pupils_keep_the_order_they_were_added_in() {
     assert_eq!(names, ["Xoán", "Ana", "Brais"]);
 }
 
+/// A column's weight, maximum, rounding source and decimals, as stored.
+type StoredFields = (Option<f64>, Option<f64>, Option<i64>, Option<u8>);
+
 #[test]
 fn new_columns_get_sensible_defaults() {
     let (_dir, connection) = open();
@@ -121,7 +124,30 @@ fn new_columns_get_sensible_defaults() {
         ColumnKind::Test { weight: 0.0, max_score: 10.0, bonus: false },
         "weight left to reach 100 %"
     );
+    assert_eq!(listed[2].kind, ColumnKind::Weighted { max_score: 10.0 });
     assert_eq!(listed[3].kind, ColumnKind::Round { source: Some(listed[2].id), decimals: 0 });
+    assert_eq!(listed[4].kind, ColumnKind::Info);
+    assert_eq!(listed[5].kind, ColumnKind::Average { max_score: 10.0 });
+    // kills the kind_fields mutants that store a field the kind doesn't read back
+    let mut statement = connection
+        .prepare("SELECT weight, max_score, source_column_id, decimals FROM sheet_columns ORDER BY position")
+        .unwrap();
+    let stored: Vec<StoredFields> = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        stored,
+        [
+            (Some(100.0), Some(10.0), None, None),
+            (Some(0.0), Some(10.0), None, None),
+            (None, Some(10.0), None, None),
+            (None, None, Some(listed[2].id), Some(0)),
+            (None, None, None, None),
+            (None, Some(10.0), None, None),
+        ]
+    );
 }
 
 #[test]
@@ -593,4 +619,27 @@ mod decomposed_accents {
             assert_eq!(name_match_key(unmatched), unmatched, "{unmatched:?} has no letter of its own here");
         }
     }
+}
+
+/// Words every title as its type and number, so a test sees exactly what the gradebook asked for.
+struct Numbered;
+
+impl ColumnTitles for Numbered {
+    fn default_title(&self, column_type: ColumnType, number: usize) -> String {
+        format!("{column_type:?}#{number}")
+    }
+}
+
+#[test]
+fn add_column_names_columns_through_the_given_titles() {
+    let (_dir, connection) = open();
+    let class_id = classes::create_class(&connection, "1A").unwrap();
+    let first = columns::add_column(&connection, class_id, ColumnType::Test, Numbered).unwrap();
+    columns::add_column(&connection, class_id, ColumnType::Test, Numbered).unwrap();
+    assert_eq!(titles(&connection, class_id), ["Test#1", "Test#2"]);
+    // one test is left, so the next would be number 2, which is taken: the gradebook moves on to 3
+    columns::delete_column(&connection, first).unwrap();
+    columns::add_column(&connection, class_id, ColumnType::Test, Numbered).unwrap();
+    columns::add_column(&connection, class_id, ColumnType::Info, Numbered).unwrap();
+    assert_eq!(titles(&connection, class_id), ["Test#2", "Test#3", "Info#1"]);
 }

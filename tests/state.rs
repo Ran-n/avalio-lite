@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/11/02 14:00:09.691995
+//+ Revised: 	2026/11/03 10:00:19.111205
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -10,11 +10,11 @@ use std::path::Path;
 mod common;
 use common::Fixture;
 
-use avalio_lite::app::state::{AppState, SetupReason, Startup};
-use avalio_lite::config::{AppConfig, DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::error::{AppError, Folder};
 use avalio_lite::i18n::Language;
+use avalio_lite::platform::config::{AppConfig, DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::shortcuts::{Action, ShortcutError, Shortcuts};
+use avalio_lite::state::{AppState, SetupReason, Startup};
 
 fn pupil_count(state: &AppState) -> i64 {
     state.connection().unwrap().query_row("SELECT COUNT(*) FROM pupils", [], |row| row.get(0)).unwrap()
@@ -59,7 +59,7 @@ fn hiding_column_settings_is_remembered_across_restarts_and_database_switches() 
     assert!(!fixture.store().load().unwrap().unwrap().preferences.show_column_settings);
 
     let other = fixture.path("other.db");
-    avalio_lite::db::close(avalio_lite::db::open(&other, None).unwrap()).unwrap();
+    avalio_lite::platform::db::close(avalio_lite::platform::db::open(&other, None).unwrap()).unwrap();
     state.open_existing(&other, &fixture.path("logs")).unwrap();
     assert!(!state.preferences().show_column_settings, "switching database keeps the preference");
     state.shutdown();
@@ -67,6 +67,26 @@ fn hiding_column_settings_is_remembered_across_restarts_and_database_switches() 
     let mut restarted = fixture.state();
     assert_eq!(restarted.start(), Startup::Ready);
     assert!(!restarted.preferences().show_column_settings);
+    restarted.shutdown();
+}
+
+#[test]
+fn folding_the_sidebar_is_remembered_across_restarts_and_database_switches() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    assert!(!state.preferences().sidebar_collapsed, "the sidebar starts expanded");
+    state.set_sidebar_collapsed(true).unwrap();
+    assert!(fixture.store().load().unwrap().unwrap().preferences.sidebar_collapsed);
+
+    let other = fixture.path("other.db");
+    avalio_lite::platform::db::close(avalio_lite::platform::db::open(&other, None).unwrap()).unwrap();
+    state.open_existing(&other, &fixture.path("logs")).unwrap();
+    assert!(state.preferences().sidebar_collapsed, "switching database keeps the preference");
+    state.shutdown();
+
+    let mut restarted = fixture.state();
+    assert_eq!(restarted.start(), Startup::Ready);
+    assert!(restarted.preferences().sidebar_collapsed);
     restarted.shutdown();
 }
 
@@ -90,6 +110,7 @@ fn preferences_cannot_be_saved_before_setup() {
     let mut state = fixture.state();
     assert!(matches!(state.set_language(Language::Galician), Err(AppError::NoDatabaseOpen)));
     assert!(matches!(state.set_show_column_settings(false), Err(AppError::NoDatabaseOpen)));
+    assert!(matches!(state.set_sidebar_collapsed(true), Err(AppError::NoDatabaseOpen)));
     assert_eq!(fixture.store().load().unwrap(), None);
 }
 
@@ -109,7 +130,7 @@ fn missing_database_is_reported_and_not_recreated() {
     let mut state = fixture.set_up();
     let database_path = state.config().unwrap().database_path.clone();
     state.shutdown();
-    avalio_lite::db::remove_files(&database_path).unwrap();
+    avalio_lite::platform::db::remove_files(&database_path).unwrap();
 
     let mut restarted = fixture.state();
     assert_eq!(restarted.start(), Startup::NeedsSetup(SetupReason::DatabaseMissing(database_path.clone())));
@@ -128,7 +149,7 @@ fn regression_setup_after_a_missing_database_keeps_the_preferences_and_shortcuts
     config.shortcuts.insert("lock".into(), "Ctrl+K".into());
     fixture.store().save(&config).unwrap();
     state.shutdown();
-    avalio_lite::db::remove_files(&fixture.database()).unwrap();
+    avalio_lite::platform::db::remove_files(&fixture.database()).unwrap();
 
     let mut restarted = fixture.state();
     assert!(matches!(restarted.start(), Startup::NeedsSetup(SetupReason::DatabaseMissing(_))));
@@ -229,7 +250,7 @@ fn custom_shortcuts_survive_opening_another_database() {
     let mut state = fixture.state();
     assert_eq!(state.start(), Startup::Ready);
     let other = fixture.path("other.db");
-    avalio_lite::db::close(avalio_lite::db::open(&other, None).unwrap()).unwrap();
+    avalio_lite::platform::db::close(avalio_lite::platform::db::open(&other, None).unwrap()).unwrap();
     state.open_existing(&other, &fixture.path("logs")).unwrap();
     assert_eq!(fixture.store().load().unwrap().unwrap().shortcuts.get("lock").map(String::as_str), Some("Ctrl+K"));
     state.shutdown();
@@ -249,7 +270,7 @@ fn corrupt_database_asks_for_setup() {
     let mut state = fixture.set_up();
     let database_path = state.config().unwrap().database_path.clone();
     state.shutdown();
-    avalio_lite::db::remove_files(&database_path).unwrap();
+    avalio_lite::platform::db::remove_files(&database_path).unwrap();
     fs::write(&database_path, b"not a database").unwrap();
     assert!(matches!(fixture.state().start(), Startup::NeedsSetup(SetupReason::DatabaseUnusable(_))));
 }
@@ -262,7 +283,7 @@ fn open_existing_switches_database_and_refuses_missing_file() {
     assert!(matches!(state.open_existing(&missing, &fixture.path("logs")), Err(AppError::NotFound(_))));
 
     let other = fixture.path("other.db");
-    avalio_lite::db::close(avalio_lite::db::open(&other, None).unwrap()).unwrap();
+    avalio_lite::platform::db::close(avalio_lite::platform::db::open(&other, None).unwrap()).unwrap();
     state.open_existing(&other, &fixture.path("logs")).unwrap();
     assert_eq!(fixture.store().load().unwrap().unwrap().database_path, other);
 }
@@ -340,7 +361,7 @@ fn shutdown_releases_database_and_log_files() {
     state.shutdown();
     assert!(state.connection().is_none());
     // Windows refuses to delete files that are still open, so this proves both were released.
-    avalio_lite::db::remove_files(&config.database_path).unwrap();
+    avalio_lite::platform::db::remove_files(&config.database_path).unwrap();
     fs::remove_file(config.log_dir.join(LOG_FILE_NAME)).unwrap();
 }
 
@@ -474,7 +495,7 @@ fn a_whole_page_file_that_looks_encrypted_is_chosen_locked() {
     let mut state = fixture.set_up();
     let locked = fixture.path("locked.db");
     fs::write(&locked, vec![0xA5u8; 4096]).unwrap();
-    assert_eq!(state.open_existing(&locked, &fixture.path("logs")).unwrap(), avalio_lite::app::state::Opened::Locked);
+    assert_eq!(state.open_existing(&locked, &fixture.path("logs")).unwrap(), avalio_lite::state::Opened::Locked);
     assert!(state.is_locked());
 }
 
@@ -484,7 +505,7 @@ fn regression_start_does_not_initialise_an_empty_or_foreign_database_file() {
     let mut state = fixture.set_up();
     let path = state.config().unwrap().database_path.clone();
     state.shutdown();
-    avalio_lite::db::remove_files(&path).unwrap();
+    avalio_lite::platform::db::remove_files(&path).unwrap();
     for contents in [&b""[..], b"short", b"SQLite format 3\0 but then garbage garbage"] {
         fs::write(&path, contents).unwrap();
         let startup = fixture.state().start();
@@ -511,21 +532,21 @@ fn regression_a_failed_settings_save_does_not_leave_the_log_moved_away_from_the_
 fn moving_the_logs_takes_the_old_rotated_log_along() {
     let fixture = Fixture::new();
     let mut state = fixture.set_up();
-    let old = avalio_lite::logging::rotated_path(&fixture.path("logs"));
+    let old = avalio_lite::platform::logging::rotated_path(&fixture.path("logs"));
     fs::write(&old, b"history").unwrap();
     state.move_logs(&fixture.path("new-logs")).unwrap();
     assert!(!old.exists());
-    assert_eq!(fs::read(avalio_lite::logging::rotated_path(&fixture.path("new-logs"))).unwrap(), b"history");
+    assert_eq!(fs::read(avalio_lite::platform::logging::rotated_path(&fixture.path("new-logs"))).unwrap(), b"history");
 }
 
 #[test]
 fn an_old_log_that_cannot_be_taken_along_stays_behind() {
     let fixture = Fixture::new();
     let mut state = fixture.set_up();
-    let old = avalio_lite::logging::rotated_path(&fixture.path("logs"));
+    let old = avalio_lite::platform::logging::rotated_path(&fixture.path("logs"));
     fs::write(&old, b"history").unwrap();
     // something already has the old log's name in the new folder
-    let taken = avalio_lite::logging::rotated_path(&fixture.path("new-logs"));
+    let taken = avalio_lite::platform::logging::rotated_path(&fixture.path("new-logs"));
     fs::create_dir_all(&taken).unwrap();
     state.move_logs(&fixture.path("new-logs")).unwrap();
     assert_eq!(fs::read(&old).unwrap(), b"history", "the history stays where it was");
@@ -551,7 +572,7 @@ fn a_database_from_a_newer_version_needs_setup_at_startup() {
 fn a_database_another_program_is_writing_to_is_reported_and_not_opened() {
     let fixture = Fixture::new();
     let other_place = fixture.path("other").join(DATABASE_FILE_NAME);
-    avalio_lite::db::close(avalio_lite::db::open(&other_place, None).unwrap()).unwrap();
+    avalio_lite::platform::db::close(avalio_lite::platform::db::open(&other_place, None).unwrap()).unwrap();
     let mut state = fixture.set_up();
     let writer = rusqlite::Connection::open(&other_place).unwrap();
     writer.execute_batch("PRAGMA journal_mode = DELETE; PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE;").unwrap();
@@ -568,12 +589,23 @@ fn regression_a_large_log_moved_with_its_old_log_strands_nothing() {
     let fixture = Fixture::new();
     let mut state = fixture.set_up();
     let logs = fixture.path("logs");
-    fs::write(avalio_lite::logging::rotated_path(&logs), b"history").unwrap();
+    fs::write(avalio_lite::platform::logging::rotated_path(&logs), b"history").unwrap();
     let mut log = fs::OpenOptions::new().append(true).open(logs.join(LOG_FILE_NAME)).unwrap();
-    let limit = usize::try_from(avalio_lite::logging::MAX_LOG_BYTES).unwrap();
+    let limit = usize::try_from(avalio_lite::platform::logging::MAX_LOG_BYTES).unwrap();
     std::io::Write::write_all(&mut log, &vec![b'x'; limit + 1]).unwrap();
     drop(log);
     state.move_logs(&fixture.path("new-logs")).unwrap();
-    assert!(!avalio_lite::logging::rotated_path(&logs).exists(), "nothing is left in the old folder");
-    assert!(avalio_lite::logging::rotated_path(&fixture.path("new-logs")).is_file());
+    assert!(!avalio_lite::platform::logging::rotated_path(&logs).exists(), "nothing is left in the old folder");
+    assert!(avalio_lite::platform::logging::rotated_path(&fixture.path("new-logs")).is_file());
+}
+
+#[test]
+fn preference_changes_without_a_database_are_refused() {
+    let fixture = Fixture::new();
+    let mut state = fixture.state();
+    assert!(matches!(state.set_theme(ThemeChoice::Dark), Err(AppError::NoDatabaseOpen)));
+    assert!(matches!(state.set_language(Language::Galician), Err(AppError::NoDatabaseOpen)));
+    assert!(matches!(state.set_show_column_settings(false), Err(AppError::NoDatabaseOpen)));
+    assert!(matches!(state.set_shortcut(Action::Lock, "Ctrl+K".parse().unwrap()), Err(AppError::NoDatabaseOpen)));
+    assert_eq!(fixture.store().load().unwrap(), None, "no settings file is written");
 }

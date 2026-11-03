@@ -1,0 +1,53 @@
+import { Theme } from "../theme.slint";
+import { Gradebook } from "../gradebook.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { TextField } from "../components/fields.slint";
+import { MessageBanner } from "../components/surfaces.slint";
+
+export component NoClassPage inherits Rectangle {
+    in property <string> error-message;
+    in property <string> status-message;
+
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            VerticalLayout {
+                width: 440px;
+                spacing: 14px;
+                Text {
+                    text: @tr("Start with a class");
+                    font-size: Theme.text-xl;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+                Text {
+                    text: @tr("Each class gets its own sheet: pupils down the side, tests and notes across the top.");
+                    wrap: word-wrap;
+                    color: Theme.muted;
+                }
+                MessageBanner {
+                    message: root.error-message;
+                    is-error: true;
+                }
+                if root.status-message != "": MessageBanner {
+                    message: root.status-message;
+                    is-error: false;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    name := TextField {
+                        horizontal-stretch: 1;
+                        placeholder: @tr("Class name, e.g. 2º ESO A");
+                        accepted(text) => { Gradebook.create-class(text); }
+                    }
+                    ActionButton {
+                        text: @tr("Create class");
+                        kind: ButtonKind.primary;
+                        clicked => { Gradebook.create-class(name.text); }
+                    }
+                }
+            }
+        }
+    }
+}

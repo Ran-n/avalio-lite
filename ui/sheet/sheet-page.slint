@@ -1,0 +1,95 @@
+import { Theme } from "../theme.slint";
+import { Gradebook } from "../gradebook.slint";
+import { MessageBanner } from "../components/surfaces.slint";
+import { ColumnPanel } from "../column-panel/column-panel.slint";
+import { ColumnMenuContent, MoreMenuContent, PupilMenuContent } from "menus.slint";
+import { SheetGrid } from "sheet-grid.slint";
+import { SheetTitle } from "sheet-header.slint";
+
+export component SheetPage inherits Rectangle {
+    in property <string> error-message;
+    // what the last action did, such as where an export went
+    in property <string> status-message;
+
+    // An open popup keeps the place it opened at, so a resize would leave a menu cut off at the
+    // window's edge; like Windows' own menus, resizing closes them (closing a shut one does nothing).
+    changed width => { root.close-menus(); }
+    changed height => { root.close-menus(); }
+
+    function close-menus() {
+        more-menu.close();
+        column-menu.close();
+        pupil-menu.close();
+    }
+
+    VerticalLayout {
+        padding: 32px;
+        padding-top: 26px;
+        spacing: 20px;
+        alignment: start;
+        title := SheetTitle {
+            add-pupil => { grid.focus-new-pupil(); }
+            add-column => { column-menu.show(); }
+            more => { more-menu.show(); }
+        }
+        MessageBanner {
+            message: root.error-message;
+            is-error: true;
+        }
+        // created only when there is a message: a hidden banner would still take the layout's spacing
+        if root.status-message != "": MessageBanner {
+            message: root.status-message;
+            is-error: false;
+        }
+        HorizontalLayout {
+            alignment: start;
+            vertical-stretch: 1;
+            // the sheet hugs its rows and columns, and scrolls when it outgrows the window
+            grid := SheetGrid {
+                panel-left: root.absolute-position.x + root.width - Theme.panel-width;
+            }
+        }
+        if Gradebook.columns.length == 0: Text {
+            text: @tr("Next, add a column: a test to mark, or an info column for notes.");
+            color: Theme.muted;
+        }
+    }
+
+    for column in Gradebook.panel-column: ColumnPanel {
+        x: root.width - self.width;
+        y: 0px;
+        height: root.height;
+        column: column;
+        index: Gradebook.panel-index;
+    }
+
+    column-menu := PopupWindow {
+        x: title.add-column-right - root.absolute-position.x - 340px;
+        y: title.actions-bottom - root.absolute-position.y + 6px;
+        width: 340px;
+        ColumnMenuContent {
+            close => { column-menu.close(); }
+        }
+    }
+
+    more-menu := PopupWindow {
+        x: title.more-right - root.absolute-position.x - 340px;
+        y: title.actions-bottom - root.absolute-position.y + 6px;
+        width: 340px;
+        MoreMenuContent {
+            close => { more-menu.close(); }
+            add-from-another-class => { pupil-menu.show(); }
+        }
+    }
+
+    pupil-menu := PopupWindow {
+        x: title.more-right - root.absolute-position.x - 340px;
+        y: title.actions-bottom - root.absolute-position.y + 6px;
+        width: 340px;
+        height: min(Gradebook.addable-pupils.length * 40px + 14px, 340px);
+        close-policy: PopupClosePolicy.close-on-click-outside;
+        PupilMenuContent {
+            close => { pupil-menu.close(); }
+        }
+    }
+}

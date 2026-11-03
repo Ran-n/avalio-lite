@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.935204
-//+ Revised: 	2026/11/02 08:27:50.589021
+//+ Revised: 	2026/11/03 08:27:17.168230
 // -----------------------------------------------------------------------------
 
 //! `.avalio` backups: exporting everything to one file, read back from the real file on disk.
@@ -15,15 +15,15 @@ use rusqlite::Connection;
 mod common;
 use common::Fixture;
 
-use avalio_lite::app::dialogs::FileKind;
-use avalio_lite::app::state::AppState;
 use avalio_lite::backup;
-use avalio_lite::db::{self, migrations};
 use avalio_lite::error::AppError;
 use avalio_lite::gradebook::compute::evaluate_row;
 use avalio_lite::gradebook::model::{ColumnKind, ColumnType, Sheet};
 use avalio_lite::gradebook::{cells, classes, columns, pupils, sheet};
 use avalio_lite::i18n::Language;
+use avalio_lite::platform::db::{self, migrations};
+use avalio_lite::state::AppState;
+use avalio_lite::window::dialogs::FileKind;
 
 const PIN: &str = "246810";
 

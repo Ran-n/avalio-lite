@@ -1,0 +1,16 @@
+# Text files are stored with LF; the golden files and migrations stay LF in the working copy too,
+# because tests/golden.rs and the migration walk compare them byte for byte.
+* text=auto
+migrations/*.sql text eol=lf
+tests/golden/*.sql text eol=lf
+tests/golden/*.toml text eol=lf
+tests/golden/*.tsv text eol=lf
+
+# Binary fixtures: never converted, and never shown through a text converter in git diff
+*.ods binary
+*.xls binary
+*.xlsx binary
+*.png binary
+*.ico binary
+*.db binary
+*.avalio binary

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.640367
-//+ Revised: 	2026/10/29 04:09:18.598818
+//+ Revised: 	2026/11/02 21:48:10.867118
 // -----------------------------------------------------------------------------
 
 //! The app's real window, through Win32: found by its process, captured with `PrintWindow`, and
@@ -14,13 +14,15 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC, DIB_RGB_COLORS,
-    DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+    DeleteDC, DeleteObject, GetDC, GetDIBits, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO,
+    MonitorFromWindow, ReleaseDC, SelectObject,
 };
 use windows_sys::Win32::Storage::Xps::PrintWindow;
 use windows_sys::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetClassNameW, GetClientRect, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
-    WM_CHAR, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    EnumWindows, GetClassNameW, GetClientRect, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindowVisible, PostMessageW, WM_CHAR, WM_CLOSE, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL,
 };
 
 use super::pixels::Image;
@@ -61,6 +63,27 @@ impl AppWindow {
         // SAFETY: a valid window handle and a RECT to fill.
         unsafe { GetClientRect(self.hwnd, &mut rect) };
         (rect.right - rect.left, rect.bottom - rect.top)
+    }
+
+    /// The whole window (frame included) on screen, in physical pixels.
+    pub fn outer_rect(&self) -> RECT {
+        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        // SAFETY: a valid window handle and a RECT to fill.
+        let read = unsafe { GetWindowRect(self.hwnd, &mut rect) };
+        assert!(read != 0, "GetWindowRect failed");
+        rect
+    }
+
+    /// The work area (the screen minus the taskbar) of the monitor the window is on.
+    pub fn work_area(&self) -> RECT {
+        let empty = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        let mut info =
+            MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, rcMonitor: empty, rcWork: empty, dwFlags: 0 };
+        // SAFETY: a valid window handle; the monitor handle comes straight from Windows, and the
+        // MONITORINFO has its size set.
+        let read = unsafe { GetMonitorInfoW(MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST), &mut info) };
+        assert!(read != 0, "GetMonitorInfoW failed");
+        info.rcWork
     }
 
     /// The client area as it is on screen.
@@ -141,6 +164,14 @@ impl AppWindow {
     pub fn press(&self, virtual_key: u16) {
         self.post(WM_KEYDOWN, WPARAM::from(virtual_key), 1);
         self.post(WM_KEYUP, WPARAM::from(virtual_key), 1 | (0b11 << 30));
+    }
+
+    /// Presses `virtual_key` with Ctrl held: Ctrl goes down, the key goes down and up, Ctrl goes up.
+    pub fn press_with_control(&self, virtual_key: u16) {
+        const VK_CONTROL: WPARAM = 0x11;
+        self.post(WM_KEYDOWN, VK_CONTROL, 1);
+        self.press(virtual_key);
+        self.post(WM_KEYUP, VK_CONTROL, 1 | (0b11 << 30));
     }
 
     fn post(&self, message: u32, wparam: WPARAM, lparam: LPARAM) {

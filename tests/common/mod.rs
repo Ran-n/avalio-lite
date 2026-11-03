@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/10/29 15:46:51.906468
+//+ Revised: 	2026/11/03 08:27:17.282356
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
@@ -19,12 +19,12 @@ use std::sync::{Mutex, MutexGuard};
 
 use slint::ComponentHandle;
 
-use avalio_lite::app::dialogs::{Dialogs, FileKind};
-use avalio_lite::app::state::AppState;
 use avalio_lite::app::{self, Session};
-use avalio_lite::config::{ConfigStore, DATABASE_FILE_NAME};
 use avalio_lite::i18n::Language;
-use avalio_lite::logging::FileLogger;
+use avalio_lite::platform::config::{ConfigStore, DATABASE_FILE_NAME};
+use avalio_lite::platform::logging::FileLogger;
+use avalio_lite::state::AppState;
+use avalio_lite::window::dialogs::{Dialogs, FileKind};
 use log::LevelFilter;
 use tempfile::TempDir;
 

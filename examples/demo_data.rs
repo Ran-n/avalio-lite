@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.331624
-//+ Revised: 	2026/10/28 10:52:47.072768
+//+ Revised: 	2026/11/03 08:27:15.585901
 // -----------------------------------------------------------------------------
 
 //! Creates a database with sample classes, pupils and marks, for trying the app or taking screenshots.
@@ -10,11 +10,11 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use avalio_lite::db;
 use avalio_lite::error::Result;
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{cells, classes, columns, pupils};
 use avalio_lite::i18n::Language;
+use avalio_lite::platform::db;
 use rusqlite::Connection;
 
 const PUPILS: [&str; 5] = ["Ana Pérez", "Brais Otero", "Carla Iglesias", "Daniel Souto", "Uxía Fernández"];

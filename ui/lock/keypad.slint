@@ -1,0 +1,94 @@
+import { Theme } from "../theme.slint";
+
+export component Key inherits Rectangle {
+    in property <string> label;
+    in property <string> spoken-label: root.label;
+    in property <bool> emphasized;
+    // a toggle (capital letters) that is on
+    in property <bool> active;
+    in property <length> key-width: 72px;
+    in property <length> key-height: 56px;
+    in property <length> label-size: 22px;
+    callback pressed();
+
+    width: root.key-width;
+    height: root.key-height;
+    border-radius: Theme.radius-m;
+    background: root.emphasized ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : root.active ? Theme.accent-soft
+        : touch.pressed ? Theme.line-strong : touch.has-hover ? Theme.line : Theme.raised;
+    accessible-role: button;
+    accessible-label: root.spoken-label;
+    // screen readers can press the keys too; Tab skips them, since the keyboard types the PIN directly
+    accessible-action-default => { root.pressed(); }
+    Text {
+        text: root.label;
+        font-size: root.label-size;
+        font-weight: root.emphasized ? 700 : 500;
+        color: root.emphasized ? Theme.on-accent : root.active ? Theme.accent : Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.pressed(); }
+    }
+}
+
+// One key of the letter or symbol keyboard: types its character, a letter in capitals while
+// Shift is on.
+export component LetterKey inherits Key {
+    in property <string> letter;
+    in property <bool> capitals;
+    callback typed(string);
+
+    label: root.capitals ? root.letter.to-uppercase() : root.letter;
+    key-width: 42px;
+    key-height: 52px;
+    label-size: 19px;
+    pressed => { root.typed(self.label); }
+}
+
+// Which on-screen keys show under the PIN field.
+export enum Keys { numbers, letters, symbols }
+
+// The digit keys, with the switch to letters and Erase.
+export component NumberPad inherits HorizontalLayout {
+    callback typed(string);
+    callback show-letters();
+    callback erase();
+
+        alignment: center;
+        GridLayout {
+            spacing: 10px;
+            Row {
+                Key { label: "1"; pressed => { root.typed(self.label); } }
+                Key { label: "2"; pressed => { root.typed(self.label); } }
+                Key { label: "3"; pressed => { root.typed(self.label); } }
+            }
+            Row {
+                Key { label: "4"; pressed => { root.typed(self.label); } }
+                Key { label: "5"; pressed => { root.typed(self.label); } }
+                Key { label: "6"; pressed => { root.typed(self.label); } }
+            }
+            Row {
+                Key { label: "7"; pressed => { root.typed(self.label); } }
+                Key { label: "8"; pressed => { root.typed(self.label); } }
+                Key { label: "9"; pressed => { root.typed(self.label); } }
+            }
+            Row {
+                Key {
+                    label: "ABC";
+                    spoken-label: @tr("Letters");
+                    label-size: 17px;
+                    pressed => { root.show-letters(); }
+                }
+                Key { label: "0"; pressed => { root.typed(self.label); } }
+                Key {
+                    label: "←";
+                    spoken-label: @tr("Erase");
+                    pressed => { root.erase(); }
+                }
+            }
+        }
+}

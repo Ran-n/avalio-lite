@@ -1,10 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.189679
-//+ Revised: 	2026/10/28 16:22:40.272513
+//+ Revised: 	2026/11/02 22:53:32.034801
 // -----------------------------------------------------------------------------
 
-//! Classes, pupils and each class's sheet: storage and grade calculation, with no UI code.
+//! Classes, pupils and each class's sheet: storage and grade calculation. The logic has no UI
+//! code; `ui` wires it to the window.
 
 pub mod cells;
 pub mod classes;
@@ -13,6 +14,7 @@ pub mod compute;
 pub mod model;
 pub mod pupils;
 pub mod sheet;
+pub mod ui;
 
 use rusqlite::{Connection, Params};
 

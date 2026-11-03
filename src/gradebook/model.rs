@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.337118
-//+ Revised: 	2026/11/02 14:00:09.456203
+//+ Revised: 	2026/11/03 09:16:51.920618
 // -----------------------------------------------------------------------------
 
 use crate::error::{AppError, Result};
@@ -27,6 +27,11 @@ pub enum ColumnType {
     Weighted,
     Average,
     Round,
+}
+
+/// Names new columns: the gradebook numbers them, the caller says how a title reads.
+pub trait ColumnTitles {
+    fn default_title(&self, column_type: ColumnType, number: usize) -> String;
 }
 
 /// A column's kind together with the settings that kind uses.
@@ -83,6 +88,18 @@ impl ColumnType {
             Self::Round => "round",
         }
     }
+}
+
+/// What a duplicated class brings along (see `classes::duplicate_class`). An enum rather than two
+/// flags, so marks without pupils can't be asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DuplicateContents {
+    /// The columns and their settings, no pupils.
+    Columns,
+    /// The columns and the same pupils, with empty marks.
+    ColumnsAndPupils,
+    /// An exact copy: columns, pupils and every typed mark.
+    Everything,
 }
 
 #[derive(Debug, Clone, PartialEq)]

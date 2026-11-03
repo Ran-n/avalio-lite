@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.973308
-//+ Revised: 	2026/11/02 08:27:51.045801
+//+ Revised: 	2026/11/03 08:27:18.194564
 // -----------------------------------------------------------------------------
 
 //! `app::run_with` when the window can't run: Slint's headless backend without an event loop
@@ -13,8 +13,8 @@ use std::process::ExitCode;
 use std::rc::Rc;
 
 use avalio_lite::app;
-use avalio_lite::config::CONFIG_DIR_ENV;
 use avalio_lite::i18n::{self, Message};
+use avalio_lite::platform::config::CONFIG_DIR_ENV;
 use common::{FakeDialogs, Fixture};
 
 #[test]

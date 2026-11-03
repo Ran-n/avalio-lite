@@ -1,0 +1,101 @@
+// The sidebar's navigation items.
+
+import { Theme } from "../theme.slint";
+import { FocusRing, KeyboardPress } from "focus.slint";
+import { Icon, IconKind } from "icons.slint";
+
+export component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <string> detail;
+    in property <bool> selected;
+    // the folded sidebar: only `short-label`, centred; screen readers still hear the whole label
+    in property <bool> compact;
+    in property <string> short-label;
+    callback clicked();
+
+    height: 38px;
+    border-radius: Theme.radius-s;
+    background: root.selected ? Theme.accent-soft : touch.has-hover ? Theme.raised : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-item-selected: root.selected;
+    if root.compact: Text {
+        text: root.short-label;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        color: root.selected ? Theme.accent : Theme.text;
+        font-weight: root.selected ? 600 : 400;
+    }
+    if !root.compact: HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        Text {
+            text: root.label;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+            color: root.selected ? Theme.accent : Theme.text;
+            font-weight: root.selected ? 600 : 400;
+        }
+        if root.detail != "": Text {
+            text: root.detail;
+            vertical-alignment: center;
+            font-size: Theme.text-s;
+            color: root.selected ? Theme.accent : Theme.faint;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// A sidebar entry with a drawn icon.
+export component IconNavItem inherits Rectangle {
+    in property <IconKind> icon;
+    in property <string> label;
+    in property <bool> selected;
+    // the folded sidebar: only the icon, centred; screen readers still hear the label
+    in property <bool> compact;
+    callback clicked();
+
+    height: 38px;
+    border-radius: Theme.radius-s;
+    background: root.selected ? Theme.accent-soft : touch.has-hover ? Theme.raised : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-item-selected: root.selected;
+    if root.compact: Icon {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        kind: root.icon;
+        color: root.selected ? Theme.accent : Theme.muted;
+    }
+    if !root.compact: HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icon { kind: root.icon; color: root.selected ? Theme.accent : Theme.muted; }
+        }
+        Text {
+            text: root.label;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: root.selected ? Theme.accent : Theme.text;
+            font-weight: root.selected ? 600 : 400;
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}

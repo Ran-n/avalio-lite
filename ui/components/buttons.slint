@@ -1,0 +1,164 @@
+// Buttons: text, icon and icon-with-text buttons, and the on/off toggle.
+
+import { Theme } from "../theme.slint";
+import { FocusRing, KeyboardPress } from "focus.slint";
+import { Icon, IconKind } from "icons.slint";
+
+export enum ButtonKind { primary, secondary, ghost, danger }
+
+export component ActionButton inherits Rectangle {
+    in property <string> text;
+    // what a screen reader says, when it should say more than the text (a button's shortcut)
+    in property <string> spoken-label: root.text;
+    in property <ButtonKind> kind: ButtonKind.secondary;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    // buttons keep their natural width instead of stretching to fill a row
+    horizontal-stretch: 0;
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    border-width: root.kind == ButtonKind.secondary ? 1px : 0px;
+    border-color: Theme.line-strong;
+    background: !root.enabled ? (root.kind == ButtonKind.primary ? Theme.accent.with-alpha(0.25) : transparent)
+        : root.kind == ButtonKind.primary ? (touch.pressed ? Theme.accent.darker(0.1) : touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : root.kind == ButtonKind.danger ? (touch.has-hover ? Theme.fail-soft : transparent)
+        : root.kind == ButtonKind.ghost ? (touch.has-hover ? Theme.raised : transparent)
+        : (touch.has-hover ? Theme.raised : Theme.surface);
+    accessible-role: button;
+    accessible-label: root.spoken-label;
+    accessible-enabled: root.enabled;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            font-size: Theme.text-m;
+            font-weight: root.kind == ButtonKind.primary ? 600 : 500;
+            color: !root.enabled ? Theme.faint
+                : root.kind == ButtonKind.primary ? Theme.on-accent
+                : root.kind == ButtonKind.danger ? Theme.fail
+                : Theme.text;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+    // a disabled button can't be pressed through a screen reader either
+    accessible-action-default => {
+        if (root.enabled) {
+            root.clicked();
+        }
+    }
+    keys := KeyboardPress {
+        enabled: root.enabled;
+        pressed => { root.clicked(); }
+    }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// Small glyph button for in-sheet actions; dims clearly when disabled.
+export component IconButton inherits Rectangle {
+    in property <string> glyph;
+    in property <string> tooltip;
+    in property <bool> enabled: true;
+    in property <bool> destructive;
+    callback clicked();
+
+    width: 24px;
+    height: 24px;
+    border-radius: Theme.radius-s;
+    background: !root.enabled ? transparent : touch.has-hover ? (root.destructive ? Theme.fail-soft : Theme.line-strong) : transparent;
+    accessible-role: button;
+    accessible-label: root.tooltip;
+    accessible-enabled: root.enabled;
+    Text {
+        text: root.glyph;
+        font-size: Theme.text-m;
+        color: !root.enabled ? Theme.line-strong
+            : touch.has-hover ? (root.destructive ? Theme.fail : Theme.text)
+            : Theme.faint;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.clicked(); }
+    }
+    // a disabled button can't be pressed through a screen reader either
+    accessible-action-default => {
+        if (root.enabled) {
+            root.clicked();
+        }
+    }
+    keys := KeyboardPress {
+        enabled: root.enabled;
+        pressed => { root.clicked(); }
+    }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// Square button with a drawn icon, matching ActionButton's secondary style.
+export component IconActionButton inherits Rectangle {
+    in property <IconKind> icon;
+    in property <string> label;
+    callback clicked();
+
+    width: Theme.control-height;
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    border-width: 1px;
+    border-color: Theme.line-strong;
+    background: touch.has-hover ? Theme.raised : Theme.surface;
+    accessible-role: button;
+    accessible-label: root.label;
+    Icon {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        kind: root.icon;
+        color: Theme.text;
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// On/off switch.
+export component Toggle inherits Rectangle {
+    in property <bool> checked;
+    in property <string> label;
+    callback toggled(bool);
+
+    width: 40px;
+    height: 22px;
+    border-radius: 11px;
+    background: root.checked ? Theme.accent : Theme.line-strong;
+    accessible-role: checkbox;
+    accessible-checked: root.checked;
+    accessible-label: root.label;
+    Rectangle {
+        x: root.checked ? parent.width - self.width - 3px : 3px;
+        y: 3px;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: #ffffff;
+        animate x { duration: 120ms; easing: ease-out; }
+    }
+    TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.toggled(!root.checked); }
+    }
+    accessible-action-default => { root.toggled(!root.checked); }
+    keys := KeyboardPress { pressed => { root.toggled(!root.checked); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}

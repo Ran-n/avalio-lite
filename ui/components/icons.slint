@@ -1,0 +1,36 @@
+// Icons drawn as paths, and the app's mark.
+
+import { Theme } from "../theme.slint";
+
+export enum IconKind { moon, sun, lock, more, gear, chevron-left, chevron-right }
+
+// Line icons drawn as shapes (24 x 24 grid), so they never depend on what the font contains.
+export component Icon inherits Path {
+    in property <IconKind> kind;
+    in property <color> color: Theme.muted;
+
+    width: 18px;
+    height: 18px;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    stroke: root.color;
+    stroke-width: 1.8px;
+    fill: root.kind == IconKind.more ? root.color : transparent;
+    commands: root.kind == IconKind.moon ? "M 20 14.5 A 8 8 0 1 1 9.5 4 A 6.5 6.5 0 0 0 20 14.5 Z"
+        : root.kind == IconKind.sun ? "M 12 8 A 4 4 0 1 1 11.99 8 Z M 12 2 L 12 4.5 M 12 19.5 L 12 22 M 2 12 L 4.5 12 M 19.5 12 L 22 12 M 4.9 4.9 L 6.7 6.7 M 17.3 17.3 L 19.1 19.1 M 4.9 19.1 L 6.7 17.3 M 17.3 6.7 L 19.1 4.9"
+        : root.kind == IconKind.lock ? "M 6 11 L 18 11 L 18 20 L 6 20 Z M 8.5 11 L 8.5 8 A 3.5 3.5 0 0 1 15.5 8 L 15.5 11"
+        : root.kind == IconKind.more ? "M 5 10.5 A 1.5 1.5 0 1 1 4.99 10.5 Z M 12 10.5 A 1.5 1.5 0 1 1 11.99 10.5 Z M 19 10.5 A 1.5 1.5 0 1 1 18.99 10.5 Z"
+        : root.kind == IconKind.chevron-left ? "M 15 5 L 8 12 L 15 19"
+        : root.kind == IconKind.chevron-right ? "M 9 5 L 16 12 L 9 19"
+        : "M 12 9 A 3 3 0 1 1 11.99 9 Z M 12 2.5 L 13.5 5 L 16.4 4.4 L 17 7.3 L 19.6 8.8 L 18.5 11.5 L 19.6 14.2 L 17 15.7 L 16.4 18.6 L 13.5 18 L 12 20.5 L 10.5 18 L 7.6 18.6 L 7 15.7 L 4.4 14.2 L 5.5 11.5 L 4.4 8.8 L 7 7.3 L 7.6 4.4 L 10.5 5 Z";
+}
+
+// The app's mark: a rounded accent tile with a lowercase "a".
+// The logo: a marking tick on the accent tile, in the variant drawn for the current theme.
+export component BrandMark inherits Image {
+    width: 30px;
+    height: 30px;
+    source: Theme.dark ? @image-url("../../assets/logo-dark.svg") : @image-url("../../assets/logo.svg");
+    accessible-role: image;
+    accessible-label: "avalio lite";
+}

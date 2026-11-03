@@ -26,6 +26,15 @@ thiserror = "2"
 toml = "1"
 zeroize = "1"
 
+# where the window opens: the work area and scale of the screen the app starts on (src/app/placement.rs)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
 [build-dependencies]
 slint-build = "1.18"
 # embeds assets/logo.ico in the exe, for Explorer, the Start menu and the uninstall entry
