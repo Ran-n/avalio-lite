@@ -12,6 +12,8 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-03
+
 ### Added
 
 - ⋯ → Duplicate class, with or without its pupils and marks; the copy is named e.g. "1A (2)" and opens at once
