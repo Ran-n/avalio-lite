@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.973308
-//+ Revised: 	2026/11/03 08:27:18.194564
+//+ Revised: 	2026/11/08 04:36:59.096624
 // -----------------------------------------------------------------------------
 
 //! `app::run_with` when the window can't run: Slint's headless backend without an event loop
@@ -21,6 +21,7 @@ use common::{FakeDialogs, Fixture};
 fn a_window_that_cannot_run_shows_the_fatal_error_and_fails() {
     let fixture = Fixture::new();
     fixture.set_up().shutdown();
+    fixture.without_update_checks();
     // SAFETY: the only test in this process, and it sets the variable before starting any thread.
     unsafe { std::env::set_var(CONFIG_DIR_ENV, fixture.path("config")) };
     i_slint_backend_testing::init_no_event_loop();

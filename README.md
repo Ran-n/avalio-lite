@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/11/02 21:48:08.748110 )
+[//]: # (+ Revised: 	2026/11/07 20:25:35.547687 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 <p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
@@ -49,7 +49,7 @@ A gradebook for teachers that works like a spreadsheet, does the maths for you, 
 
 - **As easy as a spreadsheet.** Each class is one sheet: pupils down the side, your tests and notes across the top. Type a mark and you're done. There's no Save button, because everything saves as you type.
 - **The maths is done for you.** Give each test a weight and a maximum, and the app works out final grades, averages and roundings straight away. Extra-credit tests are supported, and passing and failing marks are colour-coded.
-- **Private by design.** No account, no cloud, no internet connection. Your marks live in one file in a folder you choose. Add a PIN and the file is encrypted.
+- **Private by design.** No cloud, no tracking. Your marks live in one file in a folder you choose; add a PIN and the file is encrypted. The app goes online only to check its licence.
 - **Works with Excel.** Export a class to Excel, or bring pupils and marks in from a spreadsheet.
 - **Easy to back up.** Save everything to a single file, then restore it later or on another computer.
 - **Feels at home.** Available in Galician and English, with light and dark themes and keyboard shortcuts.
@@ -122,16 +122,19 @@ avalio lite is a **Windows** app. Download the latest release from [GitHub](http
 | `avalio-lite-<version>-setup.exe` | You want a normal install, with a Start-menu entry, an optional desktop icon and an uninstaller. It doesn't need administrator rights. |
 | `avalio-lite-<version>-portable.exe` | You want one file you can run from anywhere, even a USB stick, without installing anything. |
 
+Each file comes with a `.sig` file. The app uses it to check its own updates; you don't need to download it.
+
 > [!NOTE]
-> The app is free, but it isn't in an app store, and its files aren't digitally signed. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. Alternatively, right-click the file → **Properties** → tick **Unblock**.
+> The app is free, but it isn't in an app store, and its files aren't signed with a Windows certificate. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. Alternatively, right-click the file → **Properties** → tick **Unblock**.
 
 ## Getting started
 
 1. **Choose a folder** for your marks when the app first opens (`Documents\avalio-lite` is suggested).
-2. **Add a class:** type its name in **+ New class** and press Enter.
-3. **Add pupils:** type each name in the last row and press Enter.
-4. **Add columns** with **+ Add column**, for example two tests and a final grade. Click a column's header to set its weight and maximum mark.
-5. **Type marks.** The final grade, the class average and the pass/fail count update straight away.
+2. **Enter your licence key**, the `BRN-…` key you received by email, and press **Activate**.
+3. **Add a class:** type its name in **+ New class** and press Enter.
+4. **Add pupils:** type each name in the last row and press Enter.
+5. **Add columns** with **+ Add column**, for example two tests and a final grade. Click a column's header to set its weight and maximum mark.
+6. **Type marks.** The final grade, the class average and the pass/fail count update straight away.
 
 The **[user guide](docs/user-guide.md)** explains every feature in detail: column types and how grades are calculated, Excel import, keyboard shortcuts, backups and PINs.
 
@@ -154,7 +157,7 @@ Each test counts for the share of the final grade you give it. Here is Ana's row
 ## Your data stays with you
 
 - Everything is kept in **one file, in a folder you choose**. You can move it later from Settings.
-- The app **never connects to the internet**. There are no accounts and no tracking.
+- The app connects to the internet **only to check its licence** (with Clavren, Breren's licence server) **and to look for a new version on GitHub**, which you can turn off. Your marks never leave your computer, and there is no tracking.
 - With a **PIN**, the file is encrypted with AES-256 (via [SQLCipher](https://www.zetetic.net/sqlcipher/)). Without the PIN, nobody can read it.
 - **Uninstalling never deletes your marks.**
 
@@ -167,6 +170,18 @@ Each test counts for the share of the final grade you give it. Here is Ana's row
 <summary><b>Is it free?</b></summary>
 
 Yes, for personal and non-commercial use, such as a teacher keeping their own classes. Commercial use, such as a company selling it or building it into a product, needs a revenue-share agreement. See the [PayBack License (PBL) v2.0](LICENSE).
+</details>
+
+<details>
+<summary><b>Do I need a licence?</b></summary>
+
+Yes. The app asks for a licence key (it looks like `BRN-XXXX-XXXX-XXXX-XXXX`) the first time it opens. It needs the internet to activate the key; after that, it checks once a day when the computer is online, and works offline for up to 30 days at a time. A key works on one computer (one Windows account) at a time. To move it to a new computer, write to support.avalio.lite@breren.com. Without a valid licence the app stays locked, but **Back up my data** still saves all your marks.
+</details>
+
+<details>
+<summary><b>How do I update?</b></summary>
+
+The app looks for a new version once a day and shows a bar above the sheet when one is out. Press **Update now**: it downloads the new version, checks that it really comes from avalio lite, installs it and opens again. Your marks and settings stay as they were. **Settings → Updates** turns the daily check off, or looks straight away.
 </details>
 
 <details>

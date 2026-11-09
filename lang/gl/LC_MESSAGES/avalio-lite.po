@@ -420,3 +420,63 @@ msgstr "Mover á esquerda (Ctrl+←)"
 
 msgid "Move right (Ctrl+→)"
 msgstr "Mover á dereita (Ctrl+→)"
+
+msgid "Enter your licence key"
+msgstr "Introduce a túa clave de licenza"
+
+msgid "Licence key"
+msgstr "Clave de licenza"
+
+msgid "Checking the key…"
+msgstr "Comprobando a clave…"
+
+msgid "Activate"
+msgstr "Activar"
+
+msgid "Check again"
+msgstr "Comprobar de novo"
+
+msgid "Your marks stay safe on this computer while the app is locked."
+msgstr "As túas notas seguen gardadas neste ordenador mentres a aplicación está bloqueada."
+
+msgid "Back up my data"
+msgstr "Facer copia dos meus datos"
+
+msgid "Licence"
+msgstr "Licenza"
+
+msgid "avalio-lite checks its licence once a day when this computer is online."
+msgstr "avalio-lite comproba a súa licenza unha vez ao día cando este ordenador ten conexión."
+
+msgid "Licensed"
+msgstr "Con licenza"
+
+msgid "Checking…"
+msgstr "Comprobando…"
+
+msgid "Check now"
+msgstr "Comprobar agora"
+
+msgid "What's new"
+msgstr "Novidades"
+
+msgid "Update now"
+msgstr "Actualizar agora"
+
+msgid "Hide"
+msgstr "Agochar"
+
+msgid "Updates"
+msgstr "Actualizacións"
+
+msgid "avalio-lite looks for new versions on GitHub once a day and tells you when one is out."
+msgstr "avalio-lite busca novas versións en GitHub unha vez ao día e avísache cando sae unha."
+
+msgid "Check for updates automatically"
+msgstr "Buscar actualizacións automaticamente"
+
+msgid "Downloading the update…"
+msgstr "Descargando a actualización…"
+
+msgid "Check for updates now"
+msgstr "Buscar actualizacións agora"

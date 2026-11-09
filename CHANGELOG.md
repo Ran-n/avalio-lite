@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/03 15:53:02.818726 )
+[//]: # (+ Revised: 	2026/11/09 14:03:45.965992 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,25 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- avalio-lite now needs a licence key: enter it once and the app works offline for up to 30 days between checks. While it is locked you can still back up your data
+- The app confirms its licence once a day in the background, warns a few days before it would lock, and shows the licence in Settings → Licence
+- The app looks for a new version once a day and says so in a bar above the sheet, with **What's new** and **Hide**; Settings → Updates turns this off, and its **Check now** looks straight away
+- **Update now** downloads the new version, checks its signature, and installs it (installed copy) or replaces the exe (portable copy), then opens the app again; the next start says which version it is now
+- Every release file comes with a `.sig` signature, which the app checks before using a download
+
+### Changed
+
+- Messages on the Settings page stay above the cards, so a result from a card further down is seen without scrolling up
+- The desktop tests tell the window it is the active one before each capture, so a window brought to the front during a run no longer changes the images
+- The desktop tests type text from the app's own thread, so no typed character is lost, and wait for a closed Windows dialog to go instead of a fixed half second
+- Desktop test baselines re-recorded at 125 % and 150 % for the licence, update and Settings screens
+
+### Fixed
+
+- A copy set up and updated in the same session now says "Updated to …" at its next start
 
 ## [0.5.0] - 2026-11-03
 

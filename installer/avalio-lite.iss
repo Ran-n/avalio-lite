@@ -31,6 +31,10 @@ ArchitecturesInstallIn64BitMode=x64compatible
 SetupIconFile=..\assets\logo.ico
 ; the exe carries the logo too (build.rs embeds it), so the uninstall entry shows it
 UninstallDisplayIcon={app}\avalio-lite.exe
+; The in-app updater runs this setup silently right after the app closes: the Restart Manager
+; closes a copy still exiting, and the app is opened again by the [Run] entry for /RELAUNCH=1.
+CloseApplications=force
+RestartApplications=no
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -44,6 +48,15 @@ Name: "{autodesktop}\avalio-lite"; Filename: "{app}\avalio-lite.exe"; Tasks: des
 
 [Run]
 Filename: "{app}\avalio-lite.exe"; Description: "{cm:LaunchProgram,avalio-lite}"; Flags: nowait postinstall skipifsilent
+; after an in-app update (a silent install), the app opens again by itself
+Filename: "{app}\avalio-lite.exe"; Flags: nowait; Check: Relaunch
 
 ; The database, logs and settings are deliberately not removed on uninstall:
 ; they live in folders the user chose and hold their students' records.
+
+[Code]
+// The in-app updater passes /RELAUNCH=1; a silent install for any other reason doesn't open the app.
+function Relaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

@@ -1,30 +1,39 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/11/03 08:27:17.282356
+//+ Revised: 	2026/11/09 10:42:02.323274
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
 #![allow(dead_code)]
 
 pub mod controls;
+pub mod http;
+pub mod licence;
 pub mod logo;
+pub mod win32;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use slint::ComponentHandle;
 
-use avalio_lite::app::{self, Session};
+use avalio_lite::app::{self, Ports, Session};
 use avalio_lite::i18n::Language;
 use avalio_lite::platform::config::{ConfigStore, DATABASE_FILE_NAME};
 use avalio_lite::platform::logging::FileLogger;
 use avalio_lite::state::AppState;
+use avalio_lite::update::install::Installation;
+use avalio_lite::update::source::FixedRelease;
+use avalio_lite::update::ui::Updates;
 use avalio_lite::window::dialogs::{Dialogs, FileKind};
+use avalio_lite::window::worker::InlineWorker;
+use clavren_client::Client;
+use licence::FakeLicence;
 use log::LevelFilter;
 use tempfile::TempDir;
 
@@ -44,6 +53,14 @@ impl Fixture {
 
     pub fn store(&self) -> ConfigStore {
         ConfigStore::in_dir(&self.path("config"))
+    }
+
+    /// Automatic update checks off, for tests that run the real `launch`: it would otherwise ask
+    /// the real GitHub, and no test touches the network.
+    pub fn without_update_checks(&self) {
+        let mut config = self.store().load().unwrap().unwrap();
+        config.preferences.check_updates = false;
+        self.store().save(&config).unwrap();
     }
 
     /// Where `set_up` puts the database.
@@ -126,6 +143,11 @@ pub fn hold_against_removal(path: &Path) -> File {
     OpenOptions::new().read(true).share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE).open(path).unwrap()
 }
 
+/// The key the tests sign releases with, in place of the real release key.
+pub fn release_key() -> ed25519_dalek::SigningKey {
+    ed25519_dalek::SigningKey::from_bytes(&[7; 32])
+}
+
 /// A logger of its own for each state; `AppState` needs a `'static` one.
 pub fn leaked_logger() -> &'static FileLogger {
     Box::leak(Box::new(FileLogger::new(LevelFilter::Info)))
@@ -145,6 +167,10 @@ pub struct FakeDialogs {
     pub questions: RefCell<Vec<String>>,
     pub folder_starts: RefCell<Vec<PathBuf>>,
     pub fatal: RefCell<Vec<String>>,
+    /// the pages opened in the browser, in order
+    pub links: RefCell<Vec<String>>,
+    /// set: opening a page fails with this reason
+    pub link_failure: RefCell<Option<String>>,
 }
 
 impl FakeDialogs {
@@ -189,6 +215,11 @@ impl Dialogs for FakeDialogs {
     fn show_fatal(&self, message: &str) {
         self.fatal.borrow_mut().push(message.to_owned());
     }
+
+    fn open_link(&self, url: &str) -> Result<(), String> {
+        self.links.borrow_mut().push(url.to_owned());
+        self.link_failure.borrow().clone().map_or(Ok(()), Err)
+    }
 }
 
 /// The interface language is process-wide, so UI tests that read or change texts take turns.
@@ -202,6 +233,10 @@ thread_local! {
 pub struct Ui {
     pub fixture: Fixture,
     pub dialogs: Rc<FakeDialogs>,
+    /// the computer's licence and the fake Clavren behind it; activated unless the test chose
+    pub licence: FakeLicence,
+    /// what "the latest release" answers; nothing until a test sets it
+    pub releases: Arc<FixedRelease>,
     pub session: Session,
     _turn: MutexGuard<'static, ()>,
 }
@@ -214,6 +249,44 @@ impl Ui {
 
     /// Like `open`, on a Windows set to `system_language`.
     pub fn open_in(fixture: Fixture, system_language: Language) -> Self {
+        let licence = FakeLicence::activated();
+        let client = licence.client();
+        Self::open_licensed(fixture, system_language, licence, client)
+    }
+
+    /// Opens the app on a computer that was never activated.
+    pub fn open_unlicensed(fixture: Fixture) -> Self {
+        let licence = FakeLicence::new();
+        let client = licence.client();
+        Self::open_licensed(fixture, Language::English, licence, client)
+    }
+
+    /// Opens the app with `client` for the licence of `licence`'s computer; background work runs at
+    /// once, since the headless backend has no event loop.
+    pub fn open_licensed(
+        fixture: Fixture,
+        system_language: Language,
+        licence: FakeLicence,
+        client: Arc<Client>,
+    ) -> Self {
+        Self::open_full(fixture, system_language, licence, client, None)
+    }
+
+    /// Opens the app as `installation` (a scratch exe, never the test's own), trusting updates
+    /// signed with `release_key()`; downloads go to the fixture's `downloads` folder.
+    pub fn open_installed(fixture: Fixture, installation: Installation) -> Self {
+        let licence = FakeLicence::activated();
+        let client = licence.client();
+        Self::open_full(fixture, Language::English, licence, client, Some(installation))
+    }
+
+    fn open_full(
+        fixture: Fixture,
+        system_language: Language,
+        licence: FakeLicence,
+        client: Arc<Client>,
+        installation: Option<Installation>,
+    ) -> Self {
         let turn = UI_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         HEADLESS.with(|ready| {
             if !*ready.borrow() {
@@ -222,10 +295,18 @@ impl Ui {
             }
         });
         let dialogs = Rc::new(FakeDialogs::default());
-        let session = app::open(fixture.store(), leaked_logger(), dialogs.clone(), system_language).unwrap();
+        let releases = Arc::new(FixedRelease::default());
+        let updates = Updates {
+            source: releases.clone(),
+            key: release_key().verifying_key(),
+            installation,
+            downloads: fixture.path("downloads"),
+        };
+        let ports = Ports { dialogs: dialogs.clone(), licence: client, worker: Rc::new(InlineWorker), updates };
+        let session = app::open(fixture.store(), leaked_logger(), ports, system_language).unwrap();
         // the size the app opens at (its preferred size); headless windows otherwise get a default
         session.window.window().set_size(slint::LogicalSize::new(1280.0, 800.0));
-        Self { fixture, dialogs, session, _turn: turn }
+        Self { fixture, dialogs, licence, releases, session, _turn: turn }
     }
 
     /// The app after first-run setup created a database in the fixture's `data` folder.

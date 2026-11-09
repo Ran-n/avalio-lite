@@ -9,6 +9,19 @@
 #   src\main.rs, src\app\mod.rs run(), src\window\dialogs.rs NativeDialogs
 #       the real exe and its Windows dialogs; every other test swaps in fake dialogs. Covered by the
 #       desktop test the_real_dialogs_open_and_close, which isn't part of this measurement.
+#   src\licence\mod.rs windows_client, src\window\worker.rs ThreadWorker
+#       the real licence client (DPAPI, HTTPS to Clavren) and the real background thread, which
+#       hands results back through the event loop the headless tests don't have. The tests use a
+#       fake Clavren and run the work inline; the real exe uses these.
+#   src\app\mod.rs launch, src\update\windows.rs, src\update\source.rs GitHub::new and configured
+#       the real exe's start: the registry entry the installer wrote, the real GitHub address, and
+#       starting the installer or the new exe as the app exits. The tests use a fixed release, a
+#       local server (GitHub's client itself is tested against one) and an installation they
+#       describe; the online test the_real_api_names_the_latest_release (--ignored) reads the real
+#       API. tests\entry_point*.rs run launch with automatic update checks off, so no test goes
+#       online.
+#   src\licence\ui.rs start, the worker refusing to start a thread
+#       only when Windows can't create one; the error is shown and logged.
 #   src\app\placement.rs work_area, GetCursorPos failing (it falls back to the primary screen)
 #       Windows only refuses it outside an interactive desktop, where the window can't open anyway.
 #   src\window\language.rs, the error log of select_bundled_translation

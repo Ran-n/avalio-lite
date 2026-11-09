@@ -1,0 +1,18 @@
+// New versions: the bar on the sheet and the Updates card in Settings. A global, like Backup, so
+// both reach the Rust side without passing each callback through AppWindow and Shell.
+
+export global Update {
+    // what the bar says ("avalio-lite 0.6.0 is available."); empty hides the bar
+    in property <string> notice;
+    // Settings → Updates → "Check for updates automatically"
+    in property <bool> automatic: true;
+    // a check (or, later, an update) is under way
+    in property <bool> busy;
+    callback check-now();
+    callback set-automatic(bool);
+    // the release page, with its notes and files
+    callback whats-new();
+    callback update-now();
+    // × on the bar: hides it for this version
+    callback hide();
+}

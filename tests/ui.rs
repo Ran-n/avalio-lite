@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/11/03 08:27:20.381525
+//+ Revised: 	2026/11/08 16:31:32.106834
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -11,17 +11,26 @@
 mod common;
 
 use std::fs;
+use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 
 use avalio_lite::backup;
 use avalio_lite::error::{AppError, Folder};
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{classes, columns, pupils};
 use avalio_lite::i18n::{self, Language, Message};
+use avalio_lite::licence::{Notice, SUPPORT_EMAIL};
 use avalio_lite::platform::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::platform::db;
-use avalio_lite::ui::{Gradebook, Section, SetupNotice, Theme, Tone};
+use avalio_lite::ui::{Gradebook, Licence, Section, SetupNotice, Theme, Tone, Update};
+use avalio_lite::update::install::{Copy as InstallCopy, Installation, Pending, new_exe, old_exe};
+use avalio_lite::update::signature;
+use avalio_lite::update::{Asset, Release, UpdateError};
 use avalio_lite::window::dialogs::FileKind;
+use clavren_client::Outcome;
+use clavren_client::clock::Clock;
 use common::controls;
+use common::licence::{FakeLicence, KEY, Mode};
 use common::{Fixture, Ui};
 use i_slint_backend_testing::ElementHandle;
 use slint::platform::{Key, PointerEventButton, WindowEvent};
@@ -210,6 +219,29 @@ fn open_settings(ui: &Ui) {
     assert!(shows(ui, "Galego"), "the settings page is showing");
 }
 
+/// The settings page, scrolled from the top a step at a time until a control labelled `label`
+/// is on screen (the test backend only sees what is on screen).
+fn scroll_settings_to(ui: &Ui, label: &str) {
+    let page = find(ui, "Galego");
+    // a point inside the page that stays on it while it scrolls
+    let corner = page.absolute_position();
+    let position = slint::LogicalPosition::new(corner.x + page.size().width / 2.0, corner.y);
+    let wheel = |delta_y: f32| {
+        ui.session.window.window().dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y });
+    };
+    wheel(10_000.0);
+    for _ in 0..80 {
+        if shows(ui, label) {
+            // and a little further, so the whole control is on screen to be clicked
+            wheel(-120.0);
+            assert!(shows(ui, label), "{label:?} stays on screen");
+            return;
+        }
+        wheel(-60.0);
+    }
+    panic!("scrolled the whole settings page without finding {label:?}");
+}
+
 /// The settings page, scrolled down to the PIN card (the shortcuts card sits above it).
 fn open_pin_settings(ui: &Ui) {
     open_settings(ui);
@@ -220,7 +252,7 @@ fn open_pin_settings(ui: &Ui) {
 /// The settings page, scrolled down to the database and log folders.
 fn open_folder_settings(ui: &Ui) {
     open_settings(ui);
-    find(ui, "Galego").scroll(0.0, -1200.0);
+    find(ui, "Galego").scroll(0.0, -10_000.0);
     assert!(shows(ui, "Open another database…"), "scrolled to the folders");
 }
 
@@ -1077,7 +1109,7 @@ fn switching_to_an_encrypted_database_locks() {
 /// The settings page, scrolled down to the Backup card.
 fn open_backup_settings(ui: &Ui) {
     open_settings(ui);
-    find(ui, "Galego").scroll(0.0, -1200.0);
+    find(ui, "Galego").scroll(0.0, -10_000.0);
     assert!(shows(ui, "Export everything…"), "scrolled to the Backup card");
 }
 
@@ -2907,4 +2939,739 @@ fn deleting_a_pupil_who_has_joined_a_class_meanwhile_is_refused_and_shown() {
     click(&ui, "Delete Carla");
     assert_eq!(error_on_screen(&ui), error_text(&AppError::NotEditable));
     assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2, "nobody was deleted");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Licence screen
+
+/// A database, on a computer whose licence key was never activated.
+fn unlicensed() -> Ui {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    Ui::open_unlicensed(fixture)
+}
+
+/// A database, on a computer with this licence.
+fn with_licence(licence: FakeLicence) -> Ui {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let client = licence.client();
+    Ui::open_licensed(fixture, Language::English, licence, client)
+}
+
+fn licence(ui: &Ui) -> Licence<'_> {
+    ui.session.window.global::<Licence>()
+}
+
+fn licence_text(notice: &Notice) -> String {
+    i18n::licence_notice(Language::English, notice)
+}
+
+fn licence_calls(ui: &Ui) -> usize {
+    ui.licence.server.calls.load(Ordering::SeqCst)
+}
+
+fn activate(ui: &Ui, key: &str) {
+    type_into(ui, "Licence key", key);
+    click(ui, "Activate");
+}
+
+#[test]
+fn an_unlicensed_start_shows_the_licence_page() {
+    let ui = unlicensed();
+    assert!(!licence(&ui).get_licensed());
+    assert!(shows(&ui, "Licence key"));
+    assert!(shows_text(&ui, &licence_text(&Notice::AskForKey)));
+    assert!(!shows(&ui, "Settings"), "the app itself stays hidden");
+}
+
+#[test]
+fn an_activated_computer_opens_on_the_sheet() {
+    let ui = Ui::with_database();
+    assert!(licence(&ui).get_licensed());
+    assert!(shows(&ui, "Settings"));
+    assert!(!shows(&ui, "Licence key"));
+}
+
+#[test]
+fn activating_a_valid_key_opens_the_sheet() {
+    let ui = unlicensed();
+    activate(&ui, KEY);
+    assert!(licence(&ui).get_licensed());
+    assert!(shows(&ui, "Settings"));
+    assert!(licence(&ui).get_key().is_empty(), "the key isn't kept on screen");
+}
+
+#[test]
+fn enter_in_the_key_field_activates() {
+    let ui = unlicensed();
+    type_into(&ui, "Licence key", KEY);
+    press_enter(&ui);
+    assert!(licence(&ui).get_licensed());
+}
+
+#[test]
+fn an_invalid_key_keeps_the_page_and_the_text() {
+    let ui = unlicensed();
+    ui.licence.server.set_mode(Mode::Refuse("invalid_key", 404));
+    activate(&ui, KEY);
+    assert!(!licence(&ui).get_licensed());
+    assert!(shows_text(&ui, &licence_text(&Notice::InvalidKey)));
+    assert_eq!(licence(&ui).get_key(), KEY, "the key stays, to be corrected");
+}
+
+#[test]
+fn a_mistyped_key_is_refused_without_going_online() {
+    let ui = unlicensed();
+    activate(&ui, "BRN-79YN-44XQ");
+    assert!(shows_text(&ui, &licence_text(&Notice::InvalidKey)));
+    assert_eq!(licence_calls(&ui), 0);
+}
+
+#[test]
+fn a_key_in_use_elsewhere_names_the_support_email() {
+    let ui = unlicensed();
+    ui.licence.server.set_mode(Mode::Refuse("already_activated", 409));
+    activate(&ui, KEY);
+    let notice = licence(&ui).get_notice().to_string();
+    assert_eq!(notice, licence_text(&Notice::InUseElsewhere));
+    assert!(notice.contains(SUPPORT_EMAIL));
+}
+
+#[test]
+fn an_unreachable_server_says_so_and_allows_another_try() {
+    let ui = unlicensed();
+    ui.licence.server.set_mode(Mode::Offline);
+    activate(&ui, KEY);
+    assert!(shows_text(&ui, &licence_text(&Notice::Unreachable)));
+    assert!(!licence(&ui).get_busy());
+    assert_eq!(find(&ui, "Activate").accessible_enabled(), Some(true));
+
+    ui.licence.server.set_mode(Mode::Normal);
+    click(&ui, "Activate");
+    assert!(licence(&ui).get_licensed());
+}
+
+#[test]
+fn too_many_attempts_say_how_long_to_wait() {
+    let ui = unlicensed();
+    ui.licence.server.set_mode(Mode::Refuse("rate_limited", 429));
+    activate(&ui, KEY);
+    assert!(shows_text(&ui, &licence_text(&Notice::Wait { minutes: 2 })));
+}
+
+#[test]
+fn activate_is_disabled_while_the_key_is_empty() {
+    let ui = unlicensed();
+    assert_eq!(find(&ui, "Activate").accessible_enabled(), Some(false));
+    click(&ui, "Activate");
+    assert_eq!(licence_calls(&ui), 0);
+    type_into(&ui, "Licence key", "B");
+    assert_eq!(find(&ui, "Activate").accessible_enabled(), Some(true));
+}
+
+#[test]
+fn a_licence_that_cannot_be_saved_says_so() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let computer = FakeLicence::new();
+    let client = computer.failing_client();
+    let ui = Ui::open_licensed(fixture, Language::English, computer, client);
+    activate(&ui, KEY);
+    assert!(!licence(&ui).get_licensed());
+    assert!(licence(&ui).get_notice().starts_with("The licence couldn't be saved on this computer:"));
+}
+
+#[test]
+fn a_revoked_licence_at_start_asks_for_a_new_key() {
+    let computer = FakeLicence::activated();
+    computer.server.set_mode(Mode::Refuse("licence_revoked", 403));
+    assert_eq!(computer.client().check().unwrap(), Outcome::Revoked);
+    computer.server.set_mode(Mode::Normal);
+
+    let ui = with_licence(computer);
+    assert!(!licence(&ui).get_licensed());
+    assert!(shows_text(&ui, &licence_text(&Notice::Revoked)));
+    activate(&ui, KEY);
+    assert!(licence(&ui).get_licensed(), "a new key activates");
+}
+
+#[test]
+fn thirty_days_offline_offers_to_check_again_and_a_check_opens_the_sheet() {
+    let computer = FakeLicence::activated();
+    computer.advance(chrono::TimeDelta::days(31));
+    let ui = with_licence(computer);
+    assert!(shows_text(&ui, &licence_text(&Notice::NeedsInternet)));
+    assert!(!shows(&ui, "Licence key"), "this computer has its activation; it needs a check, not a key");
+
+    ui.licence.server.set_mode(Mode::Offline);
+    click(&ui, "Check again");
+    assert!(shows_text(&ui, &licence_text(&Notice::Unreachable)));
+    assert!(!shows(&ui, "Licence key"));
+
+    ui.licence.server.set_mode(Mode::Normal);
+    click(&ui, "Check again");
+    assert!(licence(&ui).get_licensed());
+}
+
+#[test]
+fn an_ended_licence_says_so_and_offers_to_check_again() {
+    let computer = FakeLicence::activated();
+    computer.server.set_mode(Mode::Refuse("licence_expired", 403));
+    assert!(matches!(computer.client().check().unwrap(), Outcome::Expired { .. }));
+    let ui = with_licence(computer);
+    let notice = licence(&ui).get_notice().to_string();
+    assert!(notice.starts_with("Your licence") && notice.contains(SUPPORT_EMAIL), "{notice}");
+    assert!(shows(&ui, "Check again"));
+}
+
+#[test]
+fn back_up_my_data_saves_a_backup_from_the_licence_page() {
+    let ui = unlicensed();
+    let destination = ui.fixture.path("backups").join("mine.avalio");
+    fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    ui.dialogs.save_file_next(Some(&destination));
+    click(&ui, "Back up my data");
+    assert!(db::open_existing(&destination, None).is_ok(), "a backup that opens");
+    let path = destination.display().to_string();
+    let saved = english(&Message::BackupExported { path: &path });
+    assert_eq!(ui.session.window.get_status_message(), saved);
+    assert!(shows_text(&ui, &saved), "said on the licence page");
+
+    activate(&ui, KEY);
+    assert!(ui.session.window.get_status_message().is_empty(), "the sheet starts without it");
+}
+
+#[test]
+fn a_pin_database_asks_for_the_pin_before_the_licence() {
+    let ui = Ui::open_unlicensed(encrypted_fixture());
+    assert!(ui.session.window.get_locked());
+    assert!(!shows(&ui, "Licence key"));
+    unlock(&ui);
+    assert!(shows(&ui, "Licence key"));
+
+    with_control(&ui, "l");
+    assert!(ui.session.window.get_locked(), "Ctrl+L still locks from the licence page");
+}
+
+#[test]
+fn the_licence_page_is_in_galician() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let computer = FakeLicence::new();
+    let client = computer.client();
+    let ui = Ui::open_licensed(fixture, Language::Galician, computer, client);
+    assert!(shows_text(&ui, &common::galician("Enter your licence key")));
+    assert!(shows(&ui, &common::galician("Activate")));
+    assert!(shows(&ui, &common::galician("Back up my data")));
+    assert_eq!(licence(&ui).get_notice(), i18n::licence_notice(Language::Galician, &Notice::AskForKey));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Licence while the app runs
+
+/// The class "1A" of `seeded`, on a computer with this licence, in `language`.
+fn seeded_with(licence: FakeLicence, language: Language) -> Ui {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let class = classes::create_class(connection, "1A").unwrap();
+        pupils::add_new_pupil(connection, class, "Ana").unwrap();
+        let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
+        columns::rename_column(connection, exam, "Exam").unwrap();
+    }
+    state.shutdown();
+    let client = licence.client();
+    Ui::open_licensed(fixture, language, licence, client)
+}
+
+/// What the daily check would hand the window.
+fn deliver(ui: &Ui, outcome: Outcome) {
+    avalio_lite::licence::ui::show(&ui.session.window, &ui.licence.client(), &Ok(outcome));
+}
+
+fn valid() -> Outcome {
+    Outcome::Licensed { licence_expires_at: None, offline_until: chrono::Utc::now() + chrono::TimeDelta::days(30) }
+}
+
+/// The settings page, scrolled down to the Licence card.
+fn open_licence_settings(ui: &Ui) {
+    open_settings(ui);
+    scroll_settings_to(ui, "Check now");
+}
+
+#[test]
+fn a_revocation_while_open_shows_the_licence_page_and_a_renewal_brings_the_sheet_back() {
+    let ui = seeded_with(FakeLicence::activated(), Language::English);
+    assert_eq!(gradebook(&ui).get_class_name(), "1A");
+    deliver(&ui, Outcome::Revoked);
+    assert!(!licence(&ui).get_licensed());
+    assert!(shows_text(&ui, &licence_text(&Notice::Revoked)));
+    assert!(!shows(&ui, "Settings"));
+
+    deliver(&ui, valid());
+    assert!(licence(&ui).get_licensed());
+    assert!(shows(&ui, "Settings"));
+    assert_eq!(gradebook(&ui).get_class_name(), "1A", "back on the same class");
+}
+
+#[test]
+fn a_mark_being_typed_is_kept_when_the_licence_screen_appears() {
+    let ui = seeded_with(FakeLicence::activated(), Language::English);
+    type_into(&ui, "Ana, Exam", "7");
+    deliver(&ui, Outcome::Expired { at: None });
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM cells"), 1, "the mark was saved as it was typed");
+    deliver(&ui, valid());
+    assert_eq!(cell_text(&ui, 0, 0), "7");
+}
+
+#[test]
+fn the_sheet_warns_five_days_before_the_licence_needs_the_internet() {
+    let computer = FakeLicence::at(chrono::Utc::now() - chrono::TimeDelta::days(26)).activate();
+    let ui = seeded_with(computer, Language::English);
+    let status = ui.session.window.get_status_message().to_string();
+    assert!(status.starts_with("Connect to the internet by "), "{status}");
+    assert!(shows_text(&ui, &status), "on the sheet");
+}
+
+#[test]
+fn the_sheet_warns_two_weeks_before_the_licence_ends() {
+    let now = chrono::Utc::now();
+    let computer = FakeLicence::at(now);
+    computer.ends_at(Some(now + chrono::TimeDelta::days(10)));
+    let ui = seeded_with(computer.activate(), Language::English);
+    let status = ui.session.window.get_status_message().to_string();
+    assert!(status.starts_with("Your licence ends on ") && status.contains(SUPPORT_EMAIL), "{status}");
+}
+
+#[test]
+fn a_licence_with_time_to_spare_shows_no_warning() {
+    let ui = seeded_with(FakeLicence::at(chrono::Utc::now()).activate(), Language::English);
+    assert!(ui.session.window.get_status_message().is_empty());
+}
+
+#[test]
+fn the_licence_card_shows_permanent_and_until_when_it_works_offline() {
+    let computer = FakeLicence::activated();
+    let offline = computer.clock.now() + chrono::TimeDelta::days(30);
+    let ui = seeded_with(computer, Language::English);
+    open_licence_settings(&ui);
+    assert!(shows(&ui, "Check now"), "scrolled to the Licence card");
+    assert!(shows_text(&ui, "Licensed"));
+    assert_eq!(licence(&ui).get_term(), "Permanent");
+    let day = i18n::licence_day(offline.with_timezone(&chrono::Local).date_naive());
+    assert_eq!(licence(&ui).get_offline_until(), format!("Works offline until {day}"));
+}
+
+#[test]
+fn the_licence_card_shows_the_day_a_licence_ends() {
+    let computer = FakeLicence::new();
+    let end = computer.clock.now() + chrono::TimeDelta::days(200);
+    computer.ends_at(Some(end));
+    let ui = seeded_with(computer.activate(), Language::English);
+    let day = i18n::licence_day(end.with_timezone(&chrono::Local).date_naive());
+    assert_eq!(licence(&ui).get_term(), format!("Until {day}"));
+}
+
+#[test]
+fn check_now_confirms_the_licence() {
+    let ui = seeded_with(FakeLicence::activated(), Language::English);
+    open_licence_settings(&ui);
+    let before = licence_calls(&ui);
+    click(&ui, "Check now");
+    assert!(licence_calls(&ui) > before, "it went online");
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::LicenceConfirmed));
+    assert!(licence(&ui).get_licensed());
+    assert!(!licence(&ui).get_busy());
+}
+
+#[test]
+fn check_now_without_internet_says_so_and_keeps_the_app_running() {
+    let ui = seeded_with(FakeLicence::activated(), Language::English);
+    open_licence_settings(&ui);
+    ui.licence.server.set_mode(Mode::Offline);
+    click(&ui, "Check now");
+    assert_eq!(error_on_screen(&ui), licence_text(&Notice::Unreachable));
+    assert!(licence(&ui).get_licensed(), "the cached token still holds");
+}
+
+#[test]
+fn check_now_finding_the_licence_revoked_locks_the_app() {
+    let ui = seeded_with(FakeLicence::activated(), Language::English);
+    open_licence_settings(&ui);
+    ui.licence.server.set_mode(Mode::Refuse("licence_revoked", 403));
+    click(&ui, "Check now");
+    assert!(!licence(&ui).get_licensed());
+    assert!(shows(&ui, "Licence key"), "a revoked activation is cleared, so a new key can go in");
+}
+
+#[test]
+fn the_licence_card_and_warning_are_in_galician() {
+    let computer = FakeLicence::at(chrono::Utc::now() - chrono::TimeDelta::days(26)).activate();
+    let ui = seeded_with(computer, Language::Galician);
+    let status = ui.session.window.get_status_message().to_string();
+    assert!(status.starts_with("Conéctate a internet antes do "), "{status}");
+    click(&ui, &common::galician("Settings"));
+    scroll_settings_to(&ui, &common::galician("Check now"));
+    assert!(shows_text(&ui, &common::galician("Licensed")));
+    assert_eq!(licence(&ui).get_term(), "Permanente");
+    assert!(licence(&ui).get_offline_until().starts_with("Funciona sen conexión ata o "));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Updates
+
+fn update(ui: &Ui) -> Update<'_> {
+    ui.session.window.global::<Update>()
+}
+
+fn release(version: &str) -> Release {
+    Release {
+        version: semver::Version::parse(version).unwrap(),
+        page: format!("https://github.com/Ran-n/avalio-lite/releases/tag/v{version}"),
+        assets: Vec::new(),
+    }
+}
+
+/// A version above this build's.
+fn next_version() -> String {
+    let mut next = avalio_lite::update::current_version();
+    next.minor += 1;
+    next.patch = 0;
+    next.to_string()
+}
+
+/// What the app does by itself at start and hourly.
+fn look_if_due(ui: &Ui) {
+    avalio_lite::update::ui::look_if_due(&ui.session.window, &ui.session.updater);
+}
+
+/// The settings page, scrolled down to the Updates card.
+fn open_update_settings(ui: &Ui) {
+    open_settings(ui);
+    scroll_settings_to(ui, "Check for updates now");
+}
+
+#[test]
+fn a_newer_release_shows_the_update_bar() {
+    let ui = seeded();
+    let version = next_version();
+    ui.releases.set(Ok(release(&version)));
+    look_if_due(&ui);
+    assert_eq!(update(&ui).get_notice(), english(&Message::UpdateAvailable { version: &version }));
+    assert!(shows_text(&ui, &update(&ui).get_notice()));
+    assert!(shows(&ui, "What's new") && shows(&ui, "Update now") && shows(&ui, "Hide"));
+    assert!(saved_preferences(&ui.fixture).last_update_check.is_some(), "the time of the check is kept");
+}
+
+#[test]
+fn the_same_version_shows_nothing() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(env!("CARGO_PKG_VERSION"))));
+    look_if_due(&ui);
+    assert!(update(&ui).get_notice().is_empty());
+    assert!(!shows(&ui, "Update now"));
+    assert!(ui.session.window.get_status_message().is_empty(), "an automatic check says nothing");
+}
+
+#[test]
+fn no_second_check_before_a_day_has_passed() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(env!("CARGO_PKG_VERSION"))));
+    look_if_due(&ui);
+    look_if_due(&ui);
+    assert_eq!(ui.releases.calls(), 1);
+}
+
+#[test]
+fn an_automatic_check_that_fails_shows_nothing_and_waits_a_day() {
+    let ui = seeded();
+    ui.releases.set(Err(UpdateError::Network("offline".into())));
+    look_if_due(&ui);
+    assert!(ui.session.window.get_error_message().is_empty());
+    assert!(update(&ui).get_notice().is_empty());
+    look_if_due(&ui);
+    assert_eq!(ui.releases.calls(), 1, "no retry within the day");
+}
+
+#[test]
+fn hiding_the_bar_skips_that_version_but_not_the_next() {
+    let ui = seeded();
+    let version = next_version();
+    ui.releases.set(Ok(release(&version)));
+    look_if_due(&ui);
+    click(&ui, "Hide");
+    assert!(update(&ui).get_notice().is_empty());
+    assert_eq!(saved_preferences(&ui.fixture).skipped_update.as_deref(), Some(version.as_str()));
+
+    ui.session.state.borrow_mut().set_last_update_check(chrono::Utc::now() - chrono::TimeDelta::days(2)).unwrap();
+    look_if_due(&ui);
+    assert!(update(&ui).get_notice().is_empty(), "the hidden version stays hidden");
+
+    let mut later = semver::Version::parse(&version).unwrap();
+    later.patch += 1;
+    ui.releases.set(Ok(release(&later.to_string())));
+    ui.session.state.borrow_mut().set_last_update_check(chrono::Utc::now() - chrono::TimeDelta::days(2)).unwrap();
+    look_if_due(&ui);
+    assert!(update(&ui).get_notice().contains(&later.to_string()));
+}
+
+#[test]
+fn whats_new_and_update_now_open_the_release_page() {
+    let ui = seeded();
+    let version = next_version();
+    ui.releases.set(Ok(release(&version)));
+    look_if_due(&ui);
+    click(&ui, "What's new");
+    click(&ui, "Update now");
+    let page = release(&version).page;
+    assert_eq!(*ui.dialogs.links.borrow(), vec![page.clone(), page]);
+}
+
+#[test]
+fn a_page_that_cannot_be_opened_says_so() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(&next_version())));
+    look_if_due(&ui);
+    *ui.dialogs.link_failure.borrow_mut() = Some("no browser".into());
+    click(&ui, "What's new");
+    assert_eq!(error_on_screen(&ui), english(&Message::LinkFailed { error: "no browser" }));
+}
+
+#[test]
+fn check_now_says_the_app_is_up_to_date() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(env!("CARGO_PKG_VERSION"))));
+    open_update_settings(&ui);
+    click(&ui, "Check for updates now");
+    assert_eq!(
+        ui.session.window.get_status_message(),
+        english(&Message::UpToDate { version: env!("CARGO_PKG_VERSION") })
+    );
+    assert!(!update(&ui).get_busy());
+}
+
+#[test]
+fn check_now_reports_a_failure() {
+    let ui = seeded();
+    ui.releases.set(Err(UpdateError::RateLimited));
+    open_update_settings(&ui);
+    click(&ui, "Check for updates now");
+    let reason = UpdateError::RateLimited.to_string();
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateCheckFailed { reason: &reason }));
+}
+
+#[test]
+fn check_now_shows_even_a_hidden_version() {
+    let ui = seeded();
+    let version = next_version();
+    ui.session.state.borrow_mut().skip_update(&version).unwrap();
+    ui.releases.set(Ok(release(&version)));
+    open_update_settings(&ui);
+    click(&ui, "Check for updates now");
+    assert!(update(&ui).get_notice().contains(&version));
+}
+
+#[test]
+fn turning_automatic_checks_off_is_saved_and_stops_them() {
+    let ui = seeded();
+    open_update_settings(&ui);
+    click(&ui, "Check for updates automatically");
+    assert!(!update(&ui).get_automatic());
+    assert!(!saved_preferences(&ui.fixture).check_updates);
+    ui.releases.set(Ok(release(&next_version())));
+    look_if_due(&ui);
+    assert_eq!(ui.releases.calls(), 0, "no automatic check while turned off");
+
+    click(&ui, "Check for updates now");
+    assert_eq!(ui.releases.calls(), 1, "Check now still works");
+}
+
+#[test]
+fn the_update_setting_is_remembered() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_check_updates(false).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    assert!(!update(&ui).get_automatic());
+}
+
+#[test]
+fn the_update_bar_and_card_are_in_galician() {
+    let ui = seeded_with(FakeLicence::activated(), Language::Galician);
+    let version = next_version();
+    ui.releases.set(Ok(release(&version)));
+    look_if_due(&ui);
+    assert_eq!(
+        update(&ui).get_notice(),
+        i18n::text(Language::Galician, &Message::UpdateAvailable { version: &version })
+    );
+    assert!(shows(&ui, &common::galician("What's new")));
+    assert!(shows(&ui, &common::galician("Update now")));
+    click(&ui, &common::galician("Settings"));
+    scroll_settings_to(&ui, &common::galician("Check for updates now"));
+    assert!(shows(&ui, &common::galician("Check for updates automatically")));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Update now
+
+/// A portable copy at `<scratch>/app/avalio-lite.exe`, and a release of the next version whose
+/// portable exe (signed with the tests' release key, or `tamper`ed after signing) is served locally.
+fn portable_with_release(tamper: bool) -> (Ui, PathBuf, Vec<u8>) {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let folder = fixture.path("app");
+    fs::create_dir_all(&folder).unwrap();
+    let exe = folder.join("avalio-lite.exe");
+    fs::write(&exe, b"old version").unwrap();
+
+    let version = next_version();
+    let name = format!("avalio-lite-{version}-portable.exe");
+    let content = format!("avalio-lite {version}").into_bytes();
+    let hash = blake3::hash(&content).to_hex().to_string();
+    let sig = signature::sig_line(&signature::sign(&common::release_key(), &name, &hash), &name);
+    let served = if tamper { b"something else".to_vec() } else { content.clone() };
+    let base = common::http::serve(std::collections::HashMap::from([
+        (format!("/{name}"), common::http::file(&served)),
+        (format!("/{name}.sig"), common::http::file(sig.as_bytes())),
+    ]));
+    let assets = vec![
+        Asset { name: name.clone(), url: format!("{base}/{name}"), size: served.len() as u64 },
+        Asset { name: format!("{name}.sig"), url: format!("{base}/{name}.sig"), size: sig.len() as u64 },
+    ];
+
+    let installation = Installation { exe: exe.clone(), copy: InstallCopy::Portable(exe.clone()) };
+    let ui = Ui::open_installed(fixture, installation);
+    ui.releases.set(Ok(Release { assets, ..release(&version) }));
+    look_if_due(&ui);
+    assert!(!update(&ui).get_notice().is_empty(), "the bar shows the new version");
+    (ui, exe, content)
+}
+
+#[test]
+fn update_now_downloads_verifies_and_swaps_the_portable_exe() {
+    let (ui, exe, content) = portable_with_release(false);
+    update(&ui).invoke_update_now();
+    assert_eq!(fs::read(&exe).unwrap(), content, "the new exe is in place");
+    assert_eq!(fs::read(old_exe(&exe)).unwrap(), b"old version", "the old one waits to be deleted");
+    assert_eq!(ui.session.updater.pending(), Some(Pending::StartNew(exe)));
+    assert!(ui.session.window.get_error_message().is_empty());
+}
+
+/// Found end to end on 2026-11-08: a copy set up and updated in the same session had never noted
+/// its version (the setup screen has no settings to save it in), so the new version took its start
+/// for a first run and didn't say "Updated to".
+#[test]
+fn an_update_in_the_first_session_still_says_so_at_the_next_start() {
+    let (ui, _, _) = portable_with_release(false);
+    assert_eq!(saved_preferences(&ui.fixture).last_run_version, None, "nothing noted yet");
+    update(&ui).invoke_update_now();
+    assert!(ui.session.updater.pending().is_some());
+    let version = env!("CARGO_PKG_VERSION");
+    assert_eq!(saved_preferences(&ui.fixture).last_run_version.as_deref(), Some(version), "noted before closing");
+}
+
+#[test]
+fn a_refused_update_notes_nothing() {
+    let (ui, _, _) = portable_with_release(true);
+    update(&ui).invoke_update_now();
+    assert_eq!(saved_preferences(&ui.fixture).last_run_version, None);
+}
+
+#[test]
+fn a_download_that_fails_its_signature_check_is_refused() {
+    let (ui, exe, _) = portable_with_release(true);
+    update(&ui).invoke_update_now();
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotVerified));
+    assert_eq!(fs::read(&exe).unwrap(), b"old version", "nothing changed");
+    assert!(!new_exe(&exe).exists(), "the bad download is deleted");
+    assert_eq!(ui.session.updater.pending(), None);
+    assert!(!update(&ui).get_busy());
+}
+
+#[test]
+fn a_portable_copy_in_a_folder_that_cannot_be_written_says_so_before_downloading() {
+    let (ui, exe, _) = portable_with_release(false);
+    // the folder goes away: nothing can be written there any more
+    fs::remove_dir_all(exe.parent().unwrap()).unwrap();
+    update(&ui).invoke_update_now();
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateFolderReadOnly));
+    assert_eq!(ui.session.updater.pending(), None);
+}
+
+#[test]
+fn a_release_without_this_copys_file_says_so() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let exe = fixture.path("avalio-lite.exe");
+    let ui = Ui::open_installed(fixture, Installation { exe: exe.clone(), copy: InstallCopy::Installed });
+    ui.releases.set(Ok(release(&next_version())));
+    look_if_due(&ui);
+    update(&ui).invoke_update_now();
+    let file = format!("avalio-lite-{}-setup.exe", next_version());
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateFileMissing { file: &file }));
+}
+
+#[test]
+fn a_copy_that_cannot_tell_where_it_runs_opens_the_release_page() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(&next_version())));
+    look_if_due(&ui);
+    update(&ui).invoke_update_now();
+    assert_eq!(*ui.dialogs.links.borrow(), vec![release(&next_version()).page]);
+}
+
+#[test]
+fn after_an_update_the_new_version_says_so_once() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.note_version("0.0.1").unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
+    let version = env!("CARGO_PKG_VERSION");
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::UpdatedTo { version }));
+    assert_eq!(saved_preferences(&ui.fixture).last_run_version.as_deref(), Some(version));
+
+    view_clear(&ui);
+    avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
+    assert!(ui.session.window.get_status_message().is_empty(), "only once");
+}
+
+#[test]
+fn a_first_run_is_no_update() {
+    let ui = Ui::with_database();
+    avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
+    assert!(ui.session.window.get_status_message().is_empty());
+}
+
+#[test]
+fn an_update_that_could_not_start_is_said_at_the_next_start() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_update_failed(Some("access denied".into())).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotStarted { reason: "access denied" }));
+    assert_eq!(saved_preferences(&ui.fixture).update_failed, None, "said once");
+}
+
+#[test]
+fn after_start_removes_what_an_update_left() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let exe = fixture.path("avalio-lite.exe");
+    fs::write(old_exe(&exe), b"old").unwrap();
+    let ui = Ui::open_installed(fixture, Installation { exe: exe.clone(), copy: InstallCopy::Portable(exe.clone()) });
+    avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
+    assert!(!old_exe(&exe).exists());
+}
+
+fn view_clear(ui: &Ui) {
+    ui.session.window.set_status_message(SharedString::new());
+    ui.session.window.set_error_message(SharedString::new());
 }

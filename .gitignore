@@ -17,3 +17,6 @@ mutants.out*/
 # exports and backups a manual run may drop here
 *.xlsx
 *.avalio
+
+# a release signing key must never be committed; the real one lives outside the repo
+*.key

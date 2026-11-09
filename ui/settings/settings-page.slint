@@ -5,6 +5,8 @@ import { AppearanceCard } from "appearance-card.slint";
 import { BackupCard } from "backup-card.slint";
 import { DatabaseCard } from "database-card.slint";
 import { LanguageCard } from "language-card.slint";
+import { LicenceCard } from "licence-card.slint";
+import { UpdatesCard } from "updates-card.slint";
 import { LogsCard } from "logs-card.slint";
 import { PinCard } from "pin-card.slint";
 import { ShortcutsCard } from "shortcuts-card.slint";
@@ -28,57 +30,75 @@ export component SettingsPage inherits Rectangle {
     callback change-pin();
     callback remove-pin();
 
-    ScrollView {
-        VerticalLayout {
-            padding: 32px;
-            padding-top: 26px;
-            spacing: 16px;
+    // The banners stay above the scrolling cards, so a message from a card far down the page is
+    // seen without the page moving away from where the user is working.
+    VerticalLayout {
+        if root.error-message != "" || root.status-message != "": HorizontalLayout {
+            padding-left: 32px;
+            padding-top: 16px;
+            padding-bottom: 4px;
             alignment: start;
-            Text {
-                text: @tr("Settings");
-                font-size: Theme.text-xl;
-                font-weight: 600;
-                color: Theme.text;
+            VerticalLayout {
+                width: 640px;
+                spacing: 8px;
+                if root.error-message != "": MessageBanner {
+                    message: root.error-message;
+                    is-error: true;
+                }
+                if root.status-message != "": MessageBanner {
+                    message: root.status-message;
+                    is-error: false;
+                }
             }
-            HorizontalLayout {
+        }
+
+        ScrollView {
+            VerticalLayout {
+                padding: 32px;
+                padding-top: 26px;
+                spacing: 16px;
                 alignment: start;
-                VerticalLayout {
-                    width: 640px;
-                    spacing: 16px;
-                    MessageBanner {
-                        message: root.error-message;
-                        is-error: true;
-                    }
-                    MessageBanner {
-                        message: root.status-message;
-                        is-error: false;
-                    }
-                    AppearanceCard {
-                        choose-theme(dark) => { root.choose-theme(dark); }
-                    }
-                    LanguageCard {
-                        language-code: root.language-code;
-                        choose-language(code) => { root.choose-language(code); }
-                    }
-                    ShortcutsCard { }
-                    PinCard {
-                        pin-set: root.pin-set;
-                        current <=> root.pin-current;
-                        new-pin <=> root.pin-new;
-                        repeat <=> root.pin-repeat;
-                        set-pin => { root.set-pin(); }
-                        change-pin => { root.change-pin(); }
-                        remove-pin => { root.remove-pin(); }
-                    }
-                    DatabaseCard {
-                        database-path: root.database-path;
-                        move-database => { root.move-database(); }
-                        switch-database => { root.switch-database(); }
-                    }
-                    BackupCard { }
-                    LogsCard {
-                        log-folder: root.log-folder;
-                        move-logs => { root.move-logs(); }
+                Text {
+                    text: @tr("Settings");
+                    font-size: Theme.text-xl;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    VerticalLayout {
+                        width: 640px;
+                        spacing: 16px;
+                        AppearanceCard {
+                            choose-theme(dark) => { root.choose-theme(dark); }
+                        }
+                        LanguageCard {
+                            language-code: root.language-code;
+                            choose-language(code) => { root.choose-language(code); }
+                        }
+                        ShortcutsCard { }
+                        PinCard {
+                            pin-set: root.pin-set;
+                            current <=> root.pin-current;
+                            new-pin <=> root.pin-new;
+                            repeat <=> root.pin-repeat;
+                            set-pin => { root.set-pin(); }
+                            change-pin => { root.change-pin(); }
+                            remove-pin => { root.remove-pin(); }
+                        }
+                        // with the PIN: who may use the app, and keeping it up to date
+                        LicenceCard { }
+                        UpdatesCard { }
+                        DatabaseCard {
+                            database-path: root.database-path;
+                            move-database => { root.move-database(); }
+                            switch-database => { root.switch-database(); }
+                        }
+                        BackupCard { }
+                        LogsCard {
+                            log-folder: root.log-folder;
+                            move-logs => { root.move-logs(); }
+                        }
                     }
                 }
             }

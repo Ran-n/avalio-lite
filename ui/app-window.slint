@@ -2,13 +2,15 @@ import { Palette } from "std-widgets.slint";
 import { SetupNotice, SetupPage } from "setup-page.slint";
 import { Section, Shell } from "shell.slint";
 import { LockPage } from "lock/lock-page.slint";
+import { Licence, LicencePage } from "licence/licence-page.slint";
 import { AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, DuplicateContents, Gradebook, RowItem, Tone } from "gradebook.slint";
 import { Theme } from "theme.slint";
 import { ShortcutAction, ShortcutItem, Shortcuts } from "shortcuts.slint";
 import { Backup } from "backup.slint";
+import { Update } from "update.slint";
 
 export { SetupNotice, Section, AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, DuplicateContents, Gradebook, RowItem, Tone, Theme }
-export { ShortcutAction, ShortcutItem, Shortcuts, Backup }
+export { ShortcutAction, ShortcutItem, Shortcuts, Backup, Licence, Update }
 
 export component AppWindow inherits Window {
     in property <bool> setup-required: true;
@@ -85,7 +87,14 @@ export component AppWindow inherits Window {
     changed locked => {
         if (root.locked) {
             Shortcuts.recording = -1;
-        } else {
+        } else if (Licence.licensed) {
+            shortcuts.focus();
+        }
+    }
+    // the licence screen's key field keeps the focus it takes when the screen appears
+    property <bool> licensed: Licence.licensed;
+    changed licensed => {
+        if (root.licensed && !root.setup-required && !root.locked) {
             shortcuts.focus();
         }
     }
@@ -105,7 +114,7 @@ export component AppWindow inherits Window {
         }
     }
     changed setup-required => {
-        if (!root.setup-required && !root.locked) {
+        if (!root.setup-required && !root.locked && Licence.licensed) {
             shortcuts.focus();
         }
     }
@@ -129,6 +138,10 @@ export component AppWindow inherits Window {
             }
             let action =Shortcuts.find(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
             if (action == ShortcutAction.none) {
+                return reject;
+            }
+            // the licence screen keeps only locking; every other key goes on to its field
+            if (!Licence.licensed && action != ShortcutAction.lock) {
                 return reject;
             }
             if (action == ShortcutAction.lock) {
@@ -164,7 +177,7 @@ export component AppWindow inherits Window {
             open-existing-database => { root.open-existing-database(); }
             back-to-lock => { root.back-to-lock(); }
         }
-        if !root.setup-required && !root.locked: Shell {
+        if !root.setup-required && !root.locked && Licence.licensed: Shell {
             section <=> root.section;
             database-path: root.database-path;
             log-folder: root.log-folder;
@@ -185,6 +198,11 @@ export component AppWindow inherits Window {
             set-pin => { root.set-pin(); }
             change-pin => { root.change-pin(); }
             remove-pin => { root.remove-pin(); }
+        }
+        if !root.setup-required && !root.locked && !Licence.licensed: LicencePage {
+            error-message: root.error-message;
+            status-message: root.status-message;
+            back-up => { Backup.export-everything(); }
         }
         if !root.setup-required && root.locked: LockPage {
             pin <=> root.unlock-pin;

@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/02 21:31:24.223445 )
-[//]: # (+ Revised: 	2026/11/03 12:01:54.495078 )
+[//]: # (+ Revised: 	2026/11/07 20:25:35.695351 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Design decisions
@@ -116,5 +116,43 @@ state, `has_whole_pages` and `SMALLEST_PAGE` in the database module, and the `re
 macro in the window kit (a macro, so log lines keep the target of the feature that failed).
 
 **Consequences:** one place to change each rule; log lines and messages stay as they were.
+
+**Status:** Done
+
+## D7. Background work goes through a Worker
+
+**Context:** checking a licence goes online, which can take up to 15 seconds; the window must
+never wait for it. Slint hands results back to the window through its event loop, which the
+headless UI tests don't have, so work started from a thread there would never report back.
+
+**Decision:** work that must not block the window goes through the `Worker` trait in
+`src/window/worker.rs`. The job runs off the UI thread and returns what to do with the window;
+`ThreadWorker` (the app) runs it on a thread and hands that back through the event loop, and
+`InlineWorker` (the tests and the desktop driver) runs it at once. Nothing else spawns threads for
+the UI. The worker lives in the window kit, not in a feature, because it needs Slint (D4) and
+every feature that goes online uses it. `launch` waits for running work at shutdown.
+
+**Consequences:** the UI tests drive activation and checks synchronously against a fake server;
+the thread and the event-loop hand-off are only exercised by the real exe and the desktop tests.
+
+**Status:** Done
+
+## D8. Updates are trusted by our own signature, not by Windows
+
+**Context:** the updater downloads an exe and runs it, so a tampered or substituted file would run
+with the user's rights. The release files carry no Windows (Authenticode) signature, and HTTPS
+only proves a file came from GitHub, not that the developer made it.
+
+**Decision:** `scripts/release.ps1` signs every release file with an Ed25519 key kept outside the
+repository; the matching public key is built into the app (`src/update/mod.rs`). The signature
+covers a fixed context, the file name and the file's BLAKE3 hash (`src/update/signature.rs`), so
+it can't be reused for another file or purpose. `src/update/` downloads the file and its `.sig`,
+checks both, and deletes a file that doesn't verify before anything can run it. Releases are read
+from GitHub only.
+
+**Consequences:** no certificate to buy or renew, and a compromised GitHub account alone can't push
+a working update. Losing the private key means existing copies can no longer update themselves (a
+new key needs one manual install); leaking it lets anyone sign updates, so it stays out of the
+repository (`*.key` is ignored), with a second copy kept offline.
 
 **Status:** Done
