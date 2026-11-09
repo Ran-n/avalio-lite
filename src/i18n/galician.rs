@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:31.011467
-//+ Revised: 	2026/11/03 11:13:31.011467
+//+ Revised: 	2026/11/08 04:36:59.586820
 // -----------------------------------------------------------------------------
 
 //! The Rust-side texts and error messages in Galician.
@@ -105,6 +105,63 @@ pub(super) fn message(message: &Message) -> String {
             }
         }
         Message::UntitledColumn { letter } => format!("columna {letter} (sen título)"),
+        Message::LicenceAskForKey => {
+            "avalio-lite necesita unha clave de licenza para funcionar. Recibíchela por correo; ten esta forma:
+BRN-XXXX-XXXX-XXXX-XXXX"
+                .to_owned()
+        }
+        Message::LicenceInvalidKey => "Esa clave non é válida para avalio-lite. Revísaa e téntao de novo.".to_owned(),
+        Message::LicenceInUseElsewhere { email } => {
+            format!("Esta clave xa se está a usar noutro ordenador. Para pasala a este, escribe a {email}.")
+        }
+        Message::LicenceRevoked { email } => {
+            format!("Esta licenza foi cancelada. Escribe a {email} se cres que é un erro.")
+        }
+        Message::LicenceExpired { date: Some(date), email } => {
+            format!("A túa licenza rematou o {date}. Escribe a {email} para renovala.")
+        }
+        Message::LicenceExpired { date: None, email } => {
+            format!("A túa licenza rematou. Escribe a {email} para renovala.")
+        }
+        Message::LicenceWithdrawn { email } => {
+            format!("Agora mesmo non se pode licenciar avalio-lite. Escribe a {email}.")
+        }
+        Message::LicenceNeedsInternet => "Conéctate a internet para que avalio-lite poida confirmar a túa licenza. Funciona sen conexión ata 30 días seguidos.".to_owned(),
+        Message::LicenceWait { minutes } => format!("Demasiados intentos. Téntao de novo en {minutes} min."),
+        Message::LicenceUnreachable => {
+            "Non se pode contactar co servidor de licenzas. Comproba a conexión a internet e téntao de novo.".to_owned()
+        }
+        Message::LicenceNotSaved { error } => format!("Non se puido gardar a licenza neste ordenador: {error}"),
+        Message::BackgroundFailed { error } => format!("Non se puido iniciar a comprobación: {error}"),
+        Message::LicenceConnectBy { date } => {
+            format!("Conéctate a internet antes do {date} para seguir usando avalio-lite.")
+        }
+        Message::LicenceEndsOn { date, email } => {
+            format!("A túa licenza remata o {date}. Escribe a {email} para renovala.")
+        }
+        Message::LicencePermanent => "Permanente".to_owned(),
+        Message::LicenceUntil { date } => format!("Ata o {date}"),
+        Message::LicenceOfflineUntil { date } => format!("Funciona sen conexión ata o {date}"),
+        Message::LicenceConfirmed => "Licenza confirmada.".to_owned(),
+        Message::UpdateAvailable { version } => format!("Xa está dispoñible avalio-lite {version}."),
+        Message::UpToDate { version } => format!("avalio-lite está ao día ({version})."),
+        Message::UpdateCheckFailed { reason } => format!("Non se puideron buscar actualizacións: {reason}"),
+        Message::LinkFailed { error } => format!("Non se puido abrir a páxina: {error}"),
+        Message::UpdateNotVerified => {
+            "Non se puido verificar a actualización, así que non se instalou.".to_owned()
+        }
+        Message::UpdateDownloadFailed { reason } => format!("Non se puido descargar a actualización: {reason}"),
+        Message::UpdateNotPlaced { reason } => format!("Non se puido colocar a actualización: {reason}"),
+        Message::UpdateFolderReadOnly => {
+            "Non se pode escribir neste cartafol. Descarga a nova versión desde a páxina da versión.".to_owned()
+        }
+        Message::UpdateFileMissing { file } => {
+            format!("A versión non ten {file}. Descarga a nova versión desde a páxina da versión.")
+        }
+        Message::UpdatedTo { version } => format!("Actualizado a avalio-lite {version}."),
+        Message::UpdateNotStarted { reason } => {
+            format!("Non se puido iniciar a actualización: {reason}. Descárgaa desde a páxina da versión.")
+        }
     }
 }
 

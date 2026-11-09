@@ -1,12 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.630220
-//+ Revised: 	2026/11/03 10:00:17.034705
+//+ Revised: 	2026/11/07 20:25:36.488705
 // -----------------------------------------------------------------------------
 
 //! The view preferences and keyboard shortcuts kept in the settings file.
 
 use std::collections::BTreeMap;
+
+use chrono::{DateTime, Utc};
 
 use super::AppState;
 use crate::error::{AppError, Result};
@@ -51,7 +53,7 @@ impl AppState {
     /// The current view preferences: those of the chosen database's settings, else those last read
     /// from the settings file (e.g. when its database went missing), else the defaults.
     pub fn preferences(&self) -> Preferences {
-        self.settings().map(|config| config.preferences).unwrap_or_default()
+        self.settings().map(|config| config.preferences.clone()).unwrap_or_default()
     }
 
     /// The `[shortcuts]` entries to keep when the settings are written for a newly chosen database.
@@ -87,6 +89,34 @@ impl AppState {
 
     pub fn set_sidebar_collapsed(&mut self, collapsed: bool) -> Result<()> {
         self.update_preferences(|preferences| preferences.sidebar_collapsed = collapsed)
+    }
+
+    pub fn set_check_updates(&mut self, check: bool) -> Result<()> {
+        self.update_preferences(|preferences| preferences.check_updates = check)
+    }
+
+    pub fn set_last_update_check(&mut self, at: DateTime<Utc>) -> Result<()> {
+        self.update_preferences(|preferences| preferences.last_update_check = Some(at))
+    }
+
+    /// Notes the version now running; returns the one that ran before, if it was another.
+    pub fn note_version(&mut self, version: &str) -> Result<Option<String>> {
+        let before = self.preferences().last_run_version;
+        if before.as_deref() == Some(version) {
+            return Ok(None);
+        }
+        self.update_preferences(|preferences| preferences.last_run_version = Some(version.to_owned()))?;
+        Ok(before)
+    }
+
+    /// Keeps why the update couldn't start, for the next start to say (`None` clears it).
+    pub fn set_update_failed(&mut self, reason: Option<String>) -> Result<()> {
+        self.update_preferences(|preferences| preferences.update_failed = reason)
+    }
+
+    /// Hides the update bar for `version`; a later version shows it again.
+    pub fn skip_update(&mut self, version: &str) -> Result<()> {
+        self.update_preferences(|preferences| preferences.skipped_update = Some(version.to_owned()))
     }
 
     /// Applies `change` to the view preferences and saves them; refused while no database is open.

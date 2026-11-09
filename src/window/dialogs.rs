@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.081050
-//+ Revised: 	2026/10/29 15:46:51.262505
+//+ Revised: 	2026/11/07 20:25:36.558700
 // -----------------------------------------------------------------------------
 
 use std::path::{Path, PathBuf};
@@ -63,6 +63,8 @@ pub trait Dialogs {
     fn confirm(&self, question: &str) -> bool;
     /// Last-resort error shown when the main window can't be used to report it.
     fn show_fatal(&self, message: &str);
+    /// Opens a web page in the default browser; `Err` says why it couldn't.
+    fn open_link(&self, url: &str) -> Result<(), String>;
 }
 
 /// The Windows dialogs, through `rfd`.
@@ -98,6 +100,27 @@ impl Dialogs for NativeDialogs {
             .set_description(message)
             .set_buttons(MessageButtons::Ok)
             .show();
+    }
+
+    fn open_link(&self, url: &str) -> Result<(), String> {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let wide = |text: &str| text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+        let (verb, target) = (wide("open"), wide(url));
+        // SAFETY: two NUL-terminated UTF-16 strings that outlive the call; no owner window.
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                target.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        // ShellExecuteW reports success with a value above 32, and an error code otherwise
+        let code = result as isize;
+        if code > 32 { Ok(()) } else { Err(format!("ShellExecuteW failed ({code})")) }
     }
 }
 

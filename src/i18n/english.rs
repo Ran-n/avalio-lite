@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:30.944950
-//+ Revised: 	2026/11/03 11:13:30.944950
+//+ Revised: 	2026/11/08 04:36:59.523637
 // -----------------------------------------------------------------------------
 
 //! The Rust-side texts and error messages in English.
@@ -95,6 +95,57 @@ pub(super) fn message(message: &Message) -> String {
             }
         }
         Message::UntitledColumn { letter } => format!("column {letter} (no title)"),
+        Message::LicenceAskForKey => {
+            "avalio-lite needs a licence key to run. You received it by email; it looks like this:
+BRN-XXXX-XXXX-XXXX-XXXX"
+                .to_owned()
+        }
+        Message::LicenceInvalidKey => "That key isn't valid for avalio-lite. Check it and try again.".to_owned(),
+        Message::LicenceInUseElsewhere { email } => {
+            format!("This key is already in use on another computer. To move it here, write to {email}.")
+        }
+        Message::LicenceRevoked { email } => {
+            format!("This licence has been cancelled. Write to {email} if you think this is a mistake.")
+        }
+        Message::LicenceExpired { date: Some(date), email } => {
+            format!("Your licence ended on {date}. Write to {email} to renew it.")
+        }
+        Message::LicenceExpired { date: None, email } => {
+            format!("Your licence has ended. Write to {email} to renew it.")
+        }
+        Message::LicenceWithdrawn { email } => format!("avalio-lite can't be licensed at the moment. Write to {email}."),
+        Message::LicenceNeedsInternet => "Connect to the internet so avalio-lite can confirm your licence. It works offline for up to 30 days at a time.".to_owned(),
+        Message::LicenceWait { minutes } => format!("Too many attempts. Try again in {minutes} min."),
+        Message::LicenceUnreachable => {
+            "The licence server can't be reached. Check the internet connection and try again.".to_owned()
+        }
+        Message::LicenceNotSaved { error } => format!("The licence couldn't be saved on this computer: {error}"),
+        Message::BackgroundFailed { error } => format!("The check couldn't be started: {error}"),
+        Message::LicenceConnectBy { date } => format!("Connect to the internet by {date} to keep using avalio-lite."),
+        Message::LicenceEndsOn { date, email } => {
+            format!("Your licence ends on {date}. Write to {email} to renew it.")
+        }
+        Message::LicencePermanent => "Permanent".to_owned(),
+        Message::LicenceUntil { date } => format!("Until {date}"),
+        Message::LicenceOfflineUntil { date } => format!("Works offline until {date}"),
+        Message::LicenceConfirmed => "Licence confirmed.".to_owned(),
+        Message::UpdateAvailable { version } => format!("avalio-lite {version} is available."),
+        Message::UpToDate { version } => format!("avalio-lite is up to date ({version})."),
+        Message::UpdateCheckFailed { reason } => format!("Couldn't check for updates: {reason}"),
+        Message::LinkFailed { error } => format!("Couldn't open the page: {error}"),
+        Message::UpdateNotVerified => "The update couldn't be verified, so it wasn't installed.".to_owned(),
+        Message::UpdateDownloadFailed { reason } => format!("Couldn't download the update: {reason}"),
+        Message::UpdateNotPlaced { reason } => format!("The update couldn't be put in place: {reason}"),
+        Message::UpdateFolderReadOnly => {
+            "This folder can't be written to. Download the new version from the release page.".to_owned()
+        }
+        Message::UpdateFileMissing { file } => {
+            format!("The release has no {file}. Download the new version from the release page.")
+        }
+        Message::UpdatedTo { version } => format!("Updated to avalio-lite {version}."),
+        Message::UpdateNotStarted { reason } => {
+            format!("The update couldn't be started: {reason}. Download it from the release page.")
+        }
     }
 }
 

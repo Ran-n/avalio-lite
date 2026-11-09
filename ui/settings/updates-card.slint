@@ -1,0 +1,34 @@
+import { Theme } from "../theme.slint";
+import { ActionButton, Toggle } from "../components/buttons.slint";
+import { Card } from "../components/surfaces.slint";
+import { Update } from "../update.slint";
+
+// Looking for new versions by itself, or now.
+export component UpdatesCard inherits Card {
+    title: @tr("Updates");
+    description: @tr("avalio-lite looks for new versions on GitHub once a day and tells you when one is out.");
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        Toggle {
+            checked: Update.automatic;
+            label: @tr("Check for updates automatically");
+            toggled(on) => { Update.set-automatic(on); }
+        }
+        Text {
+            text: @tr("Check for updates automatically");
+            vertical-alignment: center;
+            color: Theme.text;
+        }
+    }
+    HorizontalLayout {
+        alignment: start;
+        ActionButton {
+            text: Update.busy ? @tr("Checking…") : @tr("Check now");
+            // the Licence card has a Check now too
+            spoken-label: @tr("Check for updates now");
+            enabled: !Update.busy;
+            clicked => { Update.check-now(); }
+        }
+    }
+}

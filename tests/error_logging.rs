@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.102653
-//+ Revised: 	2026/11/03 08:27:18.274923
+//+ Revised: 	2026/11/07 20:25:37.063521
 // -----------------------------------------------------------------------------
 
 //! Error paths must reach the log at the right level, not just the screen. The app's own logger
@@ -13,10 +13,12 @@ use std::fs;
 use std::sync::Mutex;
 
 use avalio_lite::app;
+use avalio_lite::i18n::Language;
 use avalio_lite::platform::config::LOG_FILE_NAME;
 use avalio_lite::platform::logging::{self, FileLogger};
 use avalio_lite::state::Startup;
-use avalio_lite::ui::Gradebook;
+use avalio_lite::ui::{Gradebook, Licence};
+use common::licence::{FakeLicence, KEY, Mode};
 use common::{Fixture, Ui};
 use slint::ComponentHandle;
 
@@ -193,4 +195,34 @@ fn a_screen_that_cannot_be_read_is_a_warning_and_the_window_keeps_its_size() {
     });
     assert!(has_line(&log, "WARN", "avalio_lite::app::placement", "couldn't read the screen's work area"), "{log}");
     assert!(log.contains("GetMonitorInfoW failed"), "the failing call is named:\n{log}");
+}
+
+#[test]
+fn a_licence_that_cannot_be_saved_is_an_error_and_the_key_never_reaches_the_log() {
+    let log = logged(|| {
+        let fixture = Fixture::new();
+        fixture.set_up().shutdown();
+        let computer = FakeLicence::new();
+        let client = computer.failing_client();
+        let ui = Ui::open_licensed(fixture, Language::English, computer, client);
+        ui.session.window.global::<Licence>().invoke_activate(KEY.into());
+    });
+    assert!(has_line(&log, "ERROR", "avalio_lite::licence::ui", "the licence couldn't be saved"), "{log}");
+    assert!(!log.contains(KEY) && !log.contains("BRN-"), "{log}");
+}
+
+#[test]
+fn a_check_that_cannot_reach_the_server_is_a_warning() {
+    let log = logged(|| {
+        let computer = FakeLicence::activated();
+        computer.advance(chrono::TimeDelta::days(31));
+        computer.server.set_mode(Mode::Offline);
+        let fixture = Fixture::new();
+        fixture.set_up().shutdown();
+        let client = computer.client();
+        let ui = Ui::open_licensed(fixture, Language::English, computer, client);
+        ui.session.window.global::<Licence>().invoke_check_again();
+    });
+    assert!(has_line(&log, "WARN", "avalio_lite::licence::ui", "the licence check couldn't decide"), "{log}");
+    assert!(has_line(&log, "INFO", "avalio_lite::licence::ui", "licence screen: Unreachable"), "{log}");
 }

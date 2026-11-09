@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.842742
-//+ Revised: 	2026/11/03 08:27:17.945040
+//+ Revised: 	2026/11/08 04:36:59.027420
 // -----------------------------------------------------------------------------
 
 //! `app::run_with`, the whole app as `main` starts it: on Slint's headless backend with a real
@@ -23,6 +23,7 @@ use common::{FakeDialogs, Fixture};
 fn the_app_starts_on_the_saved_database_and_quits_cleanly() {
     let fixture = Fixture::new();
     fixture.set_up().shutdown();
+    fixture.without_update_checks();
     // SAFETY: the only test in this process, and it sets the variable before starting any thread.
     unsafe { std::env::set_var(CONFIG_DIR_ENV, fixture.path("config")) };
     assert_eq!(config::default_data_dir(), fixture.path("config"), "a scratch run suggests the scratch folder");

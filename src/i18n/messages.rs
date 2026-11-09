@@ -1,10 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.721797
-//+ Revised: 	2026/11/03 11:13:31.282513
+//+ Revised: 	2026/11/07 20:25:36.214584
 // -----------------------------------------------------------------------------
 
 use super::{Language, english, galician};
+use chrono::NaiveDate;
+
+use crate::licence::{Notice, Reminder, SUPPORT_EMAIL};
 
 /// Text shown by Rust code: confirmation questions, status lines and fatal errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +98,128 @@ pub enum Message<'a> {
     UntitledColumn {
         letter: &'a str,
     },
+    LicenceAskForKey,
+    LicenceInvalidKey,
+    LicenceInUseElsewhere {
+        email: &'a str,
+    },
+    LicenceRevoked {
+        email: &'a str,
+    },
+    /// `date` is already formatted (day/month/year); `None` when the server didn't say
+    LicenceExpired {
+        date: Option<&'a str>,
+        email: &'a str,
+    },
+    LicenceWithdrawn {
+        email: &'a str,
+    },
+    LicenceNeedsInternet,
+    LicenceWait {
+        minutes: u64,
+    },
+    LicenceUnreachable,
+    LicenceNotSaved {
+        error: &'a str,
+    },
+    /// work meant to run in the background (a licence check) couldn't be started
+    BackgroundFailed {
+        error: &'a str,
+    },
+    /// on the sheet: 30 days offline run out on `date` (formatted)
+    LicenceConnectBy {
+        date: &'a str,
+    },
+    /// on the sheet: a licence for a set period ends on `date` (formatted)
+    LicenceEndsOn {
+        date: &'a str,
+        email: &'a str,
+    },
+    /// the Settings card: how long the licence lasts
+    LicencePermanent,
+    LicenceUntil {
+        date: &'a str,
+    },
+    LicenceOfflineUntil {
+        date: &'a str,
+    },
+    /// Check now found the licence valid
+    LicenceConfirmed,
+    /// the update bar: a newer version is out
+    UpdateAvailable {
+        version: &'a str,
+    },
+    /// Check now found no newer version than `version`, this one
+    UpToDate {
+        version: &'a str,
+    },
+    UpdateCheckFailed {
+        reason: &'a str,
+    },
+    /// a web page (a release's) couldn't be opened in the browser
+    LinkFailed {
+        error: &'a str,
+    },
+    /// the download isn't signed with the release key
+    UpdateNotVerified,
+    UpdateDownloadFailed {
+        reason: &'a str,
+    },
+    /// the new portable exe couldn't take the old one's place
+    UpdateNotPlaced {
+        reason: &'a str,
+    },
+    /// a portable copy in a folder that can't be written to
+    UpdateFolderReadOnly,
+    /// the release lacks the file this copy needs
+    UpdateFileMissing {
+        file: &'a str,
+    },
+    /// shown once, after the app was updated
+    UpdatedTo {
+        version: &'a str,
+    },
+    /// the installer or new exe couldn't be started as the app closed
+    UpdateNotStarted {
+        reason: &'a str,
+    },
+}
+
+/// A day as the licence texts show it, in both languages: 30/06/2027.
+pub fn licence_day(day: NaiveDate) -> String {
+    day.format("%d/%m/%Y").to_string()
+}
+
+/// The sheet's warning for `reminder`.
+pub fn licence_reminder(language: Language, reminder: Reminder) -> String {
+    match reminder {
+        Reminder::ConnectBy(day) => text(language, &Message::LicenceConnectBy { date: &licence_day(day) }),
+        Reminder::EndsOn(day) => {
+            text(language, &Message::LicenceEndsOn { date: &licence_day(day), email: SUPPORT_EMAIL })
+        }
+    }
+}
+
+/// What the licence screen says for `notice`, with the support address and dates filled in.
+pub fn licence_notice(language: Language, notice: &Notice) -> String {
+    let email = SUPPORT_EMAIL;
+    let date = match notice {
+        Notice::Expired(Some(day)) => licence_day(*day),
+        _ => String::new(),
+    };
+    let message = match notice {
+        Notice::AskForKey => Message::LicenceAskForKey,
+        Notice::InvalidKey => Message::LicenceInvalidKey,
+        Notice::InUseElsewhere => Message::LicenceInUseElsewhere { email },
+        Notice::Revoked => Message::LicenceRevoked { email },
+        Notice::Expired(day) => Message::LicenceExpired { date: day.map(|_| date.as_str()), email },
+        Notice::Withdrawn => Message::LicenceWithdrawn { email },
+        Notice::NeedsInternet => Message::LicenceNeedsInternet,
+        Notice::Wait { minutes } => Message::LicenceWait { minutes: *minutes },
+        Notice::Unreachable => Message::LicenceUnreachable,
+        Notice::NotSaved(error) => Message::LicenceNotSaved { error },
+    };
+    text(language, &message)
 }
 
 pub fn text(language: Language, message: &Message) -> String {

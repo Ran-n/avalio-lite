@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.450073
-//+ Revised: 	2026/10/28 15:53:06.450073
+//+ Revised: 	2026/11/07 20:25:36.704176
 // -----------------------------------------------------------------------------
 
 //! Finding the app's controls by their accessible labels, as a screen reader names them. Shared by
@@ -13,12 +13,21 @@ use i_slint_backend_testing::{AccessibleRole, ElementHandle, ElementQuery, Eleme
 /// the same label, so text elements are skipped; the search also visits some controls more than
 /// once, so repeats of the same control are dropped.
 pub fn labelled(root: &impl ElementRoot, label: &str) -> Vec<ElementHandle> {
+    matching(root, label, false)
+}
+
+/// Plain text elements showing exactly `text`, such as a status line, in the order they appear.
+pub fn texts(root: &impl ElementRoot, text: &str) -> Vec<ElementHandle> {
+    matching(root, text, true)
+}
+
+fn matching(root: &impl ElementRoot, label: &str, text: bool) -> Vec<ElementHandle> {
     let label = label.to_owned();
     let found = ElementQuery::from_root(root)
         .match_descendants()
         .match_predicate(move |element| {
-            element.accessible_label().is_some_and(|text| text == label.as_str())
-                && element.accessible_role() != Some(AccessibleRole::Text)
+            element.accessible_label().is_some_and(|shown| shown == label.as_str())
+                && (element.accessible_role() == Some(AccessibleRole::Text)) == text
         })
         .find_all();
     let mut unique: Vec<ElementHandle> = Vec::new();

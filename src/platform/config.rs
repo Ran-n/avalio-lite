@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.062570
-//+ Revised: 	2026/11/03 08:27:16.329248
+//+ Revised: 	2026/11/07 20:25:36.419075
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
@@ -9,6 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result, io_at};
@@ -37,7 +38,7 @@ pub struct AppConfig {
     pub shortcuts: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Preferences {
     /// Whether column headers show weights, scales and rounding settings.
     #[serde(default = "shown")]
@@ -51,6 +52,21 @@ pub struct Preferences {
     /// Whether the sidebar is folded to its icon rail; only written when it is.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub sidebar_collapsed: bool,
+    /// Whether the app looks for new versions by itself (Settings → Updates).
+    #[serde(default = "shown")]
+    pub check_updates: bool,
+    /// When the app last looked for a new version, so a restart doesn't look again within a day.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_update_check: Option<DateTime<Utc>>,
+    /// The version whose update bar was hidden; a later one shows again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped_update: Option<String>,
+    /// The version that ran last, so a new one can say "Updated to …" once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_version: Option<String>,
+    /// Why an update couldn't be started as the app closed; shown, then cleared, at the next start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_failed: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,7 +78,17 @@ pub enum ThemeChoice {
 
 impl Default for Preferences {
     fn default() -> Self {
-        Self { show_column_settings: shown(), language: None, theme: None, sidebar_collapsed: false }
+        Self {
+            show_column_settings: shown(),
+            language: None,
+            theme: None,
+            sidebar_collapsed: false,
+            check_updates: shown(),
+            last_update_check: None,
+            skipped_update: None,
+            last_run_version: None,
+            update_failed: None,
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.728640 )
-[//]: # (+ Revised: 	2026/11/03 12:28:25.041065 )
+[//]: # (+ Revised: 	2026/11/09 10:42:02.617690 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Developing avalio-lite
@@ -66,8 +66,8 @@ cargo test regression            # only the regression tests, one per fixed bug
 ```
 
 - **Default suite** (`tests/`, one file per module): unit and property tests (proptest) for the logic; integration tests on real databases and folders; golden files for every saved format (`tests/golden/`); a step-by-step migration walk; the entry point and quit path; error logging; the version; the dependency rules (`tests/architecture.rs`, see D4 in the [design decisions](design-decisions.md)); and the UI (`tests/ui.rs`). The UI tests run the real window on Slint's headless backend, click and type into it through its controls' accessible labels, and answer dialogs with a fake.
-- **Desktop tests** (`tests/desktop.rs`) open real windows, so `cargo test` leaves them out. They start the app through `examples/app_driver.rs` on scratch data, click and type through Windows messages, and check colours and positions pixel by pixel. They compare every screen in light and dark, at the normal and the minimum window size, and in Galician at the minimum size, against reviewed baselines in `tests/desktop/baselines/` (the README screenshots are these images).
-  - Baselines are per Windows display scale (`<screen>-<look>-<width>x<height>@<scale>.png`); this repo has them at 100 %, 125 % and 150 %. The driver opens the window on the primary monitor, wherever the mouse is, so the scale under test is the primary monitor's. The pixel checks measure in logical pixels, so they hold at any scale. At a fractional scale (125 %, 150 %) a line of text can snap one physical pixel up or down between runs, so there a snapshot allows that one-row shift; at 100 % it must match exactly. A capture counts as settled once two frames in a row differ by no more than a blinking caret.
+- **Desktop tests** (`tests/desktop.rs`) open real windows, so `cargo test` leaves them out. They start the app through `examples/app_driver.rs` on scratch data, click and type through Windows messages (the test posts clicks and keys; the driver posts typed text on the window's own thread, because winit drops a character that isn't already queued when its key press is handled), and check colours and positions pixel by pixel. They compare every screen in light and dark, at the normal and the minimum window size, and in Galician at the minimum size, against reviewed baselines in `tests/desktop/baselines/` (the README screenshots are these images).
+  - Baselines are per Windows display scale (`<screen>-<look>-<width>x<height>@<scale>.png`); this repo has them at 100 %, 125 % and 150 %. The whole window must fit on the primary monitor: 1280 × 800 at 150 % needs one at least 1200 physical pixels high, or the part below the screen is captured black. The driver opens the window on the primary monitor, wherever the mouse is, so the scale under test is the primary monitor's. The pixel checks measure in logical pixels, so they hold at any scale. At a fractional scale (125 %, 150 %) a line of text can snap one physical pixel up or down between runs, so there a snapshot allows that one-row shift; at 100 % it must match exactly. A capture counts as settled once two frames in a row differ by no more than a blinking caret. Each capture first tells the window it is the active one, so a window brought to the front during the run doesn't change the images; the user's foreground window is never touched.
   - At a scale with no baselines, or on a machine whose fonts render differently, the snapshots fail and print the command that records them. To add a scale: set it on the primary monitor (Settings → System → Display → Scale), run `$env:AVALIO_UPDATE_BASELINES = "1"; cargo test --test desktop -- --ignored --test-threads=1`, open and review every new image for clipped, wrapped or cut-off text (Galician at 1000 × 600 above all), then run the suite again without the variable.
   - After a deliberate change to the look, rewrite the baselines with `$env:AVALIO_UPDATE_BASELINES = "1"`. Open every changed image and check nothing is clipped, wrapped or cut off before committing.
   - A failure saves the screen and a marked diff in `target\desktop-failures\`. For a screen that never stops changing, it saves the last two frames and what still changes.
@@ -88,11 +88,13 @@ src/
   gradebook/    classes, pupils, columns, cells (SQL) and grade calculation (compute.rs); names new columns through `ColumnTitles`, so it never imports `i18n`; `ui` wires it to the window
   state/        the app's core: settings, the open database and its PIN, data moves, backups; no UI code
   app/          starts the app and wires the features (setup and settings screens; where the window opens, placement.rs)
-  window/       the UI kit every feature UI uses: callback wrappers, shared handles, dialogs, status and error line, theme, language
+  window/       the UI kit every feature UI uses: callback wrappers, shared handles, dialogs, status and error line, theme, language, and the worker that runs work off the UI thread (D7)
   backup/       .avalio backup files: export, open and check, add classes; `ui` wires the Backup card
   spreadsheet/  Excel export (writing, safe names) and import (read, plan, apply) of a class sheet; `ui` wires it to the window
   error.rs      the app's error type
   lock/         PIN rules and guess limiting; `ui` wires the lock screen
+  licence/      the licence check through Clavren (clavren-client): server, product, trusted token keys, and what the licence screen says for each answer; `ui` wires the screen
+  update/       the updater: the latest GitHub release (source.rs), release signatures (signature.rs), downloads (download.rs), which file each copy needs and the portable swap (install.rs), the Windows side (windows.rs: registry, starting the installer); `ui` wires the update bar and the Updates card
   shortcuts/    keyboard shortcuts: the actions, their keys and the rules for config.toml, with no Slint code; `ui/` wires them to the window and reads key events (`ui/key_events.rs`)
   i18n/         interface language: one file per language (`english.rs`, `galician.rs`) for Rust-side texts and error messages
   platform/     plumbing every feature uses
@@ -100,7 +102,7 @@ src/
     db/         SQLite connection, copy/verify, schema migrations
     logging.rs  file logger whose folder can change at runtime
     storage.rs  safe cross-drive file moves
-ui/             Slint UI with its own light and dark theme (theme.slint); `components/` the shared widgets, one file per family (buttons, fields, menu, navigation, icons, surfaces, focus); one folder per page (`sheet/`, `settings/`, `lock/`, `column-panel/`) holding the page and its parts, with the folding sidebar in sidebar.slint; gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts, backup.slint the Backup card's actions
+ui/             Slint UI with its own light and dark theme (theme.slint); `components/` the shared widgets, one file per family (buttons, fields, menu, navigation, icons, surfaces, focus); one folder per page (`sheet/`, `settings/`, `lock/`, `licence/`, `column-panel/`) holding the page and its parts, with the folding sidebar in sidebar.slint; gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts, backup.slint the Backup card's actions
 lang/           translations of the UI strings, lang/<code>/LC_MESSAGES/avalio-lite.po, bundled into the exe
 assets/         logo (SVG source, generated .ico/.png; regenerate with cargo run --example render_logo -- <preview folder>)
 examples/       demo_data: builds a sample database; app_driver: runs the app for the desktop tests; render_logo: the icon files
@@ -108,7 +110,7 @@ migrations/     numbered SQL schema files, embedded in the exe
 installer/      Inno Setup script
 scripts/        release, coverage gate, Perl setup
 tests/          integration tests, one file per module
-  common/       fixtures shared by the tests and the app driver
+  common/       fixtures shared by the tests and the app driver; licence.rs is a fake Clavren in memory (tests and the driver start activated; the driver's `unlicensed` argument starts on the licence screen); http.rs a small local server for the download tests
   golden/       saved-format samples
   desktop/      desktop-test baselines
   desktop_support/  desktop-test harness: Win32 window, pixels, driver client
@@ -126,5 +128,14 @@ Schema changes go in a new `migrations/NNN_*.sql` file, added to the list in `sr
 .\scripts\release.ps1
 ```
 
-The script runs the default suite under its coverage gate and the desktop tests, builds the optimized exe, and writes both versioned files to `dist\`. The version comes from `Cargo.toml`. Then tag the release commit `vX.Y.Z` and publish a release on GitHub, GitLab and Codeberg with both files and the version's CHANGELOG section as notes.
+The script runs the default suite under its coverage gate and the desktop tests, builds the optimized exe, writes both versioned files to `dist\`, and signs each one (a `.sig` next to it). The version comes from `Cargo.toml`. Then tag the release commit `vX.Y.Z` and publish a release on GitHub, GitLab and Codeberg with all four files and the version's CHANGELOG section as notes.
+
+### Release signing
+
+The in-app updater only uses a download whose `.sig` checks out against the public key built into the app (`PUBLIC_KEY` in `src/update/mod.rs`: `8b8n9Uqg_5-ReHLUbp5xyfL6HwdVgYNXiJQdP0Uex5o`). A `.sig` is one line, `<signature>  <file name>`: an Ed25519 signature (base64url) of `avalio-lite-release-v1`, the file name and the file's BLAKE3 hash in hex, one per line.
+
+- The private key is a file outside the repository: `..\secrets\avalio-lite-release.key`, or the path in `AVALIO_RELEASE_KEY`. `release.ps1` stops if it is missing. Keep a second copy somewhere safe, off this computer: without it, no copy of the app can update itself again.
+- `cargo run --example release_sign -- sign <key file> <file>...` signs files by hand (each `.sig` goes next to its file), `verify <file>` checks one against the built-in key (or `--public-key <key>`), and `new-key <key file>` makes a new key. After a new key, update `PUBLIC_KEY`; copies built with the old key won't accept files signed with the new one, so their users must install by hand once.
+- The updater finds its files by name: a release must keep `avalio-lite-<version>-setup.exe`, `avalio-lite-<version>-portable.exe` and their `.sig` files, under the tag `v<version>`. It reads GitHub only.
+
 

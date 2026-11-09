@@ -1,0 +1,134 @@
+// The licence screen: shown in place of the app until this computer has a valid licence key. A
+// global, like Backup, so the Rust side reaches it without passing everything through AppWindow.
+
+import { Theme } from "../theme.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { TextField } from "../components/fields.slint";
+import { BrandMark } from "../components/icons.slint";
+
+export global Licence {
+    // whether the app may run; the window shows this page in place of the app while it may not
+    in property <bool> licensed: true;
+    in-out property <string> key;
+    // what the page says about the licence (Rust words it for each answer)
+    in property <string> notice;
+    // asks for a key (no activation on this computer) or offers to check again (an activation the
+    // server has to confirm)
+    in property <bool> asks-for-key: true;
+    // an activation or check is under way
+    in property <bool> busy;
+    // the Settings card: how long the licence lasts, and until when it works offline
+    in property <string> term;
+    in property <string> offline-until;
+    callback activate(string);
+    callback check-again();
+    // the Settings card's check; a check that can't decide leaves the app running
+    callback check-now();
+}
+
+export component LicencePage inherits Rectangle {
+    in property <string> error-message;
+    in property <string> status-message;
+    callback back-up();
+
+    background: Theme.canvas;
+    // keep clicks from reaching the app underneath
+    TouchArea { }
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 460px;
+                background: Theme.surface;
+                border-radius: Theme.radius-l;
+                border-width: 1px;
+                border-color: Theme.line;
+                drop-shadow-blur: 40px;
+                drop-shadow-offset-y: 16px;
+                drop-shadow-color: Theme.shadow;
+                VerticalLayout {
+                    padding: 32px;
+                    spacing: 18px;
+                    HorizontalLayout {
+                        alignment: center;
+                        BrandMark { }
+                    }
+                    Text {
+                        text: @tr("Enter your licence key");
+                        font-size: Theme.text-l;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: Licence.notice;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        color: Theme.text;
+                    }
+                    if Licence.asks-for-key: TextField {
+                        alignment: TextHorizontalAlignment.center;
+                        font-size: 18px;
+                        placeholder: "BRN-XXXX-XXXX-XXXX-XXXX";
+                        spoken-label: @tr("Licence key");
+                        text <=> Licence.key;
+                        accepted(text) => {
+                            if (!Licence.busy && text != "") {
+                                Licence.activate(text);
+                            }
+                        }
+                        init => { self.focus-input(); }
+                    }
+                    HorizontalLayout {
+                        alignment: stretch;
+                        ActionButton {
+                            horizontal-stretch: 1;
+                            kind: ButtonKind.primary;
+                            text: Licence.busy ? @tr("Checking the key…") : Licence.asks-for-key ? @tr("Activate") : @tr("Check again");
+                            enabled: !Licence.busy && (!Licence.asks-for-key || Licence.key != "");
+                            clicked => {
+                                if (Licence.asks-for-key) {
+                                    Licence.activate(Licence.key);
+                                } else {
+                                    Licence.check-again();
+                                }
+                            }
+                        }
+                    }
+                    if root.error-message != "": Text {
+                        text: root.error-message;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        color: Theme.fail;
+                    }
+                    if root.status-message != "": Text {
+                        text: root.status-message;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        color: Theme.muted;
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                    Text {
+                        text: @tr("Your marks stay safe on this computer while the app is locked.");
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        font-size: Theme.text-s;
+                        color: Theme.muted;
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        ActionButton {
+                            text: @tr("Back up my data");
+                            kind: ButtonKind.ghost;
+                            clicked => { root.back-up(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

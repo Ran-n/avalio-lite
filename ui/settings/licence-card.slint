@@ -1,0 +1,35 @@
+import { Theme } from "../theme.slint";
+import { ActionButton } from "../components/buttons.slint";
+import { Card } from "../components/surfaces.slint";
+import { Licence } from "../licence/licence-page.slint";
+
+// Where this computer's licence stands, and checking it now. The key itself is never shown.
+export component LicenceCard inherits Card {
+    title: @tr("Licence");
+    description: @tr("avalio-lite checks its licence once a day when this computer is online.");
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        Text {
+            text: @tr("Licensed");
+            font-weight: 600;
+            color: Theme.text;
+        }
+        Text {
+            text: "·  " + Licence.term;
+            color: Theme.text;
+        }
+    }
+    Text {
+        text: Licence.offline-until;
+        color: Theme.muted;
+    }
+    HorizontalLayout {
+        alignment: start;
+        ActionButton {
+            text: Licence.busy ? @tr("Checking…") : @tr("Check now");
+            enabled: !Licence.busy;
+            clicked => { Licence.check-now(); }
+        }
+    }
+}

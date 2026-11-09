@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/11/03 08:27:17.702483
+//+ Revised: 	2026/11/09 10:42:02.458969
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -37,6 +37,9 @@ const CARET_SIZE: (f64, f64) = (3.0, 40.0);
 const PIXEL_TOLERANCE: u8 = 12;
 /// Share of the screen allowed to differ before a snapshot fails (a blinking caret, say).
 const CHANGED_SHARE: f64 = 0.001;
+/// How many times a capture tells the window it is active before taking a lost activation for
+/// another window keeping the foreground.
+const ACTIVATION_ATTEMPTS: u32 = 3;
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -89,10 +92,25 @@ pub struct App {
 impl App {
     /// Starts the app on the settings in `config_dir`, on a Windows set to `language`.
     pub fn start(config_dir: &Path, language: &str) -> Self {
+        Self::start_with(config_dir, language, &[])
+    }
+
+    /// Like `start`, on a computer whose licence key was never activated: the licence screen.
+    pub fn start_unlicensed(config_dir: &Path, language: &str) -> Self {
+        Self::start_with(config_dir, language, &["unlicensed"])
+    }
+
+    /// Like `start`, on a computer whose licence needs the internet within days: the sheet warns.
+    pub fn start_offline_soon(config_dir: &Path, language: &str) -> Self {
+        Self::start_with(config_dir, language, &["offline-soon"])
+    }
+
+    fn start_with(config_dir: &Path, language: &str, extra: &[&str]) -> Self {
         let log = std::fs::File::create(config_dir.with_extension("driver.log")).unwrap();
         let mut child = Command::new(driver_exe())
             .arg(config_dir)
             .arg(language)
+            .args(extra)
             // whatever the app suggests or creates stays in the scratch folder, which is also where
             // the relative paths of the test settings start (so screens don't show a random path)
             .env(CONFIG_DIR_ENV, config_dir)
@@ -172,6 +190,12 @@ impl App {
         self.locate_from(label, false, false)
     }
 
+    /// Where the plain texts showing exactly `text` are (a status line, a label), in physical pixels.
+    pub fn locate_text(&mut self, text: &str) -> Vec<Rect> {
+        let reply = self.send(json!({ "cmd": "locate", "label": text, "text": true }));
+        self.rects(&reply, (0.0, 0.0), false)
+    }
+
     /// Where the options labelled `label` of the open popup menu are, in physical pixels. Every menu
     /// option has a hint (its accessible description), which tells it apart from other controls.
     pub fn locate_in_menu(&mut self, label: &str) -> Vec<Rect> {
@@ -194,6 +218,10 @@ impl App {
         } else {
             (0.0, 0.0)
         };
+        self.rects(&reply, (left, top), hinted)
+    }
+
+    fn rects(&self, reply: &Value, (left, top): (f64, f64), hinted: bool) -> Vec<Rect> {
         let physical = |value: f64| self.px(value);
         reply["found"]
             .as_array()
@@ -274,7 +302,8 @@ impl App {
         for _ in 0..80 {
             self.window.press(VK_BACK);
         }
-        self.window.type_text(text);
+        // the driver posts the text on the window's own thread: see `common::win32::post_text`
+        self.send(json!({ "cmd": "type", "text": text }));
         self.settle();
     }
 
@@ -350,10 +379,32 @@ impl App {
     }
 
     /// The window as it is now, once two captures in a row agree apart from a blinking caret
-    /// (animations have finished).
+    /// (animations have finished). It is captured as the active window, as the user sees it while
+    /// working in it, whichever window really has the foreground.
     pub fn capture(&mut self) -> Image {
-        self.window.mouse_away();
-        self.settle();
+        // Slint draws a field focused only while its window is active, and another window brought
+        // to the front during the run takes that away; the user's foreground stays where it is.
+        // Windows can also deliver a late loss of focus (a window just opened, a dialog just
+        // closed) while the frames settle, so the window must still be active once they have.
+        // Afterwards the window goes back to how it was, so the clicks and keys that follow reach
+        // it as they did before the capture.
+        for _ in 0..ACTIVATION_ATTEMPTS {
+            self.window.mouse_away();
+            let was = self.send(json!({ "cmd": "activate", "active": true }))["was"] == json!(true);
+            self.settle();
+            let image = self.settled_capture();
+            let active = self.state()["active"] == json!(true);
+            self.send(json!({ "cmd": "activate", "active": was }));
+            self.settle();
+            if active {
+                return image;
+            }
+        }
+        panic!("the app window isn't active; another window took the foreground during the run");
+    }
+
+    /// The window once two captures in a row agree apart from a blinking caret.
+    fn settled_capture(&mut self) -> Image {
         let mut previous = self.window.capture();
         for _ in 0..20 {
             std::thread::sleep(Duration::from_millis(120));

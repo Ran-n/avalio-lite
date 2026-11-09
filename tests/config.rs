@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.961496
-//+ Revised: 	2026/11/03 08:27:17.441688
+//+ Revised: 	2026/11/08 04:36:59.298297
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
@@ -16,7 +16,7 @@ fn sample() -> AppConfig {
     AppConfig {
         database_path: PathBuf::from(r"D:\data\avalio-lite.db"),
         log_dir: PathBuf::from(r"D:\logs"),
-        preferences: Preferences { show_column_settings: false, language: None, theme: None, sidebar_collapsed: false },
+        preferences: Preferences { show_column_settings: false, ..Preferences::default() },
         shortcuts: BTreeMap::new(),
     }
 }
@@ -51,7 +51,7 @@ fn saved_file_format_is_stable() {
     let text = fs::read_to_string(store.path()).unwrap();
     assert_eq!(
         text,
-        "database_path = 'D:\\data\\avalio-lite.db'\nlog_dir = 'D:\\logs'\n\n[preferences]\nshow_column_settings = false\n"
+        "database_path = 'D:\\data\\avalio-lite.db'\nlog_dir = 'D:\\logs'\n\n[preferences]\nshow_column_settings = false\ncheck_updates = true\n"
     );
 }
 
@@ -180,6 +180,9 @@ proptest::proptest! {
         logs in r"[A-Z]:\\[[^\p{C}]&&[^\\/:*?<>|]]{1,20}",
         show in proptest::bool::ANY,
         collapsed in proptest::bool::ANY,
+        check_updates in proptest::bool::ANY,
+        last_check in proptest::option::of(0i64..4_102_444_800),
+        skipped in proptest::option::of("[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}"),
         language in any_language(),
         theme in any_theme(),
         shortcuts in proptest::collection::btree_map("[a-z-]{1,22}", "[ -~]{0,16}", 0..4),
@@ -189,7 +192,17 @@ proptest::proptest! {
         let config = AppConfig {
             database_path: PathBuf::from(database),
             log_dir: PathBuf::from(logs),
-            preferences: Preferences { show_column_settings: show, language, theme, sidebar_collapsed: collapsed },
+            preferences: Preferences {
+                show_column_settings: show,
+                language,
+                theme,
+                sidebar_collapsed: collapsed,
+                check_updates,
+                last_update_check: last_check.map(|seconds| chrono::DateTime::from_timestamp(seconds, 0).unwrap()),
+                skipped_update: skipped.clone(),
+                last_run_version: skipped,
+                update_failed: None,
+            },
             shortcuts,
         };
         store.save(&config).unwrap();

@@ -1,0 +1,45 @@
+import { Theme } from "../theme.slint";
+import { ActionButton, ButtonKind, IconButton } from "../components/buttons.slint";
+import { Update } from "../update.slint";
+
+// "avalio-lite 0.6.0 is available · What's new · Update now ×": one slim row above the sheet,
+// apart from the status line, which every action clears.
+export component UpdateBar inherits Rectangle {
+    background: Theme.accent-soft;
+    border-radius: Theme.radius-s;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 6px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        spacing: 8px;
+        alignment: start;
+        Text {
+            text: Update.notice;
+            vertical-alignment: center;
+            color: Theme.text;
+            font-weight: 600;
+        }
+        ActionButton {
+            text: @tr("What's new");
+            kind: ButtonKind.ghost;
+            clicked => { Update.whats-new(); }
+        }
+        ActionButton {
+            text: Update.busy ? @tr("Downloading the update…") : @tr("Update now");
+            kind: ButtonKind.primary;
+            enabled: !Update.busy;
+            clicked => { Update.update-now(); }
+        }
+        // centred on the row like the buttons beside it
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                glyph: "×";
+                tooltip: @tr("Hide");
+                enabled: !Update.busy;
+                clicked => { Update.hide(); }
+            }
+        }
+    }
+}

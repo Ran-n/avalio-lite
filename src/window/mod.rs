@@ -1,17 +1,18 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:53:31.432066
-//+ Revised: 	2026/11/03 10:00:17.340810
+//+ Revised: 	2026/11/07 20:25:36.632123
 // -----------------------------------------------------------------------------
 
 //! The UI kit every feature's `ui` module uses: the shared state and dialogs handles, the callback
 //! wrappers that only run while the window is alive, dialogs, the status and error line, theme and
-//! language.
+//! language, and the worker that runs work off the UI thread.
 
 pub mod dialogs;
 pub mod language;
 pub mod theme;
 pub mod view;
+pub mod worker;
 
 use std::cell::RefCell;
 use std::rc::Rc;

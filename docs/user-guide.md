@@ -1,23 +1,24 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.661079 )
-[//]: # (+ Revised: 	2026/11/02 21:48:09.688691 )
+[//]: # (+ Revised: 	2026/11/07 20:25:35.866249 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite user guide
 
 Everything the app does, screen by screen. To download and install it, see the [README](../README.md#download-and-install).
 
-**Contents:** [Getting started](#getting-started) · [Using it](#using-it) · [Your data](#your-data)
+**Contents:** [Getting started](#getting-started) · [Using it](#using-it) · [Your data](#your-data) · [Licence](#licence)
 
 ## Getting started
 
 1. **Choose your folders.** On first launch the app asks where to keep the database and the logs (both default to `Documents\avalio-lite`; see [Your data](#your-data)). The window opens centred on the screen you started it from, sized to fit; on small screens it opens maximised.
-2. **Add a class.** Type a name in **+ New class** in the sidebar and press Enter.
-3. **Add pupils.** Type a name in the last row of the sheet and press Enter.
-4. **Add columns.** Use **+ Add column**, for example two tests and a final grade, then click a header to set its weight and maximum.
-5. **Type marks.** The final grade and the pass/fail count under the class name update as you type.
-6. *(Optional)* **Set a PIN** in **Settings → PIN and encryption** to encrypt the file.
+2. **Enter your licence key.** Type the `BRN-…` key you received by email and press **Activate** (see [Licence](#licence)).
+3. **Add a class.** Type a name in **+ New class** in the sidebar and press Enter.
+4. **Add pupils.** Type a name in the last row of the sheet and press Enter.
+5. **Add columns.** Use **+ Add column**, for example two tests and a final grade, then click a header to set its weight and maximum.
+6. **Type marks.** The final grade and the pass/fail count under the class name update as you type.
+7. *(Optional)* **Set a PIN** in **Settings → PIN and encryption** to encrypt the file.
 
 ## Using it
 
@@ -124,3 +125,40 @@ While the app is open, the PIN is kept in memory only while the database is unlo
 
 **Forgot the PIN?** on the lock screen takes you to the first-run screen, where you can open another database or start a new one in a different folder. The locked file stays where it is, untouched, and **Back to the lock screen** returns to it (a 30-second wait that has already started keeps running).
 
+## Licence
+
+avalio-lite needs a licence key, which looks like `BRN-7KPX-4M9D-QW2R-8NFC` and comes by email. The app checks it with Clavren, Breren's licence server, at `clavren.breren.com`. Only the key and a code for this computer are sent; your marks never leave your computer.
+
+- **Activating:** after choosing your folders (and typing your PIN, if the database has one), the app shows **Enter your licence key**. Type the key (capitals, spaces and dashes don't matter) and press **Activate** or Enter. This needs the internet.
+- **Offline:** once activated, the app opens straight away, with or without internet, for up to 30 days after its last check.
+- **Daily check:** while the computer is online, the app confirms the licence in the background once a day, at start or while it runs, without slowing anything down. If the licence was cancelled or has ended, the licence screen appears over the sheet (everything you typed is already saved); if it was extended, it goes away again by itself.
+- **Warnings on the sheet:** five days before the 30 days offline run out, the sheet says *Connect to the internet by …*; two weeks before a licence for a set period ends, it says *Your licence ends on …* and who to write to.
+- **Settings → Licence** shows whether the licence is permanent or until when it lasts, and until when the app works offline. **Check now** confirms it straight away.
+- **One computer at a time:** a key belongs to one Windows account on one computer. The licence is kept, protected by Windows, in `%APPDATA%\Breren\avalio-lite\licence.dat`; copied to another computer, it doesn't work there. Uninstalling keeps it, so a reinstall needs no new activation.
+- **While the app is locked**, **Back up my data** saves everything to a `.avalio` backup, as **Settings → Backup** does, so your marks are never out of reach. **Ctrl+L** still locks the database.
+
+What the licence screen can say:
+
+| Message | What it means | What to do |
+|---|---|---|
+| That key isn't valid for avalio-lite | The key is mistyped, unknown, or for another product | Check it against the email |
+| This key is already in use on another computer | The key is active on another computer or Windows account | Write to support.avalio.lite@breren.com to move it |
+| This licence has been cancelled | The licence was revoked | Write to support.avalio.lite@breren.com |
+| Your licence ended on … | A licence for a set period has run out | Write to support.avalio.lite@breren.com to renew it, then press **Check again** |
+| avalio-lite can't be licensed at the moment | Licensing for avalio-lite is paused | Write to support.avalio.lite@breren.com |
+| Connect to the internet so avalio-lite can confirm your licence | 30 days without a check, or the computer's clock was set back | Connect and press **Check again** |
+| Too many attempts | The server asks to wait | Try again after the minutes shown |
+| The licence server can't be reached | No internet, or the server is down | Check the connection and try again |
+
+## Updates
+
+- **Looking for a new version:** once a day, at start or while it runs, the app asks GitHub for the latest release. Nothing about you or your marks is sent. When a newer version is out, a bar above the sheet says *avalio-lite X.Y.Z is available*.
+- **What's new** opens the release page, with the list of changes, in your browser.
+- **Hide** (×) hides the bar for that version; it comes back for the next one.
+- **Update now** downloads the new version and checks its signature. Each release is signed by the developer, and a file that doesn't match is deleted, never run. Then:
+  - an **installed** copy closes and runs the new installer, which shows its progress and opens the app again;
+  - a **portable** copy replaces its own exe and opens again. Its folder must be writable; if it isn't (a read-only USB stick, for example), the app says so before downloading.
+
+  Everything you typed is already saved. The next start says *Updated to X.Y.Z*.
+- **Settings → Updates:** **Check for updates automatically** turns the daily check on or off (it starts on). **Check now** looks straight away, even for a version you hid, and says *avalio-lite X.Y.Z is up to date* when there is nothing newer.
+- If the check or the download fails (no internet, GitHub asking to wait, a file missing from the release), the app says why and stays as it was. Try again later, or download the new version by hand from the release page.

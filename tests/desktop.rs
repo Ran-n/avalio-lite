@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/11/03 08:27:17.613461
+//+ Revised: 	2026/11/09 11:58:10.390116
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use common::Fixture;
 use desktop_support::pixels::{Image, Rect};
 use desktop_support::{App, ThemeColours};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const NORMAL: (u32, u32) = (1280, 800);
 /// The window's minimum size (`ui/app-window.slint`).
@@ -73,6 +73,26 @@ fn assert_on_screen(image: &Image, control: Rect, what: &str) {
         image.width,
         image.height
     );
+}
+
+/// Scrolls the main area from its top, a notch at a time, until the control labelled `label` is
+/// wholly in the window: the same notches every run, so the picture is the same.
+fn scroll_into_view(app: &mut App, label: &str) {
+    app.scroll_main(60);
+    for _ in 0..60 {
+        let height = app.capture().height;
+        if app.locate(label).first().is_some_and(|found| found.bottom() + app.px(16.0) <= height) {
+            return;
+        }
+        app.scroll_main(-1);
+    }
+    panic!("{label:?} never came into view");
+}
+
+fn located_text(app: &mut App, text: &str) -> Rect {
+    let found = app.locate_text(text);
+    assert!(!found.is_empty(), "the text {text:?} isn't on screen");
+    found[0]
 }
 
 fn located(app: &mut App, label: &str) -> Rect {
@@ -323,6 +343,25 @@ fn the_column_panel_and_menus() {
         assert_eq!(found.len(), 1, "{label}");
         assert_on_screen(&image, found[0], &label);
     }
+    app.quit();
+}
+
+/// A window that lost the focus (another one came to the front during the run) is still captured
+/// as the user sees it while working in it: the open panel's Title field drawn focused.
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn a_snapshot_shows_the_window_active() {
+    let _turn = desktop_support::turn();
+    let fixture = with_sample_class();
+    let mut app = App::start(&config(&fixture), "en");
+    app.click("Exam 1");
+    // the smallest size, where the field's outline is the biggest share of the screen
+    app.resize(MINIMUM.0, MINIMUM.1);
+    app.theme(false);
+    app.window.lose_focus();
+    app.settle();
+    assert_eq!(app.state()["active"], false, "WM_KILLFOCUS made the window inactive");
+    app.snapshot("column-panel-light-1000x600");
     app.quit();
 }
 
@@ -710,6 +749,129 @@ fn the_lock_screen() {
 
 #[test]
 #[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_licence_screen() {
+    let _turn = desktop_support::turn();
+    let fixture = with_database();
+
+    let mut app = App::start_unlicensed(&config(&fixture), "en");
+    assert_eq!(app.state()["licensed"], false);
+    every_look(&mut app, "licence", |app, image, _, _| {
+        for control in ["Licence key", "Activate", "Back up my data"] {
+            assert_on_screen(image, located(app, control), control);
+        }
+    });
+    // the longest message, in the least room
+    app.send(json!({ "cmd": "licence", "refuse": "already_activated", "status": 409 }));
+    app.type_into("Licence key", "BRN-79YN-44XQ-W025-377Z");
+    app.click("Activate");
+    app.resize(MINIMUM.0, MINIMUM.1);
+    app.theme(false);
+    let image = app.snapshot("licence-in-use-elsewhere-light-1000x600");
+    assert_on_screen(&image, located(&mut app, "Back up my data"), "Back up my data");
+    assert_eq!(app.state()["licensed"], false);
+
+    app.send(json!({ "cmd": "licence" }));
+    app.click("Activate");
+    let state = app.state();
+    assert_eq!(state["licensed"], true, "real clicks activated the key: {state}");
+    assert!(!app.locate("Settings").is_empty(), "the sheet shows");
+    app.quit();
+
+    let mut app = App::start_unlicensed(&config(&fixture), "gl");
+    let image = galician_look(&mut app, "licence");
+    for control in ["Clave de licenza", "Activar", "Facer copia dos meus datos"] {
+        assert_on_screen(&image, located(&mut app, control), control);
+    }
+    app.send(json!({ "cmd": "licence", "refuse": "already_activated", "status": 409 }));
+    app.type_into("Clave de licenza", "BRN-79YN-44XQ-W025-377Z");
+    app.click("Activar");
+    let image = galician_look(&mut app, "licence-in-use-elsewhere");
+    assert_on_screen(&image, located(&mut app, "Facer copia dos meus datos"), "Facer copia dos meus datos");
+    app.quit();
+}
+
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_update_bar() {
+    let _turn = desktop_support::turn();
+    let fixture = with_sample_class();
+    for language in ["en", "gl"] {
+        let words = |english: &str| if language == "en" { english.to_owned() } else { common::galician(english) };
+        let mut app = App::start(&config(&fixture), language);
+        // a fixed version, so the bar's text is the same on every run
+        app.send(json!({"cmd": "release", "version": "9.0.0"}));
+        app.click(&words("Settings"));
+        scroll_into_view(&mut app, &words("Check for updates now"));
+        app.click(&words("Check for updates now"));
+        assert!(app.state()["update"].as_str().unwrap().contains("9.0.0"), "a real click looked for it");
+        app.click("2º ESO A");
+        let (update_now, whats_new) = (words("Update now"), words("What's new"));
+        let check_bar = |app: &mut App, image: &Image| {
+            assert_on_screen(image, located(app, &update_now), "Update now");
+            assert_on_screen(image, located(app, &whats_new), "What's new");
+        };
+        if language == "en" {
+            every_look_after(&mut app, "update-bar", |_| {}, |app, image, _, _| check_bar(app, image));
+            app.click("Hide");
+            assert_eq!(app.state()["update"], "", "a real click hid the bar");
+        } else {
+            let image = galician_look(&mut app, "update-bar");
+            check_bar(&mut app, &image);
+        }
+        app.quit();
+    }
+}
+
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn the_licence_card_and_the_offline_warning() {
+    let _turn = desktop_support::turn();
+    let fixture = with_sample_class();
+
+    let mut app = App::start(&config(&fixture), "en");
+    app.click("Settings");
+    every_look_after(
+        &mut app,
+        "settings-licence",
+        |app| scroll_into_view(app, "Check for updates now"),
+        |app, image, _, _| {
+            assert_on_screen(image, located(app, "Check now"), "Check now");
+            assert_on_screen(image, located_text(app, "Licensed"), "Licensed");
+        },
+    );
+    app.click("Check now");
+    let state = app.state();
+    assert_eq!(state["status"], "Licence confirmed.", "a real click checked the licence: {state}");
+    app.quit();
+
+    let mut app = App::start(&config(&fixture), "gl");
+    app.click("Axustes");
+    app.resize(MINIMUM.0, MINIMUM.1);
+    scroll_into_view(&mut app, "Buscar actualizacións agora");
+    let image = galician_look(&mut app, "settings-licence");
+    assert_on_screen(&image, located(&mut app, "Comprobar agora"), "Comprobar agora");
+    assert_on_screen(&image, located_text(&mut app, "Con licenza"), "Con licenza");
+    app.quit();
+
+    // the warning names a day counted from today, so it is checked for room, not against a baseline
+    for language in ["en", "gl"] {
+        let mut app = App::start_offline_soon(&config(&fixture), language);
+        let warning = app.state()["status"].as_str().unwrap().to_owned();
+        assert!(warning.contains("internet"), "{warning}");
+        for dark in [false, true] {
+            for size in [NORMAL, MINIMUM] {
+                app.resize(size.0, size.1);
+                app.theme(dark);
+                let image = app.capture();
+                assert_on_screen(&image, located_text(&mut app, &warning), "the offline warning");
+            }
+        }
+        app.quit();
+    }
+}
+
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
 fn keyboard_focus() {
     let _turn = desktop_support::turn();
     let colours = ThemeColours::load();
@@ -739,12 +901,15 @@ fn keyboard_focus() {
 fn the_real_dialogs_open_and_close() {
     use desktop_support::window::{AppWindow, dialog_of};
     use std::process::{Child, Command, Stdio};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
     /// The first-run card is centred; its database "Browse…" sits this far from the window's
     /// centre (logical pixels, from the setup baseline). The app driver can't help here: this is
     /// the real app, which has no driver.
     const BROWSE_FROM_CENTRE: (f64, f64) = (204.0, 33.0);
     const LOGICAL_WIDTH: f64 = 1280.0;
+    /// How long a closed dialog may take to go, and how often it is told to close meanwhile.
+    const DIALOG_CLOSE_WAIT: Duration = Duration::from_secs(10);
+    const DIALOG_CLOSE_AGAIN: Duration = Duration::from_secs(2);
 
     /// Kills the app if the test fails before it quits, so no window is left behind.
     struct Running(Child);
@@ -777,9 +942,19 @@ fn the_real_dialogs_open_and_close() {
     let y = f64::from(height) / 2.0 + BROWSE_FROM_CENTRE.1 * scale;
     window.click(x as i32, y as i32);
     let dialog = dialog_of(pid, &window, Duration::from_secs(10)).expect("the folder dialog opens");
+    // Windows' dialog may take a while to go, and one that has only just appeared can miss a close
+    // message, so the close is repeated now and then until it is gone (or the wait runs out)
+    let deadline = Instant::now() + DIALOG_CLOSE_WAIT;
+    let mut closed_at = Instant::now();
     dialog.close();
-    std::thread::sleep(Duration::from_millis(500));
-    assert!(dialog_of(pid, &window, Duration::ZERO).is_none(), "closing it cancels it");
+    while dialog_of(pid, &window, Duration::ZERO).is_some() {
+        assert!(Instant::now() < deadline, "closing it cancels it (still open after {DIALOG_CLOSE_WAIT:?})");
+        if closed_at.elapsed() >= DIALOG_CLOSE_AGAIN {
+            dialog.close();
+            closed_at = Instant::now();
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
     window.close();
     let status = app.0.wait().expect("the app exits");
     assert!(status.success(), "a cancelled dialog and the close button quit cleanly: {status}");

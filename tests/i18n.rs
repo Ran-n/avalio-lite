@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/11/03 12:01:54.371072
+//+ Revised: 	2026/11/07 20:25:37.202982
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -206,6 +206,35 @@ fn every_message() -> Vec<Message<'static>> {
         Message::ImportLeftOut { headers: "Phone", count: 1 },
         Message::ImportErrorCells { count: 2 },
         Message::UntitledColumn { letter: "D" },
+        Message::LicenceAskForKey,
+        Message::LicenceInvalidKey,
+        Message::LicenceInUseElsewhere { email: "a@b.c" },
+        Message::LicenceRevoked { email: "a@b.c" },
+        Message::LicenceExpired { date: Some("30/06/2027"), email: "a@b.c" },
+        Message::LicenceExpired { date: None, email: "a@b.c" },
+        Message::LicenceWithdrawn { email: "a@b.c" },
+        Message::LicenceNeedsInternet,
+        Message::LicenceWait { minutes: 2 },
+        Message::LicenceUnreachable,
+        Message::LicenceNotSaved { error: "disk full" },
+        Message::BackgroundFailed { error: "no threads" },
+        Message::LicenceConnectBy { date: "30/06/2027" },
+        Message::LicenceEndsOn { date: "30/06/2027", email: "a@b.c" },
+        Message::LicencePermanent,
+        Message::LicenceUntil { date: "30/06/2027" },
+        Message::LicenceOfflineUntil { date: "30/06/2027" },
+        Message::LicenceConfirmed,
+        Message::UpdateAvailable { version: "0.6.0" },
+        Message::UpToDate { version: "0.5.0" },
+        Message::UpdateCheckFailed { reason: "offline" },
+        Message::LinkFailed { error: "no browser" },
+        Message::UpdateNotVerified,
+        Message::UpdateDownloadFailed { reason: "offline" },
+        Message::UpdateNotPlaced { reason: "in use" },
+        Message::UpdateFolderReadOnly,
+        Message::UpdateFileMissing { file: "x.exe" },
+        Message::UpdatedTo { version: "0.6.0" },
+        Message::UpdateNotStarted { reason: "denied" },
     ];
     for message in &all {
         match message {
@@ -237,7 +266,35 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::ImportDone { .. }
             | Message::ImportLeftOut { .. }
             | Message::ImportErrorCells { .. }
-            | Message::UntitledColumn { .. } => {}
+            | Message::UntitledColumn { .. }
+            | Message::LicenceAskForKey
+            | Message::LicenceInvalidKey
+            | Message::LicenceInUseElsewhere { .. }
+            | Message::LicenceRevoked { .. }
+            | Message::LicenceExpired { .. }
+            | Message::LicenceWithdrawn { .. }
+            | Message::LicenceNeedsInternet
+            | Message::LicenceWait { .. }
+            | Message::LicenceUnreachable
+            | Message::LicenceNotSaved { .. }
+            | Message::BackgroundFailed { .. }
+            | Message::LicenceConnectBy { .. }
+            | Message::LicenceEndsOn { .. }
+            | Message::LicencePermanent
+            | Message::LicenceUntil { .. }
+            | Message::LicenceOfflineUntil { .. }
+            | Message::LicenceConfirmed
+            | Message::UpdateAvailable { .. }
+            | Message::UpToDate { .. }
+            | Message::UpdateCheckFailed { .. }
+            | Message::LinkFailed { .. }
+            | Message::UpdateNotVerified
+            | Message::UpdateDownloadFailed { .. }
+            | Message::UpdateNotPlaced { .. }
+            | Message::UpdateFolderReadOnly
+            | Message::UpdateFileMissing { .. }
+            | Message::UpdatedTo { .. }
+            | Message::UpdateNotStarted { .. } => {}
         }
     }
     all

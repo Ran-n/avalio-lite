@@ -1,0 +1,11 @@
+database_path = 'D:\Marks\avalio-lite.db'
+log_dir = 'D:\Marks\logs'
+
+[preferences]
+show_column_settings = false
+language = "gl"
+theme = "dark"
+sidebar_collapsed = true
+
+[shortcuts]
+lock = "Ctrl+K"

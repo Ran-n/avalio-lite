@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/11/03 08:27:18.349782
+//+ Revised: 	2026/11/07 20:25:37.138476
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -54,6 +54,11 @@ fn current_config() -> AppConfig {
             language: Some(Language::Galician),
             theme: Some(ThemeChoice::Dark),
             sidebar_collapsed: true,
+            check_updates: false,
+            last_update_check: chrono::DateTime::from_timestamp(1_800_000_000, 0),
+            skipped_update: Some("0.6.0".to_owned()),
+            last_run_version: Some("0.5.0".to_owned()),
+            update_failed: Some("the installer couldn't start".to_owned()),
         },
         shortcuts: [("lock".to_owned(), "Ctrl+K".to_owned())].into(),
     }
@@ -77,6 +82,16 @@ fn the_golden_settings_file_loads() {
     let dir = tempfile::tempdir().unwrap();
     fs::copy(golden("config-current.toml"), dir.path().join("config.toml")).unwrap();
     assert_eq!(ConfigStore::in_dir(dir.path()).load().unwrap(), Some(current_config()));
+}
+
+#[test]
+fn a_settings_file_from_before_updates_looks_for_them_by_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::copy(golden("config-v2.toml"), dir.path().join("config.toml")).unwrap();
+    let preferences = ConfigStore::in_dir(dir.path()).load().unwrap().unwrap().preferences;
+    assert_eq!(preferences.language, Some(Language::Galician), "what it had is kept");
+    assert!(preferences.check_updates);
+    assert_eq!((preferences.last_update_check, preferences.skipped_update), (None, None));
 }
 
 #[test]
@@ -263,4 +278,23 @@ fn the_schema_matches_the_golden_dump() {
         fs::write(golden("schema.sql"), &dump).unwrap();
     }
     assert_eq!(dump, fs::read_to_string(golden("schema.sql")).unwrap(), "the schema changed; see the module docs");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Release signatures
+
+/// A `.sig` line made with a fixed test key: Ed25519 signatures are deterministic, so the line only
+/// changes with the format. Signatures already shipped must keep verifying in every later version.
+#[test]
+fn the_release_signature_format_is_stable() {
+    use avalio_lite::update::signature;
+    let key = ed25519_dalek::SigningKey::from_bytes(&[7; 32]);
+    let (name, hash) = ("avalio-lite-9.9.9-setup.exe", blake3::hash(b"avalio-lite").to_hex().to_string());
+    let line = format!("{}\n", signature::sig_line(&signature::sign(&key, name, &hash), name));
+    if updating() {
+        fs::write(golden("release-v1.sig"), &line).unwrap();
+    }
+    let expected = fs::read_to_string(golden("release-v1.sig")).unwrap();
+    assert_eq!(line, expected, "the signature format changed; see the module docs");
+    assert_eq!(signature::verify(&key.verifying_key(), name, &hash, &expected), Ok(()));
 }

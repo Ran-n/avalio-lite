@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.826999
-//+ Revised: 	2026/11/03 11:13:31.411696
+//+ Revised: 	2026/11/07 20:25:36.285568
 // -----------------------------------------------------------------------------
 
 //! Interface language. Slint strings are translated from `lang/<code>/LC_MESSAGES/avalio-lite.po`;
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 pub use errors::error_message;
 pub use labels::{ExportLabels, column_type_name, default_column_title, export_labels};
-pub use messages::{Message, text};
+pub use messages::{Message, licence_day, licence_notice, licence_reminder, text};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Language {
