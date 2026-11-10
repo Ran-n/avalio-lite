@@ -6,6 +6,8 @@ import { Theme } from "../theme.slint";
 // button. It takes no space and ignores clicks, so the mouse keeps going to the control's TouchArea.
 export component KeyboardPress inherits FocusScope {
     callback pressed();
+    // any other key, for a control that has more keys than Enter and Space; rejected unless handled
+    callback other-key(KeyEvent) -> EventResult;
 
     x: 0px;
     width: 0px;
@@ -15,7 +17,7 @@ export component KeyboardPress inherits FocusScope {
             root.pressed();
             return accept;
         }
-        return reject;
+        return root.other-key(event);
     }
 }
 

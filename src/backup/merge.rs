@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.853714
-//+ Revised: 	2026/11/03 11:39:46.853714
+//+ Revised: 	2026/11/09 21:54:00.186061
 // -----------------------------------------------------------------------------
 
 //! Adding a backup's classes to the open database, keeping all that is there.
@@ -11,8 +11,8 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 
 use crate::error::Result;
-use crate::gradebook::columns::{insert_column, set_round_source};
-use crate::gradebook::model::{Column, ColumnKind, Pupil, Sheet};
+use crate::gradebook::columns::copy_columns;
+use crate::gradebook::model::{Pupil, Sheet};
 use crate::gradebook::{cells, classes, pupils, sheet};
 
 /// What adding a backup's classes did, for the status line.
@@ -36,7 +36,8 @@ pub fn add_classes(target: &Connection, source: &Connection) -> Result<AddSummar
     let transaction = target.unchecked_transaction()?;
     let mut adding = Adding::default();
     for class in classes::list_classes(source)? {
-        adding.add_class(&transaction, &class.name, &sheet::load_sheet(source, class.id)?)?;
+        let class_id = adding.add_class(&transaction, &class.name, &sheet::load_sheet(source, class.id)?)?;
+        classes::copy_name_width(source, class.id, &transaction, class_id)?;
     }
     transaction.commit()?;
     let summary = adding.summary;
@@ -55,7 +56,8 @@ struct Adding {
 }
 
 impl Adding {
-    fn add_class(&mut self, connection: &Connection, name: &str, sheet: &Sheet) -> Result<()> {
+    /// Adds the class and returns its id here.
+    fn add_class(&mut self, connection: &Connection, name: &str, sheet: &Sheet) -> Result<i64> {
         let free = classes::free_class_name(connection, name)?;
         if free != name {
             self.summary.renamed.push((name.to_owned(), free.clone()));
@@ -71,7 +73,7 @@ impl Adding {
                 }
             }
         }
-        Ok(())
+        Ok(class_id)
     }
 
     /// The pupil here for a backup pupil, put into the new class.
@@ -99,23 +101,4 @@ impl Adding {
         self.claimed.insert(id);
         Ok(id)
     }
-}
-
-/// Copies the columns in order, with every setting. A rounded column may round a column to its
-/// right, so sources are set once every column exists. Returns backup column id -> new id.
-fn copy_columns(connection: &Connection, class_id: i64, columns: &[Column]) -> Result<HashMap<i64, i64>> {
-    let mut ids = HashMap::new();
-    for column in columns {
-        let kind = match column.kind {
-            ColumnKind::Round { decimals, .. } => ColumnKind::Round { source: None, decimals },
-            kind => kind,
-        };
-        ids.insert(column.id, insert_column(connection, class_id, &column.title, kind)?);
-    }
-    for column in columns {
-        if let ColumnKind::Round { source: Some(source), .. } = column.kind {
-            set_round_source(connection, ids[&column.id], ids.get(&source).copied())?;
-        }
-    }
-    Ok(ids)
 }

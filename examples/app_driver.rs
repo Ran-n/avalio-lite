@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.921715
-//+ Revised: 	2026/11/09 10:42:02.530093
+//+ Revised: 	2026/11/09 21:53:59.844994
 // -----------------------------------------------------------------------------
 
 //! Runs the real app, in its real window, for the desktop tests (`tests/desktop.rs`), against a
@@ -294,6 +294,8 @@ fn state(session: &Session) -> Value {
         })
         .collect();
     let columns: Vec<String> = gradebook.get_columns().iter().map(|column| column.title.to_string()).collect();
+    // 0 where a column keeps its kind's default width
+    let column_widths: Vec<i32> = gradebook.get_columns().iter().map(|column| column.width).collect();
     let classes: Vec<String> = gradebook.get_classes().iter().map(|class| class.name.to_string()).collect();
     json!({
         "setup_required": window.get_setup_required(),
@@ -309,6 +311,8 @@ fn state(session: &Session) -> Value {
         "classes": classes,
         "class_name": gradebook.get_class_name().as_str(),
         "columns": columns,
+        "column_widths": column_widths,
+        "name_width": gradebook.get_name_width(),
         "rows": rows,
         "panel_index": gradebook.get_panel_index(),
         "sidebar_collapsed": gradebook.get_sidebar_collapsed(),

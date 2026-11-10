@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.393948
-//+ Revised: 	2026/11/03 11:13:31.475894
+//+ Revised: 	2026/11/09 21:54:02.394996
 // -----------------------------------------------------------------------------
 
 use rusqlite::Connection;
@@ -29,6 +29,8 @@ pub enum Refresh {
     Row(usize),
     /// column settings changed: recalculate cells and update the headers' tags in place
     Columns,
+    /// a column (or the pupil column) was resized: only the widths change, no cell is touched
+    Widths,
     Sheet,
     All {
         select: Option<i64>,
@@ -42,6 +44,7 @@ pub fn apply(window: &AppWindow, connection: &Connection, refresh: Refresh) -> R
         Refresh::PupilName(pupil_id) => show_pupil_name(window, connection, pupil_id),
         Refresh::Row(row) => refresh_rows(window, connection, Some(row)),
         Refresh::Columns => refresh_columns(window, connection),
+        Refresh::Widths => refresh_widths(window, connection),
         Refresh::Sheet => show_sheet(window, connection, current_class_id(window)),
         Refresh::All { select } => show_all(window, connection, select),
     }
@@ -103,6 +106,7 @@ fn show_sheet(window: &AppWindow, connection: &Connection, class_id: i64) -> Res
     let gradebook = window.global::<Gradebook>();
     gradebook.set_current_class_id(ui_id(class_id));
     gradebook.set_class_name(classes::class_name(connection, class_id)?.into());
+    gradebook.set_name_width(ui_width(classes::class_name_width(connection, class_id)?));
     gradebook.set_columns(model(loaded.columns.iter().map(|column| column_item(column, &loaded.columns)).collect()));
     gradebook.set_rows(model(loaded.rows.iter().map(|row| row_item(row, &loaded.columns)).collect()));
     gradebook.set_addable_pupils(model(addable));
@@ -160,12 +164,33 @@ fn refresh_rows(window: &AppWindow, connection: &Connection, only: Option<usize>
     Ok(())
 }
 
+/// A stored width as the sheet takes it: 0 for the default.
+pub fn ui_width(width: Option<u16>) -> i32 {
+    width.map_or(0, i32::from)
+}
+
 /// Updates each header's title and tags in place, then recalculates the cells.
 fn refresh_columns(window: &AppWindow, connection: &Connection) -> Result<()> {
+    let Some(columns) = refresh_headers(window, connection)? else { return Ok(()) };
+    show_round_sources(window, &columns);
+    refresh_rows(window, connection, None)
+}
+
+/// Updates the headers' widths, and the pupil column's, in place; the rows aren't rebuilt.
+fn refresh_widths(window: &AppWindow, connection: &Connection) -> Result<()> {
+    let class_id = current_class_id(window);
+    window.global::<Gradebook>().set_name_width(ui_width(classes::class_name_width(connection, class_id)?));
+    refresh_headers(window, connection).map(|_| ())
+}
+
+/// Puts each column's current item in the header model, changing only the items that differ. The
+/// columns, or `None` when their number changed and the whole sheet was reloaded instead.
+fn refresh_headers(window: &AppWindow, connection: &Connection) -> Result<Option<Vec<Column>>> {
     let columns = columns::list_columns(connection, current_class_id(window))?;
     let items = window.global::<Gradebook>().get_columns();
     if items.row_count() != columns.len() {
-        return show_sheet(window, connection, current_class_id(window));
+        show_sheet(window, connection, current_class_id(window))?;
+        return Ok(None);
     }
     for (index, column) in columns.iter().enumerate() {
         let item = column_item(column, &columns);
@@ -173,8 +198,7 @@ fn refresh_columns(window: &AppWindow, connection: &Connection) -> Result<()> {
             items.set_row_data(index, item);
         }
     }
-    show_round_sources(window, &columns);
-    refresh_rows(window, connection, None)
+    Ok(Some(columns))
 }
 
 /// The class average and pass / fail counts under the class name.

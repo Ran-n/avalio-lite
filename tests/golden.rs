@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/11/07 20:25:37.138476
+//+ Revised: 	2026/11/09 21:54:06.051742
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -123,6 +123,16 @@ fn fill_current(connection: &Connection) {
     cells::set_cell(connection, exam, bea, "4").unwrap();
     cells::set_cell(connection, bonus, ana, "10").unwrap();
     cells::set_cell(connection, notes, bea, "Needs glasses").unwrap();
+    columns::set_column_width(connection, notes, Some(300)).unwrap();
+    classes::set_name_width(connection, class, Some(260)).unwrap();
+}
+
+/// The column widths of the golden class: the notes and pupil columns were resized, the rest
+/// follow their defaults. `None` everywhere in samples from before widths were stored.
+fn sheet_widths(connection: &Connection) -> (Option<u16>, Vec<Option<u16>>) {
+    let class = classes::list_classes(connection).unwrap()[0].id;
+    let loaded = sheet::load_sheet(connection, class).unwrap();
+    (classes::class_name_width(connection, class).unwrap(), loaded.columns.iter().map(|column| column.width).collect())
 }
 
 /// What the current golden database shows for class "1A".
@@ -158,6 +168,7 @@ fn the_current_database_sample_opens_with_its_data() {
     let connection = db::open(&path, None).unwrap();
     assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
     assert_current_sheet(&connection);
+    assert_eq!(sheet_widths(&connection), (Some(260), vec![None, None, None, Some(300)]));
 }
 
 #[test]
@@ -216,6 +227,18 @@ fn a_version_3_database_upgrades_with_all_its_data() {
     let connection = db::open(&path, None).unwrap();
     assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
     assert_current_sheet(&connection);
+}
+
+#[test]
+fn a_version_4_database_upgrades_with_all_its_data() {
+    let (_dir, path) = scratch_copy("db-v4.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 4, "the sample really is version 4");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    assert_eq!(sheet_widths(&connection), (None, vec![None; 4]), "every column keeps its default width");
 }
 
 // ---------------------------------------------------------------------------------------------

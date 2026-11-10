@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.640367
-//+ Revised: 	2026/11/09 10:42:02.390174
+//+ Revised: 	2026/11/10 07:42:01.522072
 // -----------------------------------------------------------------------------
 
 //! The app's real window, through Win32: found by its process, captured with `PrintWindow`, and
@@ -46,15 +46,17 @@ pub struct AppWindow {
 unsafe impl Send for AppWindow {}
 
 impl AppWindow {
-    /// Waits for the visible top-level window of process `pid`.
-    pub fn of_process(pid: u32, timeout: Duration) -> Self {
+    /// Waits for the visible top-level window of process `pid`; `None` when none showed in `timeout`.
+    pub fn of_process(pid: u32, timeout: Duration) -> Option<Self> {
         dpi_aware();
         let deadline = Instant::now() + timeout;
         loop {
             if let Some(hwnd) = win32::app_window_of(pid) {
-                return Self { hwnd };
+                return Some(Self { hwnd });
             }
-            assert!(Instant::now() < deadline, "process {pid} showed no window within {timeout:?}");
+            if Instant::now() >= deadline {
+                return None;
+            }
             std::thread::sleep(Duration::from_millis(50));
         }
     }
@@ -129,6 +131,23 @@ impl AppWindow {
         self.post(WM_LBUTTONDOWN, MK_LBUTTON, position);
         std::thread::sleep(Duration::from_millis(40));
         self.post(WM_LBUTTONUP, 0, position);
+    }
+
+    /// Presses the left button at `from`, moves to `to` a few pixels at a time with it held, and
+    /// lets go there, in physical pixels inside the client area, as Windows delivers a drag.
+    pub fn drag(&self, from: (i32, i32), to: (i32, i32)) {
+        const STEP: i32 = 4;
+        self.post(WM_MOUSEMOVE, 0, point(from.0, from.1));
+        self.post(WM_LBUTTONDOWN, MK_LBUTTON, point(from.0, from.1));
+        let steps = ((to.0 - from.0).abs().max((to.1 - from.1).abs()) / STEP).max(2);
+        for step in 1..=steps {
+            let x = from.0 + (to.0 - from.0) * step / steps;
+            let y = from.1 + (to.1 - from.1) * step / steps;
+            std::thread::sleep(Duration::from_millis(8));
+            self.post(WM_MOUSEMOVE, MK_LBUTTON, point(x, y));
+        }
+        std::thread::sleep(Duration::from_millis(40));
+        self.post(WM_LBUTTONUP, 0, point(to.0, to.1));
     }
 
     /// The mouse leaves the window, so no control is left showing its hover colour.

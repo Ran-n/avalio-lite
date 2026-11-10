@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:10:25.359630
-//+ Revised: 	2026/11/03 08:27:21.284291
+//+ Revised: 	2026/11/09 21:54:05.613946
 // -----------------------------------------------------------------------------
 
 //! Duplicating a class: its columns, and on request its pupils and marks (`classes::duplicate_class`).
@@ -261,4 +261,31 @@ proptest! {
         let original = sheet::load_sheet(&connection, class).unwrap();
         prop_assert_eq!(sheet_shape(&sheet::load_sheet(&connection, copy).unwrap()), sheet_shape(&original));
     }
+}
+
+#[test]
+fn every_kind_of_duplicate_keeps_the_column_widths() {
+    let (_dir, connection) = open();
+    let class = sample_class(&connection);
+    let original = columns::list_columns(&connection, class).unwrap();
+    columns::set_column_width(&connection, original[0].id, Some(320)).unwrap();
+    columns::set_column_width(&connection, original[4].id, Some(90)).unwrap();
+    classes::set_name_width(&connection, class, Some(260)).unwrap();
+    let widths = |class: i64| -> Vec<Option<u16>> {
+        columns::list_columns(&connection, class).unwrap().iter().map(|column| column.width).collect()
+    };
+    for contents in ALL_CONTENTS {
+        let copy = classes::duplicate_class(&connection, class, contents).unwrap();
+        assert_eq!(widths(copy), widths(class), "{contents:?}");
+        assert_eq!(classes::class_name_width(&connection, copy).unwrap(), Some(260), "{contents:?}");
+    }
+}
+
+#[test]
+fn a_class_never_resized_duplicates_with_default_widths() {
+    let (_dir, connection) = open();
+    let class = sample_class(&connection);
+    let copy = classes::duplicate_class(&connection, class, DuplicateContents::Columns).unwrap();
+    assert!(columns::list_columns(&connection, copy).unwrap().iter().all(|column| column.width.is_none()));
+    assert_eq!(classes::class_name_width(&connection, copy).unwrap(), None);
 }

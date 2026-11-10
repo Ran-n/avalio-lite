@@ -46,7 +46,7 @@ CREATE TABLE classes (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-);
+, name_width INTEGER CHECK (name_width IS NULL OR name_width BETWEEN 120 AND 640));
 
 CREATE INDEX idx_cells_pupil ON cells (pupil_id);
 
@@ -97,7 +97,7 @@ CREATE TABLE sheet_columns (
     max_score         REAL,
     source_column_id  INTEGER REFERENCES sheet_columns (id) ON DELETE SET NULL,
     decimals          INTEGER, bonus INTEGER NOT NULL DEFAULT 0
-    CHECK (bonus IN (0, 1) AND (bonus = 0 OR kind = 'test')),
+    CHECK (bonus IN (0, 1) AND (bonus = 0 OR kind = 'test')), width INTEGER CHECK (width IS NULL OR width BETWEEN 72 AND 640),
     CHECK (CASE kind
         WHEN 'info' THEN weight IS NULL AND max_score IS NULL
             AND source_column_id IS NULL AND decimals IS NULL

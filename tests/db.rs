@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.116536
-//+ Revised: 	2026/11/03 10:00:19.411964
+//+ Revised: 	2026/11/09 21:54:04.018133
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -520,4 +520,34 @@ fn has_whole_pages_checks_the_page_size() {
     }
     let missing = dir.path().join("missing.db");
     assert!(matches!(db::has_whole_pages(&missing), Err(AppError::Io { path, .. }) if path == missing));
+}
+
+#[test]
+fn column_widths_are_stored_within_their_limits() {
+    let dir = tempfile::tempdir().unwrap();
+    let connection = db::open(&dir.path().join("test.db"), None).unwrap();
+    connection.execute("INSERT INTO classes (id, name) VALUES (1, '1A')", []).unwrap();
+    connection
+        .execute("INSERT INTO sheet_columns (id, class_id, position, title, kind) VALUES (1, 1, 1, 'x', 'info')", [])
+        .unwrap();
+    let column_width =
+        |width: Option<i64>| connection.execute("UPDATE sheet_columns SET width = ?1 WHERE id = 1", [width]);
+    let name_width =
+        |width: Option<i64>| connection.execute("UPDATE classes SET name_width = ?1 WHERE id = 1", [width]);
+    assert!(column_width(Some(72)).is_ok() && column_width(Some(640)).is_ok());
+    assert!(column_width(Some(50)).is_err(), "narrower than the limit is refused");
+    assert!(column_width(Some(700)).is_err(), "wider than the limit is refused");
+    assert!(column_width(None).is_ok(), "NULL is the default width");
+    assert!(name_width(Some(120)).is_ok() && name_width(Some(640)).is_ok());
+    assert!(name_width(Some(100)).is_err());
+    assert!(name_width(Some(700)).is_err());
+    assert!(name_width(None).is_ok());
+    let widths: (Option<i64>, Option<i64>) = connection
+        .query_row(
+            "SELECT sc.width, c.name_width FROM sheet_columns sc JOIN classes c ON c.id = sc.class_id",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(widths, (None, None));
 }

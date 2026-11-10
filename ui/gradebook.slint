@@ -22,6 +22,24 @@ export struct ColumnItem {
     source-index: int,
     decimals: string,
     bonus: bool,
+    // the width the user dragged the column to, in logical pixels; 0 for its kind's default
+    width: int,
+}
+
+// How wide the sheet's columns are by default and how far they can be resized, in logical pixels.
+// The limits match gradebook::model (MIN_COLUMN_WIDTH, MIN_NAME_WIDTH, MAX_COLUMN_WIDTH); a test
+// checks they stay the same.
+export global ColumnWidths {
+    out property <length> name-default: 210px;
+    out property <length> cell-default: 128px;
+    out property <length> wide-default: 176px;
+    // still fits a "10.00" pill
+    out property <length> column-min: 72px;
+    // still fits the "×" button and a few letters of the name
+    out property <length> name-min: 120px;
+    out property <length> max: 640px;
+    // what Shift+← / Shift+→ on a focused header changes the width by
+    out property <length> key-step: 16px;
 }
 
 export enum Tone { neutral, pass, fail }
@@ -53,6 +71,8 @@ export global Gradebook {
     in property <string> class-name;
     in property <[ColumnItem]> columns;
     in property <[RowItem]> rows;
+    // the width the pupil column of the open class was dragged to, in logical pixels; 0 for the default
+    in property <int> name-width;
     // titles of the columns a rounded column can round, in sheet order
     in property <[string]> round-sources;
     in property <string> weight-total;
@@ -102,6 +122,10 @@ export global Gradebook {
     callback set-round-source(int, int);
     callback set-decimals(int, string);
     callback move-column(int, int);
+    // column index, width in logical pixels (0 puts it back to the default); saved, then the headers update
+    callback set-column-width(int, int);
+    // the pupil column's width in logical pixels, 0 for the default
+    callback set-name-width(int);
     callback delete-column(int);
 
     // true when the pupil was added, so the field it was typed in can be emptied

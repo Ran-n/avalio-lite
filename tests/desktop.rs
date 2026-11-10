@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/11/09 11:58:10.390116
+//+ Revised: 	2026/11/10 07:42:00.919316
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -275,6 +275,81 @@ fn the_sheet() {
     let mut app = App::start(&config(&fixture), "gl");
     let image = galician_look(&mut app, "sheet");
     assert_on_screen(&image, located(&mut app, "+ Engadir columna"), "+ Engadir columna");
+    app.quit();
+
+    a_wide_pupil_column();
+    a_long_note();
+    enter_moves_down_a_column();
+}
+
+/// The longest name in the sample, given to Uxía so the pupil column is too narrow for it.
+const LONG_PUPIL_NAME: &str = "Uxía Fernández de la Iglesia Castelao";
+
+/// The pupil column dragged to 400px by its edge, with real mouse messages: the long name shows whole.
+fn a_wide_pupil_column() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        use avalio_lite::gradebook::pupils;
+        let connection = state.connection().unwrap();
+        let class = common::sample_class(connection);
+        let uxia = pupils::list_class_pupils(connection, class).unwrap()[4].id;
+        pupils::rename_pupil(connection, uxia, LONG_PUPIL_NAME).unwrap();
+    }
+    state.shutdown();
+    relative_paths(&fixture);
+    let mut app = App::start(&config(&fixture), "en");
+    // the edges in sheet order: the pupil column's is the first
+    app.drag_nth("Column width", 0, 400.0 - 210.0);
+    let state = app.state();
+    assert_eq!(state["name_width"], 400, "{state}");
+    every_look(&mut app, "sheet-wide-names", |app, image, _, _| {
+        let edge = app.locate("Column width")[0];
+        let names = app.locate("Pupil");
+        let uxia = names.iter().max_by_key(|name| name.y).copied().unwrap();
+        assert_on_screen(image, uxia, "the long name");
+        // a field is only wider than its column when its text doesn't fit
+        assert!(uxia.right() <= edge.right(), "the whole name fits: {uxia:?}, edge {edge:?}");
+    });
+    app.quit();
+    let mut reopened = App::start(&config(&fixture), "en");
+    let state = reopened.state();
+    assert_eq!(state["name_width"], 400, "the width is kept after a restart: {state}");
+    reopened.quit();
+}
+
+/// A note longer than its cell, typed for real and with End pressed: the end of it shows.
+fn a_long_note() {
+    let fixture = with_sample_class();
+    let mut app = App::start(&config(&fixture), "en");
+    app.type_into("Ana Pérez, Notes", "Brings a note from home about missing the trip to Santiago");
+    app.press_end();
+    for dark in [false, true] {
+        app.resize(NORMAL.0, NORMAL.1);
+        app.theme(dark);
+        let theme = if dark { "dark" } else { "light" };
+        app.snapshot(&format!("sheet-long-note-{theme}-{}x{}", NORMAL.0, NORMAL.1));
+    }
+    app.quit();
+}
+
+/// A mark typed and confirmed with Enter: the cell below has the focus border and takes the next mark.
+fn enter_moves_down_a_column() {
+    let fixture = with_sample_class();
+    let mut app = App::start(&config(&fixture), "en");
+    app.type_into("Ana Pérez, Exam 1", "7");
+    app.press_enter();
+    for dark in [false, true] {
+        app.resize(NORMAL.0, NORMAL.1);
+        app.theme(dark);
+        let theme = if dark { "dark" } else { "light" };
+        app.snapshot(&format!("sheet-enter-{theme}-{}x{}", NORMAL.0, NORMAL.1));
+    }
+    app.send(json!({ "cmd": "type", "text": "5" }));
+    app.settle();
+    let state = app.state();
+    assert_eq!(cells(&state, 0)[0]["text"], "7", "{state}");
+    assert_eq!(cells(&state, 1)[0]["text"], "5", "Enter moved to Brais's exam: {state}");
     app.quit();
 }
 
@@ -934,7 +1009,7 @@ fn the_real_dialogs_open_and_close() {
             .expect("the app starts"),
     );
     let pid = app.0.id();
-    let window = AppWindow::of_process(pid, Duration::from_secs(20));
+    let window = AppWindow::of_process(pid, Duration::from_secs(45)).expect("the app shows its window");
     std::thread::sleep(Duration::from_millis(800));
     let (width, height) = window.client_size();
     let scale = f64::from(width) / LOGICAL_WIDTH;

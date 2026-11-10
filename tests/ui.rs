@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/11/08 16:31:32.106834
+//+ Revised: 	2026/11/10 18:58:37.060243
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -22,7 +22,7 @@ use avalio_lite::i18n::{self, Language, Message};
 use avalio_lite::licence::{Notice, SUPPORT_EMAIL};
 use avalio_lite::platform::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::platform::db;
-use avalio_lite::ui::{Gradebook, Licence, Section, SetupNotice, Theme, Tone, Update};
+use avalio_lite::ui::{ColumnWidths, Gradebook, Licence, Section, SetupNotice, Theme, Tone, Update};
 use avalio_lite::update::install::{Copy as InstallCopy, Installation, Pending, new_exe, old_exe};
 use avalio_lite::update::signature;
 use avalio_lite::update::{Asset, Release, UpdateError};
@@ -3674,4 +3674,539 @@ fn after_start_removes_what_an_update_left() {
 fn view_clear(ui: &Ui) {
     ui.session.window.set_status_message(SharedString::new());
     ui.session.window.set_error_message(SharedString::new());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Column widths
+
+/// The width stored for column `index` of class "1A" (`None` for the default).
+fn stored_column_width(ui: &Ui, index: usize) -> Option<i64> {
+    let state = ui.session.state.borrow();
+    let connection = state.connection().unwrap();
+    let class = classes::list_classes(connection).unwrap()[0].id;
+    columns::list_columns(connection, class).unwrap()[index].width.map(i64::from)
+}
+
+/// The edges that resize the columns, in sheet order: the pupil column's first.
+fn width_edges(ui: &Ui) -> Vec<ElementHandle> {
+    elements(ui, "Column width")
+}
+
+/// Drags `edge` sideways by `dx` logical pixels with the left button, through real pointer events.
+fn drag_edge(edge: &ElementHandle, dx: f32) {
+    let start = edge.absolute_position();
+    let (x, y) = (start.x + edge.size().width / 2.0, start.y + edge.size().height / 2.0);
+    edge.mock_drag(slint::LogicalPosition::new(x + dx, y), PointerEventButton::Left);
+}
+
+/// Two quick clicks in the middle of `element`, as a double-click arrives.
+fn double_click(ui: &Ui, element: &ElementHandle) {
+    let start = element.absolute_position();
+    let position =
+        slint::LogicalPosition::new(start.x + element.size().width / 2.0, start.y + element.size().height / 2.0);
+    let window = ui.session.window.window();
+    window.dispatch_event(WindowEvent::PointerMoved { position });
+    for _ in 0..2 {
+        window.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
+        window.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
+    }
+}
+
+#[test]
+fn the_sheet_width_limits_match_the_stored_ones() {
+    use avalio_lite::gradebook::model::{MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MIN_NAME_WIDTH};
+    let ui = seeded();
+    let widths = ui.session.window.global::<ColumnWidths>();
+    assert_eq!(widths.get_column_min(), f32::from(MIN_COLUMN_WIDTH));
+    assert_eq!(widths.get_name_min(), f32::from(MIN_NAME_WIDTH));
+    assert_eq!(widths.get_max(), f32::from(MAX_COLUMN_WIDTH));
+}
+
+#[test]
+fn dragging_a_column_edge_resizes_and_saves_it() {
+    let ui = seeded();
+    let edges = width_edges(&ui);
+    assert_eq!(edges.len(), 3, "the pupil column and both columns have an edge");
+    assert_eq!(edges[1].accessible_value().as_deref(), Some("128"), "a test column starts at its default");
+    drag_edge(&edges[1], 80.0);
+    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().width, 208);
+    assert_eq!(stored_column_width(&ui, 0), Some(208));
+    assert_eq!(find(&ui, "Ana, Exam").size().width, 208.0 - 24.0, "the cells follow the header");
+    assert_eq!(stored_column_width(&ui, 1), None, "the other column keeps its default");
+    assert!(panel_is_closed(&ui), "a drag doesn't open the column panel");
+}
+
+#[test]
+fn a_drag_is_clamped_to_the_limits() {
+    let ui = seeded();
+    drag_edge(&width_edges(&ui)[1], -500.0);
+    assert_eq!(stored_column_width(&ui, 0), Some(72), "no narrower than a pill");
+    drag_edge(&width_edges(&ui)[1], 1500.0);
+    assert_eq!(stored_column_width(&ui, 0), Some(640));
+    drag_edge(&width_edges(&ui)[0], -500.0);
+    assert_eq!(gradebook(&ui).get_name_width(), 120, "the pupil column has its own minimum");
+}
+
+#[test]
+fn double_clicking_the_edge_restores_the_default() {
+    let ui = seeded();
+    drag_edge(&width_edges(&ui)[1], 80.0);
+    assert_eq!(stored_column_width(&ui, 0), Some(208));
+    double_click(&ui, &width_edges(&ui)[1]);
+    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().width, 0);
+    assert_eq!(stored_column_width(&ui, 0), None, "the default is stored as no width at all");
+    assert_eq!(width_edges(&ui)[1].accessible_value().as_deref(), Some("128"));
+}
+
+#[test]
+fn shift_arrow_on_a_focused_header_changes_its_width() {
+    let ui = seeded();
+    click(&ui, "Class name");
+    // Tab on from the class name until a Shift+→ widens the first column: its header has focus
+    let mut reached = false;
+    for _ in 0..20 {
+        key(&ui, Key::Tab);
+        with_modifier(&ui, Key::Shift, Key::RightArrow);
+        if stored_column_width(&ui, 0).is_some() {
+            reached = true;
+            break;
+        }
+    }
+    assert!(reached, "Tab reaches the Exam header");
+    assert_eq!(stored_column_width(&ui, 0), Some(144), "16px wider");
+    with_modifier(&ui, Key::Shift, Key::LeftArrow);
+    with_modifier(&ui, Key::Shift, Key::LeftArrow);
+    assert_eq!(stored_column_width(&ui, 0), Some(112), "16px narrower each time");
+    assert!(panel_is_closed(&ui), "Shift+arrow doesn't open the panel");
+}
+
+#[test]
+fn a_screen_reader_can_step_the_width() {
+    let ui = seeded();
+    width_edges(&ui)[1].invoke_accessible_increment_action();
+    assert_eq!(stored_column_width(&ui, 0), Some(144));
+    width_edges(&ui)[1].invoke_accessible_decrement_action();
+    assert_eq!(stored_column_width(&ui, 0), Some(128));
+}
+
+#[test]
+fn the_pupil_column_width_is_kept_per_class() {
+    let ui = with_second_class();
+    drag_edge(&width_edges(&ui)[0], 90.0);
+    assert_eq!(gradebook(&ui).get_name_width(), 300);
+    click(&ui, "2B");
+    assert_eq!(gradebook(&ui).get_name_width(), 0, "the other class keeps its default");
+    click(&ui, "1A");
+    assert_eq!(gradebook(&ui).get_name_width(), 300, "and this one keeps its own");
+    assert_eq!(find(&ui, "Column width").accessible_value().as_deref(), Some("300"));
+}
+
+/// Was: with no columns the header row had no height, so the pupil column's edge couldn't be grabbed.
+#[test]
+fn regression_a_class_without_columns_still_has_a_pupil_edge_to_drag() {
+    let ui = with_second_class();
+    let edge = find(&ui, "Column width");
+    assert!(edge.size().height >= 44.0, "a whole row high: {:?}", edge.size());
+}
+
+#[test]
+fn a_click_on_the_edge_does_not_open_the_column_panel() {
+    let ui = seeded();
+    click_element(&width_edges(&ui)[1]);
+    assert!(panel_is_closed(&ui));
+    assert_eq!(stored_column_width(&ui, 0), None, "a click without a drag saves nothing");
+    click(&ui, "Exam");
+    assert_eq!(gradebook(&ui).get_panel_index(), 0, "the rest of the header still opens the panel");
+}
+
+#[test]
+fn resizing_the_column_in_the_panel_keeps_the_panel_open_on_it() {
+    let ui = seeded();
+    click(&ui, "Exam");
+    drag_edge(&width_edges(&ui)[1], 60.0);
+    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    assert_eq!(stored_column_width(&ui, 0), Some(188));
+}
+
+#[test]
+fn a_failed_width_save_shows_the_error() {
+    let ui = seeded();
+    {
+        let state = ui.session.state.borrow();
+        state
+            .connection()
+            .unwrap()
+            .execute_batch(
+                "CREATE TEMP TRIGGER no_widths BEFORE UPDATE OF width ON sheet_columns
+                 BEGIN SELECT RAISE(ABORT, 'test'); END",
+            )
+            .unwrap();
+    }
+    drag_edge(&width_edges(&ui)[1], 80.0);
+    assert!(!ui.session.window.get_error_message().is_empty(), "the failure is on screen");
+    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().width, 0, "the column snaps back");
+    assert_eq!(width_edges(&ui)[1].accessible_value().as_deref(), Some("128"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Focus scrolls whole cells into view
+
+/// Class "1A" with Ana and Bea, the test "Exam" and a 500px "Notes" column, in a 1000px window: the
+/// sheet is wider than its card, so it scrolls sideways.
+fn with_a_scrolling_sheet() -> Ui {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let class = classes::create_class(connection, "1A").unwrap();
+        for name in ["Ana", "Bea"] {
+            pupils::add_new_pupil(connection, class, name).unwrap();
+        }
+        let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
+        columns::rename_column(connection, exam, "Exam").unwrap();
+        let notes = columns::add_column(connection, class, ColumnType::Info, Language::English).unwrap();
+        columns::rename_column(connection, notes, "Notes").unwrap();
+        columns::set_column_width(connection, notes, Some(500)).unwrap();
+    }
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    ui.session.window.window().set_size(slint::LogicalSize::new(1000.0, 600.0));
+    ui
+}
+
+/// The sheet's visible area, as (left, right) in window coordinates.
+fn sheet_view(ui: &Ui) -> (f32, f32) {
+    let view = ElementHandle::find_by_element_id(&ui.session.window, "SheetGrid::sheet-view").next().unwrap();
+    (view.absolute_position().x, view.absolute_position().x + view.size().width)
+}
+
+/// The cell around the field labelled `label` (the `nth`), as (left, right): a cell's text box
+/// sits `padding` inside it on each side.
+fn cell_span(ui: &Ui, label: &str, nth: usize, padding: f32) -> (f32, f32) {
+    let (_, field) = text_and_box(ui, label, nth);
+    (field.0 - padding, field.1 + padding)
+}
+
+#[test]
+fn a_cell_in_the_last_column_scrolls_whole_into_view_with_its_focus_border() {
+    let ui = with_a_scrolling_sheet();
+    let (left, right) = sheet_view(&ui);
+    let before = cell_span(&ui, "Ana, Notes", 0, 12.0);
+    assert!(before.1 > right + 1.0, "the cell starts out partly hidden: {before:?}, view to {right}");
+    click(&ui, "Ana, Notes");
+    let cell = cell_span(&ui, "Ana, Notes", 0, 12.0);
+    assert!(cell.1 <= right + 0.5, "its right edge shows: {cell:?}, view to {right}");
+    assert!(cell.0 >= left - 0.5, "and its left edge: {cell:?}, view from {left}");
+}
+
+#[test]
+fn enter_into_a_hidden_row_cell_scrolls_the_whole_cell_into_view() {
+    let ui = with_a_scrolling_sheet();
+    click(&ui, "Ana, Notes");
+    type_text(&ui, "a");
+    press_enter(&ui);
+    let (_, right) = sheet_view(&ui);
+    let cell = cell_span(&ui, "Bea, Notes", 0, 12.0);
+    assert!(cell.1 <= right + 0.5, "Bea's note shows whole: {cell:?}, view to {right}");
+}
+
+#[test]
+fn going_back_to_a_pupil_name_scrolls_the_whole_name_cell_into_view() {
+    let ui = with_a_scrolling_sheet();
+    let (left, _) = sheet_view(&ui);
+    // the remove button at the start of the cell is the leftmost thing in it; one scrolled out of
+    // the sheet's view isn't found
+    let remove = || elements(&ui, "Remove from this class").first().map(|button| button.absolute_position().x);
+    click(&ui, "Ana, Notes");
+    assert_eq!(remove(), None, "the sheet scrolled the name cells' start away");
+    // from Ana's note back past her exam to her name
+    with_modifier(&ui, Key::Shift, Key::Tab);
+    with_modifier(&ui, Key::Shift, Key::Tab);
+    let shown = remove().expect("the remove button shows again");
+    assert!(shown >= left - 0.5, "{shown}, view from {left}");
+}
+
+#[test]
+fn tabbing_to_add_pupil_scrolls_its_whole_row_start_into_view() {
+    let ui = with_a_scrolling_sheet();
+    let (left, _) = sheet_view(&ui);
+    click(&ui, "Bea, Notes");
+    // the last cell of the last row is followed by the new pupil's field
+    key(&ui, Key::Tab);
+    let (_, field) = text_and_box(&ui, "Add pupil…", 0);
+    // the field sits 36px into its cell, past the "+", and its text 10px into the focused field:
+    // the cell's start is back in view
+    assert!((field.0 - (left + 46.0)).abs() < 1.0, "the text starts at {}, view from {left}", field.0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Long text in a field
+
+/// The text of the field labelled `label` (the `nth` of them) and the box it slides in, as
+/// (left, right) pairs in window coordinates. Each field's text and box come in the same order
+/// along a row, so the box is the one at the text's place among the row's boxes.
+fn text_and_box(ui: &Ui, label: &str, nth: usize) -> ((f32, f32), (f32, f32)) {
+    let input = &elements(ui, label)[nth];
+    let (at, size) = (input.absolute_position(), input.size());
+    let on_row = |id: &str| -> Vec<(f32, f32)> {
+        let mut found: Vec<(f32, f32)> = Vec::new();
+        for element in ElementHandle::find_by_element_id(&ui.session.window, id) {
+            let (position, element_size) = (element.absolute_position(), element.size());
+            let span = (position.x, position.x + element_size.width);
+            if (position.y - at.y).abs() < 0.5 && !found.contains(&span) {
+                found.push(span);
+            }
+        }
+        found
+    };
+    let text = (at.x, at.x + size.width);
+    let index = on_row("ScrollingTextInput::input").iter().position(|span| *span == text).unwrap();
+    (text, on_row("ScrollingTextInput::box")[index])
+}
+
+fn is_scrolled(ui: &Ui, label: &str, nth: usize) -> bool {
+    let (text, field) = text_and_box(ui, label, nth);
+    text.0 < field.0 - 0.5
+}
+
+fn shows_its_end(ui: &Ui, label: &str, nth: usize) -> bool {
+    let (text, field) = text_and_box(ui, label, nth);
+    (text.1 - field.1).abs() < 0.5 && text.0 < field.0 - 0.5
+}
+
+const LONG_NAME: &str = "Ana María Fernández de la Iglesia Rodríguez-Castelao y Pérez de Sotomayor e Outra";
+
+#[test]
+fn a_long_pupil_name_scrolls_to_the_cursor() {
+    let ui = seeded();
+    click_nth(&ui, "Pupil", 0);
+    replace_text(&ui, LONG_NAME);
+    assert!(LONG_NAME.chars().count() >= 80);
+    assert!(shows_its_end(&ui, "Pupil", 0), "typing at the end keeps the cursor in view");
+    key(&ui, Key::Home);
+    assert!(!is_scrolled(&ui, "Pupil", 0), "Home shows the start");
+    key(&ui, Key::End);
+    assert!(shows_its_end(&ui, "Pupil", 0), "End shows the end");
+    for _ in 0..10 {
+        key(&ui, Key::LeftArrow);
+    }
+    assert!(is_scrolled(&ui, "Pupil", 0), "a few steps left from the end stays scrolled");
+    assert_eq!(count(&ui, &format!("SELECT COUNT(*) FROM pupils WHERE name = '{LONG_NAME}'")), 1);
+}
+
+#[test]
+fn leaving_the_field_shows_its_start_again() {
+    let ui = seeded();
+    click_nth(&ui, "Pupil", 0);
+    replace_text(&ui, LONG_NAME);
+    assert!(is_scrolled(&ui, "Pupil", 0));
+    key(&ui, Key::Tab);
+    assert!(!is_scrolled(&ui, "Pupil", 0), "the resting sheet shows the start of the name");
+}
+
+#[test]
+fn a_short_name_does_not_move() {
+    let ui = seeded();
+    click_nth(&ui, "Pupil", 0);
+    key(&ui, Key::End);
+    type_text(&ui, " M.");
+    let (text, field) = text_and_box(&ui, "Pupil", 0);
+    assert_eq!(text, field, "a text that fits fills its box and never slides");
+}
+
+#[test]
+fn shift_arrows_select_and_scroll_the_same_way() {
+    let ui = seeded();
+    click_nth(&ui, "Pupil", 0);
+    replace_text(&ui, LONG_NAME);
+    key(&ui, Key::Home);
+    assert!(!is_scrolled(&ui, "Pupil", 0));
+    for _ in 0..LONG_NAME.chars().count() {
+        with_modifier(&ui, Key::Shift, Key::RightArrow);
+    }
+    assert!(shows_its_end(&ui, "Pupil", 0), "selecting to the end follows the cursor");
+}
+
+#[test]
+fn a_long_note_in_a_text_cell_scrolls() {
+    let ui = seeded();
+    gradebook(&ui).invoke_add_column(avalio_lite::ui::ColumnType::Info);
+    type_into(&ui, "Ana, Notes", LONG_NAME);
+    assert!(shows_its_end(&ui, "Ana, Notes", 0));
+    key(&ui, Key::Home);
+    assert!(!is_scrolled(&ui, "Ana, Notes", 0));
+    key(&ui, Key::Tab);
+    assert!(!is_scrolled(&ui, "Ana, Notes", 0));
+}
+
+/// Was: losing the focus slid the text back to its start, and getting it back didn't slide it to
+/// the cursor again, so after switching to another window and back the cursor at the end of a long
+/// note was out of sight. Found by the desktop tests' dark captures, taken after a light one.
+#[test]
+fn regression_the_cursor_shows_again_when_the_window_is_active_again() {
+    let ui = seeded();
+    gradebook(&ui).invoke_add_column(avalio_lite::ui::ColumnType::Info);
+    type_into(&ui, "Ana, Notes", LONG_NAME);
+    assert!(shows_its_end(&ui, "Ana, Notes", 0));
+    // `changed` handlers run once the event loop gets round to them, as it does between real events
+    let active = |active: bool| {
+        ui.session.window.window().dispatch_event(WindowEvent::WindowActiveChanged(active));
+        slint::platform::update_timers_and_animations();
+    };
+    active(false);
+    assert!(!is_scrolled(&ui, "Ana, Notes", 0), "an inactive window shows the note's start");
+    active(true);
+    assert!(shows_its_end(&ui, "Ana, Notes", 0), "back at the cursor, at the end");
+    key(&ui, Key::Home);
+    active(false);
+    active(true);
+    assert!(!is_scrolled(&ui, "Ana, Notes", 0), "a cursor at the start stays at the start");
+}
+
+#[test]
+fn a_right_aligned_mark_cell_scrolls_mirrored() {
+    let ui = seeded();
+    let long = "1234567890123456789012345678901234567890";
+    type_into(&ui, "Ana, Exam", long);
+    assert!(shows_its_end(&ui, "Ana, Exam", 0), "the end of a long mark shows at the right edge");
+    key(&ui, Key::Home);
+    assert!(!is_scrolled(&ui, "Ana, Exam", 0));
+    type_into(&ui, "Bea, Exam", "7");
+    let (text, field) = text_and_box(&ui, "Bea, Exam", 0);
+    assert_eq!(text, field, "a short mark doesn't move");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Enter
+
+fn stored_mark(ui: &Ui, pupil: &str) -> Option<String> {
+    let state = ui.session.state.borrow();
+    state
+        .connection()
+        .unwrap()
+        .query_row(
+            "SELECT c.value FROM cells c JOIN pupils p ON p.id = c.pupil_id
+             JOIN sheet_columns sc ON sc.id = c.column_id WHERE p.name = ?1 AND sc.title = 'Exam'",
+            [pupil],
+            |row| row.get(0),
+        )
+        .ok()
+}
+
+#[test]
+fn enter_in_a_mark_cell_moves_to_the_cell_below() {
+    let ui = seeded();
+    type_into(&ui, "Ana, Exam", "7");
+    press_enter(&ui);
+    assert_eq!(stored_mark(&ui, "Ana").as_deref(), Some("7"));
+    type_text(&ui, "8");
+    assert_eq!(stored_mark(&ui, "Bea").as_deref(), Some("8"), "the cell below had focus");
+    assert_eq!(stored_mark(&ui, "Ana").as_deref(), Some("7"), "and the cell left kept its mark");
+    assert_eq!(cell_text(&ui, 0, 0), "7");
+}
+
+#[test]
+fn enter_selects_the_cell_below_so_typing_replaces_it() {
+    let ui = seeded();
+    type_into(&ui, "Bea, Exam", "3");
+    type_into(&ui, "Ana, Exam", "7");
+    press_enter(&ui);
+    type_text(&ui, "9");
+    assert_eq!(stored_mark(&ui, "Bea").as_deref(), Some("9"), "the old mark was replaced, not added to");
+}
+
+#[test]
+fn enter_on_the_last_pupil_leaves_the_sheet_unfocused() {
+    let ui = seeded();
+    type_into(&ui, "Bea, Exam", "5");
+    press_enter(&ui);
+    type_text(&ui, "1");
+    assert_eq!(stored_mark(&ui, "Bea").as_deref(), Some("5"), "nothing has focus to type into");
+    assert_eq!(stored_mark(&ui, "Ana"), None);
+    assert_eq!(gradebook(&ui).get_rows().row_count(), 2);
+}
+
+#[test]
+fn enter_in_an_out_of_range_cell_still_moves_down_and_keeps_it_red() {
+    let ui = seeded();
+    type_into(&ui, "Ana, Exam", "12");
+    press_enter(&ui);
+    assert!(gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(0).unwrap().invalid);
+    type_text(&ui, "4");
+    assert_eq!(stored_mark(&ui, "Bea").as_deref(), Some("4"));
+    assert!(gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(0).unwrap().invalid, "still marked");
+}
+
+#[test]
+fn enter_in_a_text_column_moves_down_too() {
+    let ui = seeded();
+    gradebook(&ui).invoke_add_column(avalio_lite::ui::ColumnType::Info);
+    type_into(&ui, "Ana, Notes", "Glasses");
+    press_enter(&ui);
+    type_text(&ui, "Left early");
+    assert_eq!(cell_text(&ui, 1, 2), "Left early");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM cells WHERE value = 'Left early'"), 1);
+}
+
+#[test]
+fn enter_moves_down_again_from_a_cell_reached_by_enter() {
+    let ui = with_three_pupils();
+    type_into(&ui, "Ana, Exam", "7");
+    press_enter(&ui);
+    type_text(&ui, "8");
+    press_enter(&ui);
+    type_text(&ui, "9");
+    assert_eq!(stored_mark(&ui, "Carla").as_deref(), Some("9"), "a whole column is typed in one go");
+}
+
+#[test]
+fn enter_in_a_pupil_name_ends_the_editing() {
+    let ui = seeded();
+    click_nth(&ui, "Pupil", 0);
+    replace_text(&ui, "Ana María");
+    press_enter(&ui);
+    type_text(&ui, "x");
+    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().name, "Ana María", "the field lost focus");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils WHERE name = 'Ana María'"), 1, "and the name was saved");
+}
+
+#[test]
+fn enter_with_a_refused_class_name_puts_it_back_and_ends_the_editing() {
+    let ui = seeded();
+    type_into(&ui, "Class name", "");
+    assert!(!ui.session.window.get_error_message().is_empty(), "an empty name is refused");
+    press_enter(&ui);
+    assert_eq!(find(&ui, "Class name").accessible_value().as_deref(), Some("1A"), "put back");
+    type_text(&ui, "x");
+    assert_eq!(find(&ui, "Class name").accessible_value().as_deref(), Some("1A"), "and no longer focused");
+    assert_eq!(gradebook(&ui).get_class_name(), "1A");
+}
+
+#[test]
+fn enter_in_add_pupil_keeps_the_field_focused() {
+    let ui = seeded();
+    click(&ui, "+ Add pupil");
+    type_text(&ui, "Carmen");
+    press_enter(&ui);
+    type_text(&ui, "Dora");
+    press_enter(&ui);
+    let names: Vec<String> = gradebook(&ui).get_rows().iter().map(|row| row.name.to_string()).collect();
+    assert!(names.contains(&"Carmen".to_owned()) && names.contains(&"Dora".to_owned()), "{names:?}");
+}
+
+/// Class "1A" with Ana, Bea and Carla, and the test "Exam".
+fn with_three_pupils() -> Ui {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let class = classes::create_class(connection, "1A").unwrap();
+        for name in ["Ana", "Bea", "Carla"] {
+            pupils::add_new_pupil(connection, class, name).unwrap();
+        }
+        let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
+        columns::rename_column(connection, exam, "Exam").unwrap();
+    }
+    state.shutdown();
+    Ui::open(fixture)
 }

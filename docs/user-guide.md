@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.661079 )
-[//]: # (+ Revised: 	2026/11/07 20:25:35.866249 )
+[//]: # (+ Revised: 	2026/11/09 21:53:59.337500 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite user guide
@@ -33,6 +33,8 @@ Everything the app does, screen by screen. To download and install it, see the [
 
 Add columns with **+ Add column**. Click a column's header to open its settings on the right: title, weight, maximum, bonus, rounding, move left / right, and delete. Esc closes the panel. ‹ and › at the top of the panel (or Alt+← and Alt+→) open the settings of the column to the left or right, and Ctrl+← and Ctrl+→ move the column while its panel is open. The header shows the title and small tags such as `50%` and `/10`. **⋯ → Hide weights & scales** hides those tags, and the app remembers the choice.
 
+Drag the right edge of a column's header to change its width (double-click the edge to reset it, or Shift+← / Shift+→ on a focused header); the **Pupil** column too. Each class keeps its widths, also in a duplicate or a backup.
+
 **⋯ → Duplicate class** copies a class's columns and settings; **Duplicate with pupils** brings the same pupils with empty marks (for a new term), and **Duplicate with pupils and marks** makes an exact copy. The copy is called e.g. *1A (2)*; rename it in place.
 
 | Column | Holds |
@@ -50,6 +52,7 @@ A test's weight can be anything from 0 to 1000 %, and its maximum anything above
 Everything saves as you type.
 
 - Scores can be typed as `7.5` or `7,5`: digits with one decimal point or comma (`1e1` and `+5` aren't accepted). A score that isn't a number in the test's range is shaded red and left out of the calculations.
+- Press Enter to go to the same column in the next pupil's row, with its mark selected so typing replaces it; after the last pupil Enter leaves the sheet.
 - Calculated marks are shown to two decimals, rounded half up. They show as green pills when the shown mark is half the maximum or more (5 out of 10), and as rose pills below that. Failing test scores are shown in rose too.
 
 ### Excel
@@ -67,7 +70,7 @@ To back up all classes at once, use a [backup](#backups) instead.
 
 ### Keyboard
 
-Tab moves between fields and buttons, and Enter or Space presses the focused button.
+Tab moves between fields and buttons, and Enter or Space presses the focused button. Enter in a mark or note goes to the cell below; Enter in a pupil's name, the class name or a column setting ends the editing. Shift+← / Shift+→ on a focused column header narrows or widens the column.
 
 Shortcuts work anywhere on the main screen, even while you're typing in a cell, but not on the lock or first-run screens. Settings lists them:
 

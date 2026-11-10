@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/11/09 10:42:02.458969
+//+ Revised: 	2026/11/10 07:42:01.217243
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -46,6 +46,10 @@ fn manifest_dir() -> PathBuf {
 }
 
 /// One window on screen at a time: the tests take turns.
+/// How long the app may take to show its window. A debug build that starts while the rest of the
+/// suite has the machine busy has taken over 20 s.
+const WINDOW_TIMEOUT: Duration = Duration::from_secs(45);
+
 pub fn turn() -> MutexGuard<'static, ()> {
     static TURN: Mutex<()> = Mutex::new(());
     TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -106,7 +110,8 @@ impl App {
     }
 
     fn start_with(config_dir: &Path, language: &str, extra: &[&str]) -> Self {
-        let log = std::fs::File::create(config_dir.with_extension("driver.log")).unwrap();
+        let log_path = config_dir.with_extension("driver.log");
+        let log = std::fs::File::create(&log_path).unwrap();
         let mut child = Command::new(driver_exe())
             .arg(config_dir)
             .arg(language)
@@ -130,7 +135,13 @@ impl App {
                 }
             }
         });
-        let window = AppWindow::of_process(child.id(), Duration::from_secs(20));
+        let Some(window) = AppWindow::of_process(child.id(), WINDOW_TIMEOUT) else {
+            // no App owns the child yet, so its Drop can't close it: a window that shows up late
+            // would stay open after the run, holding the test's output pipe open with it
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the app showed no window within {WINDOW_TIMEOUT:?}; see {}", log_path.display());
+        };
         let mut app = Self { child, stdin, replies, window, scale: 1.0 };
         app.scale = app.send(json!({ "cmd": "ping" }))["scale"].as_f64().unwrap();
         // a click before the first frames are drawn (the SVG logo is rasterized then) can be lost,
@@ -325,6 +336,22 @@ impl App {
         let found = reply["found"].as_array().cloned().unwrap_or_default();
         assert_eq!(found.len(), 1, "expected one field labelled {label:?}, found {found:?}");
         found[0]["value"].as_str().unwrap_or_default().to_owned()
+    }
+
+    /// Drags the middle of the `index`-th control labelled `label` sideways by `dx` logical pixels
+    /// with the left button held, through real mouse messages.
+    pub fn drag_nth(&mut self, label: &str, index: usize, dx: f64) {
+        let target = self.the(label, index);
+        let from = ((target.x + target.width / 2) as i32, (target.y + target.height / 2) as i32);
+        let to = (from.0 + (dx * self.scale).round() as i32, from.1);
+        self.window.drag(from, to);
+        self.settle();
+    }
+
+    pub fn press_end(&mut self) {
+        const VK_END: u16 = 0x23;
+        self.window.press(VK_END);
+        self.settle();
     }
 
     pub fn press_enter(&mut self) {

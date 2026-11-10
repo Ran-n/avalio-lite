@@ -1,12 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/11/03 09:16:52.148562
+//+ Revised: 	2026/11/09 21:54:06.954322
 // -----------------------------------------------------------------------------
 
 use avalio_lite::error::AppError;
 use avalio_lite::gradebook::columns::{self, Direction};
-use avalio_lite::gradebook::model::{ColumnKind, ColumnTitles, ColumnType};
+use avalio_lite::gradebook::model::{
+    ColumnKind, ColumnTitles, ColumnType, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MIN_NAME_WIDTH,
+};
 use avalio_lite::gradebook::{cells, classes, pupils, sheet};
 use avalio_lite::i18n::Language;
 use avalio_lite::platform::db;
@@ -642,4 +644,50 @@ fn add_column_names_columns_through_the_given_titles() {
     columns::add_column(&connection, class_id, ColumnType::Test, Numbered).unwrap();
     columns::add_column(&connection, class_id, ColumnType::Info, Numbered).unwrap();
     assert_eq!(titles(&connection, class_id), ["Test#2", "Test#3", "Info#1"]);
+}
+
+#[test]
+fn a_column_width_is_stored_clamped_and_reset() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    let exam = columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
+    let width = |connection: &Connection| columns::list_columns(connection, class).unwrap()[0].width;
+    assert_eq!(width(&connection), None, "a new column has its kind's default width");
+    columns::set_column_width(&connection, exam, Some(200)).unwrap();
+    assert_eq!(width(&connection), Some(200));
+    columns::set_column_width(&connection, exam, Some(10)).unwrap();
+    assert_eq!(width(&connection), Some(MIN_COLUMN_WIDTH));
+    columns::set_column_width(&connection, exam, Some(900)).unwrap();
+    assert_eq!(width(&connection), Some(MAX_COLUMN_WIDTH));
+    columns::set_column_width(&connection, exam, None).unwrap();
+    assert_eq!(width(&connection), None, "back to the default");
+    assert!(matches!(columns::set_column_width(&connection, 9999, Some(200)), Err(AppError::NotEditable)));
+}
+
+#[test]
+fn the_pupil_column_width_is_stored_clamped_and_reset_per_class() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    let other = classes::create_class(&connection, "2B").unwrap();
+    assert_eq!(classes::class_name_width(&connection, class).unwrap(), None);
+    classes::set_name_width(&connection, class, Some(300)).unwrap();
+    assert_eq!(classes::class_name_width(&connection, class).unwrap(), Some(300));
+    assert_eq!(classes::class_name_width(&connection, other).unwrap(), None, "each class has its own");
+    classes::set_name_width(&connection, class, Some(10)).unwrap();
+    assert_eq!(classes::class_name_width(&connection, class).unwrap(), Some(MIN_NAME_WIDTH));
+    classes::set_name_width(&connection, class, Some(900)).unwrap();
+    assert_eq!(classes::class_name_width(&connection, class).unwrap(), Some(MAX_COLUMN_WIDTH));
+    classes::set_name_width(&connection, class, None).unwrap();
+    assert_eq!(classes::class_name_width(&connection, class).unwrap(), None);
+    assert!(matches!(classes::set_name_width(&connection, 9999, Some(200)), Err(AppError::NotEditable)));
+}
+
+#[test]
+fn widths_are_clamped_to_their_own_minimum() {
+    use avalio_lite::gradebook::model::clamp_width;
+    assert_eq!(clamp_width(None, MIN_COLUMN_WIDTH), None);
+    assert_eq!(clamp_width(Some(0), MIN_COLUMN_WIDTH), Some(MIN_COLUMN_WIDTH));
+    assert_eq!(clamp_width(Some(100), MIN_NAME_WIDTH), Some(MIN_NAME_WIDTH));
+    assert_eq!(clamp_width(Some(100), MIN_COLUMN_WIDTH), Some(100));
+    assert_eq!(clamp_width(Some(u16::MAX), MIN_COLUMN_WIDTH), Some(MAX_COLUMN_WIDTH));
 }

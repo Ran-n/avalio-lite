@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.337118
-//+ Revised: 	2026/11/03 09:16:51.920618
+//+ Revised: 	2026/11/09 21:54:01.339742
 // -----------------------------------------------------------------------------
 
 use crate::error::{AppError, Result};
@@ -102,11 +102,26 @@ pub enum DuplicateContents {
     Everything,
 }
 
+/// The narrowest a test, calculated or text column can be set to, in logical pixels: it still fits a
+/// "10.00" pill.
+pub const MIN_COLUMN_WIDTH: u16 = 72;
+/// The narrowest the pupil column can be set to: it still fits the "×" button and a few letters.
+pub const MIN_NAME_WIDTH: u16 = 120;
+/// The widest any column can be set to.
+pub const MAX_COLUMN_WIDTH: u16 = 640;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Column {
     pub id: i64,
     pub title: String,
     pub kind: ColumnKind,
+    /// The width the user dragged it to, in logical pixels; `None` follows the default for its kind.
+    pub width: Option<u16>,
+}
+
+/// `width` within `min..=MAX_COLUMN_WIDTH`; `None` (the default width) stays `None`.
+pub fn clamp_width(width: Option<u16>, min: u16) -> Option<u16> {
+    width.map(|width| width.clamp(min, MAX_COLUMN_WIDTH))
 }
 
 /// One pupil's row: the stored value per column, in column order ("" when empty or computed).

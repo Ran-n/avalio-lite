@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:31.148480
-//+ Revised: 	2026/11/03 11:13:31.148480
+//+ Revised: 	2026/11/09 21:54:02.053567
 // -----------------------------------------------------------------------------
 
 //! Turns the gradebook's values into the structs the Slint sheet shows, and the sheet's choices back.
 
-use super::view::ui_id;
+use super::view::{ui_id, ui_width};
 use crate::gradebook::compute::{Tone, depends_on_weights, evaluate_row, format_number, weights_add_up};
 use crate::gradebook::model::{Column, ColumnKind, ColumnType, DuplicateContents, SheetRow};
 use crate::i18n;
@@ -41,6 +41,7 @@ pub fn column_item(column: &Column, columns: &[Column]) -> ColumnItem {
         source_index,
         decimals: decimals.into(),
         bonus: matches!(column.kind, ColumnKind::Test { bonus: true, .. }),
+        width: ui_width(column.width),
     }
 }
 

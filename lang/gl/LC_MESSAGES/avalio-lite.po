@@ -480,3 +480,6 @@ msgstr "Descargando a actualización…"
 
 msgid "Check for updates now"
 msgstr "Buscar actualizacións agora"
+
+msgid "Column width"
+msgstr "Largura da columna"

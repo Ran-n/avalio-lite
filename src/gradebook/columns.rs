@@ -1,14 +1,16 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.917995
-//+ Revised: 	2026/11/03 09:16:51.992423
+//+ Revised: 	2026/11/09 21:54:00.926804
 // -----------------------------------------------------------------------------
+
+use std::collections::HashMap;
 
 use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::compute::{FULL_WEIGHT, parse_number, weight_total};
-use super::model::{Column, ColumnKind, ColumnTitles, ColumnType, clean_name};
+use super::model::{Column, ColumnKind, ColumnTitles, ColumnType, MIN_COLUMN_WIDTH, clamp_width, clean_name};
 use super::update_one;
 use crate::error::{AppError, NumberField, Result};
 
@@ -28,7 +30,7 @@ pub enum Direction {
 
 pub fn list_columns(connection: &Connection, class_id: i64) -> Result<Vec<Column>> {
     let mut statement = connection.prepare(
-        "SELECT id, title, kind, weight, max_score, source_column_id, decimals, bonus
+        "SELECT id, title, kind, weight, max_score, source_column_id, decimals, bonus, width
          FROM sheet_columns WHERE class_id = ?1 ORDER BY position",
     )?;
     let columns = statement.query_map([class_id], column_from_row)?.collect::<rusqlite::Result<_>>()?;
@@ -73,6 +75,40 @@ pub fn insert_column(connection: &Connection, class_id: i64, title: &str, kind: 
 pub fn rename_column(connection: &Connection, column_id: i64, title: &str) -> Result<()> {
     let title = clean_name(title)?;
     update_one(connection, "UPDATE sheet_columns SET title = ?2 WHERE id = ?1", params![column_id, title])
+}
+
+/// Adds copies of `columns` (from this class or another database) to the end of class `class_id`,
+/// in order, with every setting and width. A rounded column may round a column to its right, so
+/// sources are set once every copy exists; a source that isn't among `columns` is left unset.
+/// Returns original column id -> copy id.
+pub fn copy_columns(connection: &Connection, class_id: i64, columns: &[Column]) -> Result<HashMap<i64, i64>> {
+    let mut ids = HashMap::new();
+    for column in columns {
+        let kind = match column.kind {
+            ColumnKind::Round { decimals, .. } => ColumnKind::Round { source: None, decimals },
+            kind => kind,
+        };
+        let copy = insert_column(connection, class_id, &column.title, kind)?;
+        if column.width.is_some() {
+            set_column_width(connection, copy, column.width)?;
+        }
+        ids.insert(column.id, copy);
+    }
+    for column in columns {
+        if let ColumnKind::Round { source: Some(source), .. } = column.kind {
+            set_round_source(connection, ids[&column.id], ids.get(&source).copied())?;
+        }
+    }
+    Ok(ids)
+}
+
+/// Sets the width the column is shown at, clamped to the limits; `None` puts it back to the
+/// default for its kind.
+pub fn set_column_width(connection: &Connection, column_id: i64, width: Option<u16>) -> Result<()> {
+    let width = clamp_width(width, MIN_COLUMN_WIDTH);
+    update_one(connection, "UPDATE sheet_columns SET width = ?2 WHERE id = ?1", params![column_id, width])?;
+    log::info!("set the width of column {column_id} to {width:?}");
+    Ok(())
 }
 
 /// Makes a test count on top of the 100 % (extra credit), or back into it.
@@ -222,5 +258,5 @@ fn column_from_row(row: &Row) -> rusqlite::Result<Column> {
             ));
         }
     };
-    Ok(Column { id: row.get(0)?, title: row.get(1)?, kind })
+    Ok(Column { id: row.get(0)?, title: row.get(1)?, kind, width: row.get(8)? })
 }

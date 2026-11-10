@@ -1,0 +1,64 @@
+// The grip at the right edge of a column's header that drags the column wider or narrower.
+
+import { Theme } from "../theme.slint";
+import { ColumnWidths } from "../gradebook.slint";
+
+// An 8px strip, placed by its user along the right edge of a header. Dragging it reports the new width live through
+// `resizing`; releasing reports the final one through `committed`, once per drag, so a drag is one
+// save. A double-click asks for the default width through `reset`.
+export component ResizeEdge inherits Rectangle {
+    // the width the column shows right now (during a drag too)
+    in property <length> current;
+    in property <length> smallest;
+    in property <length> largest;
+    callback resizing(length);
+    callback committed(length);
+    callback reset();
+    property <bool> dragged;
+
+    width: 8px;
+    accessible-role: slider;
+    accessible-label: @tr("Column width");
+    accessible-value: round(root.current / 1px);
+    accessible-value-minimum: root.smallest / 1px;
+    accessible-value-maximum: root.largest / 1px;
+    accessible-value-step: ColumnWidths.key-step / 1px;
+    accessible-action-increment => { root.committed(root.clamped(root.current + ColumnWidths.key-step)); }
+    accessible-action-decrement => { root.committed(root.clamped(root.current - ColumnWidths.key-step)); }
+
+    pure function clamped(width: length) -> length {
+        return max(root.smallest, min(root.largest, width));
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.col-resize;
+        // The strip moves with the edge it drags, so its own coordinates shift under the pointer:
+        // each step adds how far the pointer is from where it was pressed, measured from where the
+        // edge is now, which follows the pointer without overshooting.
+        moved => {
+            if (self.pressed) {
+                let width = root.clamped(root.current + self.mouse-x - self.pressed-x);
+                if (width != root.current) {
+                    root.dragged = true;
+                    root.resizing(width);
+                }
+            }
+        }
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                root.dragged = false;
+            }
+            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up && root.dragged) {
+                root.dragged = false;
+                root.committed(root.current);
+            }
+        }
+        double-clicked => { root.reset(); }
+    }
+    // the line that shows where the edge is while it can be dragged
+    Rectangle {
+        x: parent.width - self.width;
+        width: 2px;
+        background: touch.has-hover || touch.pressed ? Theme.accent : transparent;
+    }
+}
