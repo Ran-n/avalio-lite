@@ -12,6 +12,8 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-10
+
 ### Added
 
 - Drag a column's edge to set its width (double-click resets it, Shift+← / Shift+→ on a focused header steps it); each class keeps its widths, in duplicates and backups too
