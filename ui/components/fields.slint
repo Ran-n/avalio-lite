@@ -3,6 +3,86 @@
 import { Theme } from "../theme.slint";
 import { ActionButton } from "buttons.slint";
 
+// A single-line TextInput in a clipping box that slides its text sideways so the cursor stays in
+// view, 8px from either edge, while it has focus; losing focus shows the start of the text again,
+// and getting it back shows the cursor where it was.
+// A bare TextInput doesn't scroll, so in a box narrower than its text the cursor went out of sight.
+// The same arrangement std LineEdit uses.
+export component ScrollingTextInput inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <length> font-size <=> input.font-size;
+    in property <int> font-weight <=> input.font-weight;
+    in property <TextHorizontalAlignment> alignment <=> input.horizontal-alignment;
+    in property <InputType> input-type <=> input.input-type;
+    in property <brush> text-color <=> input.color;
+    in property <color> selection-background-color <=> input.selection-background-color;
+    in property <color> selection-foreground-color <=> input.selection-foreground-color;
+    in property <string> spoken-label;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    // how close to an edge the cursor may come before the text slides
+    property <length> margin: 8px;
+
+    // a clipped TextInput can't take focus when it has no width at all
+    min-width: 1px;
+    forward-focus: input;
+
+    public function focus-text() {
+        input.focus();
+    }
+
+    public function select-all() {
+        input.select-all();
+    }
+
+    public function leave() {
+        input.clear-focus();
+    }
+
+    // the window the text slides behind
+    box := Rectangle {
+        clip: true;
+        input := TextInput {
+            // how far the text is slid left (negative) to keep the cursor in view
+            property <length> scroll: 0px;
+            // where the cursor last was in the text, to bring it back into view when the focus
+            // returns (the window was inactive meanwhile, say): a focus change doesn't move it
+            property <length> cursor-x: 0px;
+
+            function reveal-cursor() {
+                if (self.cursor-x + self.scroll < root.margin) {
+                    self.scroll = root.margin - self.cursor-x;
+                } else if (self.cursor-x + self.scroll > parent.width - root.margin - self.text-cursor-width) {
+                    self.scroll = parent.width - root.margin - self.text-cursor-width - self.cursor-x;
+                }
+            }
+
+            x: min(0px, max(parent.width - self.width, self.scroll));
+            width: max(parent.width, self.preferred-width + self.text-cursor-width);
+            height: parent.height;
+            single-line: true;
+            accessible-label: root.spoken-label;
+            vertical-alignment: center;
+            cursor-position-changed(position) => {
+                self.cursor-x = position.x;
+                if (self.has-focus) {
+                    self.reveal-cursor();
+                }
+            }
+            changed has-focus => {
+                if (self.has-focus) {
+                    self.reveal-cursor();
+                } else {
+                    self.scroll = 0px;
+                }
+            }
+            edited => { root.edited(self.text); }
+            accepted => { root.accepted(self.text); }
+        }
+    }
+}
+
 // Single-line text field. `boxed: false` makes it blend into the page until focused,
 // for titles and names that are edited in place.
 export component TextField inherits Rectangle {
@@ -44,25 +124,28 @@ export component TextField inherits Rectangle {
         vertical-alignment: center;
         color: Theme.faint;
     }
-    input := TextInput {
+    input := ScrollingTextInput {
         x: root.boxed || self.has-focus ? 10px : 0px;
         width: parent.width - 2 * self.x;
         height: parent.height;
         text <=> root.text;
-        single-line: true;
         input-type: root.input-type;
-        accessible-label: root.spoken-label;
+        spoken-label: root.spoken-label;
         font-size: root.font-size;
         font-weight: root.font-weight;
-        horizontal-alignment: root.alignment;
-        vertical-alignment: center;
-        color: Theme.text;
+        alignment: root.alignment;
+        text-color: Theme.text;
         selection-background-color: Theme.accent-soft;
         selection-foreground-color: Theme.text;
-        edited => { root.edited(self.text); }
-        accepted => {
+        edited(text) => { root.edited(text); }
+        accepted(text) => {
             root.restore();
             root.accepted(self.text);
+            // a field edited in place saves as you type, so Enter ends the editing where it can be
+            // seen to; fields that add something (Add pupil…, New class) stay focused for the next one
+            if (root.restores) {
+                self.leave();
+            }
         }
         changed has-focus => {
             if (!self.has-focus) {
@@ -83,7 +166,7 @@ export component TextField inherits Rectangle {
     }
 
     public function focus-input() {
-        input.focus();
+        input.focus-text();
     }
 }
 

@@ -1,14 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/11/02 21:48:10.415944
+//+ Revised: 	2026/11/09 21:54:00.535454
 // -----------------------------------------------------------------------------
-
-use std::collections::HashMap;
 
 use rusqlite::{Connection, ErrorCode, params};
 
-use super::model::{ClassSummary, ColumnKind, DuplicateContents, clean_name, name_sort_key};
+use super::model::{ClassSummary, DuplicateContents, MIN_NAME_WIDTH, clamp_width, clean_name, name_sort_key};
 use super::{cells, columns, pupils, sheet, update_one};
 use crate::error::{AppError, Result};
 
@@ -29,6 +27,28 @@ pub fn list_classes(connection: &Connection) -> Result<Vec<ClassSummary>> {
 
 pub fn class_name(connection: &Connection, class_id: i64) -> Result<String> {
     Ok(connection.query_row("SELECT name FROM classes WHERE id = ?1", [class_id], |row| row.get(0))?)
+}
+
+/// The width the pupil column of the class is shown at; `None` for the default.
+pub fn class_name_width(connection: &Connection, class_id: i64) -> Result<Option<u16>> {
+    Ok(connection.query_row("SELECT name_width FROM classes WHERE id = ?1", [class_id], |row| row.get(0))?)
+}
+
+/// Sets the width of the pupil column of the class, clamped to the limits; `None` puts it back to
+/// the default.
+pub fn set_name_width(connection: &Connection, class_id: i64, width: Option<u16>) -> Result<()> {
+    let width = clamp_width(width, MIN_NAME_WIDTH);
+    update_one(connection, "UPDATE classes SET name_width = ?2 WHERE id = ?1", params![class_id, width])?;
+    log::info!("set the width of the pupil column of class {class_id} to {width:?}");
+    Ok(())
+}
+
+/// Gives class `to_class` (in `to`) the pupil column width of class `from_class` (in `from`).
+pub fn copy_name_width(from: &Connection, from_class: i64, to: &Connection, to_class: i64) -> Result<()> {
+    match class_name_width(from, from_class)? {
+        Some(width) => set_name_width(to, to_class, Some(width)),
+        None => Ok(()),
+    }
 }
 
 pub fn create_class(connection: &Connection, name: &str) -> Result<i64> {
@@ -71,20 +91,8 @@ pub fn duplicate_class(connection: &Connection, class_id: i64, contents: Duplica
     let new_id = create_class(&transaction, &name)?;
     let original = sheet::load_sheet(&transaction, class_id)?;
 
-    let mut column_ids = HashMap::new();
-    for column in &original.columns {
-        let kind = match column.kind {
-            // the source may sit to the right, so it is set once every column has its new id
-            ColumnKind::Round { decimals, .. } => ColumnKind::Round { source: None, decimals },
-            kind => kind,
-        };
-        column_ids.insert(column.id, columns::insert_column(&transaction, new_id, &column.title, kind)?);
-    }
-    for column in &original.columns {
-        if let ColumnKind::Round { source: Some(source), .. } = column.kind {
-            columns::set_round_source(&transaction, column_ids[&column.id], Some(column_ids[&source]))?;
-        }
-    }
+    let column_ids = columns::copy_columns(&transaction, new_id, &original.columns)?;
+    copy_name_width(&transaction, class_id, &transaction, new_id)?;
 
     if contents != DuplicateContents::Columns {
         // enrolling appends, so this keeps the row order

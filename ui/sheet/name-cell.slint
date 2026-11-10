@@ -5,6 +5,8 @@ import { TextField } from "../components/fields.slint";
 
 export component NameCell inherits Rectangle {
     in property <RowItem> pupil;
+    // while the name is being edited, so the sheet can scroll the whole cell into view
+    out property <bool> has-focus: name.has-focus;
 
     height: Theme.row-height;
     background: Theme.surface;
@@ -23,7 +25,7 @@ export component NameCell inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            TextField {
+            name := TextField {
                 boxed: false;
                 text: root.pupil.name;
                 spoken-label: @tr("Pupil");

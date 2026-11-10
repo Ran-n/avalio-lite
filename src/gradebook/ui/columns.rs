@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.012344
-//+ Revised: 	2026/11/03 11:13:31.743034
+//+ Revised: 	2026/11/09 21:54:01.690167
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model, SharedString};
@@ -9,6 +9,8 @@ use slint::{ComponentHandle, Model, SharedString};
 use super::items::{from_ui_type, round_sources};
 use super::view::{Refresh, current_class_id};
 use super::{SharedState, run};
+use crate::error::AppError;
+use crate::gradebook::classes;
 use crate::gradebook::columns::{self, Direction};
 use crate::i18n::{self, Message};
 use crate::ui::{AppWindow, Gradebook};
@@ -61,6 +63,7 @@ fn wire_structure(window: &AppWindow, state: &SharedState, dialogs: &SharedDialo
 
 fn wire_settings(window: &AppWindow, state: &SharedState) {
     let gradebook = window.global::<Gradebook>();
+    wire_widths(window, state);
 
     let shared = state.clone();
     gradebook.on_set_bonus(with_window2(window, move |window, column_id, bonus| {
@@ -113,4 +116,48 @@ fn wire_settings(window: &AppWindow, state: &SharedState) {
             Ok(Refresh::Columns)
         });
     }));
+}
+
+/// A width the sheet sends, in logical pixels: 0 (or less) means the default.
+fn stored_width(width: i32) -> Option<u16> {
+    (width > 0).then(|| u16::try_from(width).unwrap_or(u16::MAX))
+}
+
+fn wire_widths(window: &AppWindow, state: &SharedState) {
+    let gradebook = window.global::<Gradebook>();
+
+    let shared = state.clone();
+    gradebook.on_set_column_width(with_window2(window, move |window, index, width| {
+        let column_id = usize::try_from(index)
+            .ok()
+            .and_then(|index| window.global::<Gradebook>().get_columns().row_data(index))
+            .map(|column| column.id);
+        run(window, &shared, "set column width", |connection| {
+            let Some(column_id) = column_id else { return Err(AppError::NotEditable) };
+            columns::set_column_width(connection, i64::from(column_id), stored_width(width))?;
+            Ok(Refresh::Widths)
+        });
+    }));
+
+    let shared = state.clone();
+    gradebook.on_set_name_width(with_window1(window, move |window, width| {
+        let class_id = current_class_id(window);
+        run(window, &shared, "set pupil column width", |connection| {
+            classes::set_name_width(connection, class_id, stored_width(width))?;
+            Ok(Refresh::Widths)
+        });
+    }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stored_width;
+
+    #[test]
+    fn sheet_widths_become_stored_widths() {
+        assert_eq!(stored_width(0), None, "0 is the default");
+        assert_eq!(stored_width(-5), None);
+        assert_eq!(stored_width(208), Some(208));
+        assert_eq!(stored_width(100_000), Some(u16::MAX), "too wide is clamped later, not dropped");
+    }
 }

@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
-import { ColumnItem, ColumnType, Gradebook } from "gradebook.slint";
+import { ColumnItem, ColumnType, ColumnWidths, Gradebook } from "gradebook.slint";
 import { FocusRing, KeyboardPress } from "components/focus.slint";
+import { ResizeEdge } from "components/resize-edge.slint";
 import { Tag } from "components/surfaces.slint";
 
 component Faint inherits Text {
@@ -9,10 +10,17 @@ component Faint inherits Text {
     vertical-alignment: center;
 }
 
-// Header of one sheet column: its title and a few tags. Clicking it opens the column's settings panel.
+// Header of one sheet column: its title and a few tags. Clicking it opens the column's settings panel;
+// dragging its right edge, or Shift+← / Shift+→ while it has focus, resizes the column.
 export component ColumnHeader inherits Rectangle {
     in property <ColumnItem> column;
     in property <int> index;
+    // the width shown while the edge is being dragged
+    callback resizing(length);
+    // the drag ended, or a key or the screen reader changed the width: save this width
+    callback resized(length);
+    // back to the default width
+    callback reset-width();
     property <bool> selected: Gradebook.panel-index == root.index;
     property <bool> calculated: root.column.kind != ColumnType.info && root.column.kind != ColumnType.test;
 
@@ -24,7 +32,17 @@ export component ColumnHeader inherits Rectangle {
         mouse-cursor: MouseCursor.pointer;
         clicked => { Gradebook.open-column-panel(root.index); }
     }
-    keys := KeyboardPress { pressed => { Gradebook.open-column-panel(root.index); } }
+    keys := KeyboardPress {
+        pressed => { Gradebook.open-column-panel(root.index); }
+        other-key(event) => {
+            if (event.modifiers.shift && (event.text == Key.RightArrow || event.text == Key.LeftArrow)) {
+                let step = event.text == Key.RightArrow ? ColumnWidths.key-step : -ColumnWidths.key-step;
+                root.resized(max(ColumnWidths.column-min, min(ColumnWidths.max, root.width + step)));
+                return accept;
+            }
+            return reject;
+        }
+    }
     if keys.has-focus: FocusRing { }
     VerticalLayout {
         padding-left: 12px;
@@ -60,5 +78,17 @@ export component ColumnHeader inherits Rectangle {
         y: parent.height - 2px;
         height: 2px;
         background: root.selected ? Theme.accent : transparent;
+    }
+    // last, so it is on top of the click that opens the panel
+    ResizeEdge {
+        x: parent.width - self.width;
+        y: 0px;
+        height: parent.height;
+        current: root.width;
+        smallest: ColumnWidths.column-min;
+        largest: ColumnWidths.max;
+        resizing(width) => { root.resizing(width); }
+        committed(width) => { root.resized(width); }
+        reset => { root.reset-width(); }
     }
 }

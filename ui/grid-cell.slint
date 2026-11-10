@@ -1,5 +1,6 @@
 import { Theme } from "theme.slint";
 import { Tone } from "gradebook.slint";
+import { ScrollingTextInput } from "components/fields.slint";
 
 // One cell of a sheet. Typed cells are borderless until focused; calculated cells
 // show their value as a pass / fail pill.
@@ -13,25 +14,37 @@ export component GridCell inherits Rectangle {
     // "pupil, column", so a screen reader says which cell this is
     in property <string> spoken-label;
     callback edited(string);
+    // Enter: the sheet moves on to the cell below
+    callback next();
+    // while it is being typed in, so the sheet can scroll the whole cell (not only its text) into view
+    out property <bool> has-focus: input.has-focus;
+
+    public function focus-and-select() {
+        input.focus-text();
+        input.select-all();
+    }
+
+    public function leave() {
+        input.leave();
+    }
 
     height: Theme.row-height;
     background: root.computed ? Theme.computed : root.invalid ? Theme.fail-soft : input.has-focus ? Theme.raised : Theme.surface;
 
-    input := TextInput {
+    input := ScrollingTextInput {
         visible: !root.computed;
-        accessible-label: root.spoken-label;
+        spoken-label: root.spoken-label;
         x: 12px;
         width: parent.width - 24px;
         height: parent.height;
         text: root.text;
-        single-line: true;
-        horizontal-alignment: root.numeric ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-        vertical-alignment: center;
+        alignment: root.numeric ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
         font-size: Theme.text-m;
-        color: root.invalid ? Theme.fail : root.tone == Tone.fail ? Theme.fail : Theme.text;
+        text-color: root.invalid ? Theme.fail : root.tone == Tone.fail ? Theme.fail : Theme.text;
         selection-background-color: Theme.accent-soft;
         selection-foreground-color: Theme.text;
-        edited => { root.edited(self.text); }
+        edited(text) => { root.edited(text); }
+        accepted => { root.next(); }
     }
     // A calculated cell is one readable item holding its value (and that it is provisional); a typed
     // cell is its own text field. The pill's texts below are drawn only.

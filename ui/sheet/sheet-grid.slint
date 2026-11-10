@@ -1,18 +1,38 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
-import { ColumnType, Gradebook } from "../gradebook.slint";
+import { ColumnType, ColumnWidths, Gradebook } from "../gradebook.slint";
 import { TextField } from "../components/fields.slint";
 import { ColumnHeader } from "../column-header.slint";
 import { GridCell } from "../grid-cell.slint";
+import { ResizeEdge } from "../components/resize-edge.slint";
 import { NameCell } from "name-cell.slint";
 
 // The sheet: a card holding the grid of pupils and columns, scrolling when it outgrows the window.
 export component SheetGrid inherits Rectangle {
     // where the column panel's left edge is, in window coordinates; the grid keeps columns left of it
     in property <length> panel-left;
-    property <length> name-width: 210px;
-    property <length> cell-width: 128px;
-    property <length> wide-cell-width: 176px;
+    // the column whose edge is being dragged (-1 for none) and the width it shows meanwhile: only
+    // the release saves, so the cells follow the drag through this rather than through the model
+    property <int> dragged-column: -1;
+    property <length> drag-width;
+    property <bool> dragging-name: false;
+    property <length> name-drag-width;
+    property <length> name-width: root.dragging-name ? root.name-drag-width
+        : Gradebook.name-width > 0 ? Gradebook.name-width * 1px : ColumnWidths.name-default;
+
+    // the cell Enter moved to (-1 for none); reset once it has focus, so it can be asked for again
+    property <int> focus-row: -1;
+    property <int> focus-column: -1;
+
+    pure function column-width(c: int) -> length {
+        if (c == root.dragged-column) {
+            return root.drag-width;
+        }
+        if (Gradebook.columns[c].width > 0) {
+            return Gradebook.columns[c].width * 1px;
+        }
+        return Gradebook.columns[c].kind == ColumnType.info ? ColumnWidths.wide-default : ColumnWidths.cell-default;
+    }
 
     public function focus-new-pupil() {
         new-pupil.focus-input();
@@ -20,7 +40,8 @@ export component SheetGrid inherits Rectangle {
 
     // Scrolls the sheet sideways just enough for the column at `x` (in the grid) of `width` to be
     // whole on screen, left of the column panel where the panel covers the sheet; a column already
-    // in view doesn't move it.
+    // in view doesn't move it. A field taking focus is scrolled into view by Slint, but only its
+    // text, which sits inside the cell's padding: the cells call this too, so their edges show.
     function reveal(x: length, width: length) {
         let covered = max(0px, sheet-view.absolute-position.x + sheet-view.width - root.panel-left);
         let room = max(0px, sheet-view.width - covered);
@@ -63,6 +84,8 @@ export component SheetGrid inherits Rectangle {
                     spacing: 1px;
                     Rectangle {
                         width: root.name-width;
+                        // a class without columns still has a header row to hold the title and the edge
+                        min-height: Theme.row-height;
                         background: Theme.raised;
                         Text {
                             x: 16px;
@@ -72,11 +95,43 @@ export component SheetGrid inherits Rectangle {
                             font-size: 14px;
                             color: Theme.muted;
                         }
+                        ResizeEdge {
+                            x: parent.width - self.width;
+                            y: 0px;
+                            height: parent.height;
+                            current: root.name-width;
+                            smallest: ColumnWidths.name-min;
+                            largest: ColumnWidths.max;
+                            resizing(width) => {
+                                root.name-drag-width = width;
+                                root.dragging-name = true;
+                            }
+                            committed(width) => {
+                                Gradebook.set-name-width(round(width / 1px));
+                                root.dragging-name = false;
+                            }
+                            reset => {
+                                root.dragging-name = false;
+                                Gradebook.set-name-width(0);
+                            }
+                        }
                     }
                     for column[c] in Gradebook.columns: ColumnHeader {
-                        width: column.kind == ColumnType.info ? root.wide-cell-width : root.cell-width;
+                        width: root.column-width(c);
                         column: column;
                         index: c;
+                        resizing(width) => {
+                            root.drag-width = width;
+                            root.dragged-column = c;
+                        }
+                        resized(width) => {
+                            Gradebook.set-column-width(c, round(width / 1px));
+                            root.dragged-column = -1;
+                        }
+                        reset-width => {
+                            root.dragged-column = -1;
+                            Gradebook.set-column-width(c, 0);
+                        }
                         // the column whose settings the panel shows is kept in view, also
                         // when the panel steps to it or moves it (headers are rebuilt then)
                         property <bool> shown-in-panel: c == Gradebook.panel-index;
@@ -90,6 +145,12 @@ export component SheetGrid inherits Rectangle {
                                 root.reveal(self.x, self.width);
                             }
                         }
+                        // resizing the column the panel shows keeps it in view
+                        changed width => {
+                            if (self.shown-in-panel) {
+                                root.reveal(self.x, self.width);
+                            }
+                        }
                     }
                 }
                 for row[r] in Gradebook.rows: HorizontalLayout {
@@ -97,9 +158,14 @@ export component SheetGrid inherits Rectangle {
                     NameCell {
                         width: root.name-width;
                         pupil: row;
+                        changed has-focus => {
+                            if (self.has-focus) {
+                                root.reveal(self.x, self.width);
+                            }
+                        }
                     }
                     for cell[c] in row.cells: GridCell {
-                        width: Gradebook.columns[c].kind == ColumnType.info ? root.wide-cell-width : root.cell-width;
+                        width: root.column-width(c);
                         text: cell.text;
                         spoken-label: row.name + ", " + Gradebook.columns[c].title;
                         invalid: cell.invalid;
@@ -108,6 +174,29 @@ export component SheetGrid inherits Rectangle {
                         computed: Gradebook.columns[c].kind != ColumnType.info && Gradebook.columns[c].kind != ColumnType.test;
                         numeric: Gradebook.columns[c].kind != ColumnType.info;
                         edited(text) => { Gradebook.cell-edited(r, c, text); }
+                        changed has-focus => {
+                            if (self.has-focus) {
+                                root.reveal(self.x, self.width);
+                            }
+                        }
+                        // Enter goes down the same column, which is typed in every row, so it never
+                        // lands on a calculated cell; after the last pupil it leaves the sheet
+                        property <bool> requested: root.focus-row == r && root.focus-column == c;
+                        changed requested => {
+                            if (self.requested) {
+                                self.focus-and-select();
+                                root.focus-row = -1;
+                                root.focus-column = -1;
+                            }
+                        }
+                        next => {
+                            if (r + 1 < Gradebook.rows.length) {
+                                root.focus-column = c;
+                                root.focus-row = r + 1;
+                            } else {
+                                self.leave();
+                            }
+                        }
                     }
                 }
                 HorizontalLayout {
@@ -115,6 +204,12 @@ export component SheetGrid inherits Rectangle {
                         width: root.name-width;
                         height: Theme.row-height;
                         background: Theme.surface;
+                        property <bool> adding: new-pupil.has-focus;
+                        changed adding => {
+                            if (self.adding) {
+                                root.reveal(self.x, self.width);
+                            }
+                        }
                         Text {
                             x: 16px;
                             height: parent.height;

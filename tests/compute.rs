@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.747058
-//+ Revised: 	2026/11/02 08:27:50.651609
+//+ Revised: 	2026/11/09 21:54:03.651611
 // -----------------------------------------------------------------------------
 
 use avalio_lite::gradebook::compute::{
@@ -12,7 +12,7 @@ use avalio_lite::gradebook::model::{Column, ColumnKind};
 use proptest::prelude::*;
 
 fn column(id: i64, kind: ColumnKind) -> Column {
-    Column { id, title: format!("c{id}"), kind }
+    Column { id, title: format!("c{id}"), kind, width: None }
 }
 
 fn test(id: i64, weight: f64, max_score: f64) -> Column {

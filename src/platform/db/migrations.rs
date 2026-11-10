@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.660497
-//+ Revised: 	2026/11/03 08:27:16.477466
+//+ Revised: 	2026/11/09 21:54:02.737859
 // -----------------------------------------------------------------------------
 
 use rusqlite::Connection;
@@ -15,6 +15,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../../migrations/002_bonus_tests.sql"),
     include_str!("../../../migrations/003_enforce_class_membership.sql"),
     include_str!("../../../migrations/004_cells_only_in_typed_columns.sql"),
+    include_str!("../../../migrations/005_column_widths.sql"),
 ];
 
 pub fn latest_version() -> usize {

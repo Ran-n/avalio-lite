@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/09 14:40:23.753444 )
+[//]: # (+ Revised: 	2026/11/10 20:48:22.043125 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,18 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Drag a column's edge to set its width (double-click resets it, Shift+← / Shift+→ on a focused header steps it); each class keeps its widths, in duplicates and backups too
+- Enter in a mark moves to the next pupil's cell in the same column; Enter in a name or setting ends the editing
+
+### Fixed
+
+- Long text in a field scrolls to keep the cursor in view, shows its start again when you leave it, and the cursor again when you come back to the window
+- A class without columns has a header row again, so its pupil column can be resized
+- A cell taking the focus on a sheet wider than the window scrolls fully into view: the focus border of a cell in the last column, and a pupil's remove button, no longer stay hidden past the sheet's edge
+- A desktop test whose window never shows closes the app instead of leaving it open, which kept the test run from finishing
 
 ## [0.6.0] - 2026-11-09
 

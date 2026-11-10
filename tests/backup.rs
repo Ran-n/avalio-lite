@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.935204
-//+ Revised: 	2026/11/03 08:27:17.168230
+//+ Revised: 	2026/11/09 21:54:03.223151
 // -----------------------------------------------------------------------------
 
 //! `.avalio` backups: exporting everything to one file, read back from the real file on disk.
@@ -658,4 +658,23 @@ fn regression_a_failed_backup_copy_leaves_no_partial_file() {
     let missing = fixture.path("missing.avalio");
     assert!(matches!(backup::open_copy(&missing, &copy, &[None]), Err(AppError::Io { path, .. }) if path == missing));
     assert!(!copy.exists());
+}
+
+#[test]
+fn added_classes_keep_their_column_widths() {
+    let fixture = Fixture::new();
+    let source = database(&fixture, "source.db");
+    let class = common::sample_class(&source);
+    let notes = columns::list_columns(&source, class).unwrap().last().unwrap().id;
+    columns::set_column_width(&source, notes, Some(400)).unwrap();
+    classes::set_name_width(&source, class, Some(300)).unwrap();
+    let target = database(&fixture, "target.db");
+
+    let summary = backup::add_classes(&target, &source).unwrap();
+    let added = summary.class_ids[0];
+    let widths: Vec<Option<u16>> = columns::list_columns(&target, added).unwrap().iter().map(|c| c.width).collect();
+    let expected: Vec<Option<u16>> = columns::list_columns(&source, class).unwrap().iter().map(|c| c.width).collect();
+    assert_eq!(widths, expected);
+    assert_eq!(widths.last(), Some(&Some(400)));
+    assert_eq!(classes::class_name_width(&target, added).unwrap(), Some(300));
 }
