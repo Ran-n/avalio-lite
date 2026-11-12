@@ -1,14 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:31.011467
-//+ Revised: 	2026/11/08 04:36:59.586820
+//+ Revised: 	2026/11/12 14:39:52.981297
 // -----------------------------------------------------------------------------
 
 //! The Rust-side texts and error messages in Galician.
 
 use super::Language;
 use super::errors::{DatabaseProblem, IoProblem, entries};
-use super::messages::{Message, counted, plural, renamings};
+use super::messages::{Message, UpdateProblem, counted, plural, renamings};
 use super::shortcuts::{action_label, display};
 use crate::error::{AppError, Folder, NumberField};
 use crate::shortcuts::ShortcutError;
@@ -31,6 +31,9 @@ pub(super) fn message(message: &Message) -> String {
             format!("Eliminar a {pupil}? Non está en ningunha clase; non se pode desfacer.")
         }
         Message::DatabaseMoved { path } => format!("Base de datos movida a {path}"),
+        Message::DatabaseMovedOldKept { path, old } => format!(
+            "Base de datos movida a {path}, pero non se puido borrar a copia antiga de {old}. Bórraa ti cando ningún outro programa a use."
+        ),
         Message::LogsMoved { path } => format!("Rexistros movidos a {path}"),
         Message::DatabaseFileType => "Base de datos de avalio-lite".to_owned(),
         Message::BackupFileType => "Copia de seguranza de avalio-lite".to_owned(),
@@ -104,6 +107,13 @@ pub(super) fn message(message: &Message) -> String {
                 format!("Saltáronse {count} celas con erros de Excel.")
             }
         }
+        Message::ImportUnnamedRows { count } => {
+            if *count == 1 {
+                "Saltouse 1 fila sen nome.".to_owned()
+            } else {
+                format!("Saltáronse {count} filas sen nome.")
+            }
+        }
         Message::UntitledColumn { letter } => format!("columna {letter} (sen título)"),
         Message::LicenceAskForKey => {
             "avalio-lite necesita unha clave de licenza para funcionar. Recibíchela por correo; ten esta forma:
@@ -131,8 +141,10 @@ BRN-XXXX-XXXX-XXXX-XXXX"
         Message::LicenceUnreachable => {
             "Non se pode contactar co servidor de licenzas. Comproba a conexión a internet e téntao de novo.".to_owned()
         }
-        Message::LicenceNotSaved { error } => format!("Non se puido gardar a licenza neste ordenador: {error}"),
-        Message::BackgroundFailed { error } => format!("Non se puido iniciar a comprobación: {error}"),
+        Message::LicenceNotSaved => {
+            "Non se puido gardar a licenza neste ordenador. Comproba que hai espazo libre e téntao de novo; o rexistro ten os detalles.".to_owned()
+        }
+        Message::BackgroundFailed => "Non se puido iniciar. Téntao de novo; o rexistro ten os detalles.".to_owned(),
         Message::LicenceConnectBy { date } => {
             format!("Conéctate a internet antes do {date} para seguir usando avalio-lite.")
         }
@@ -145,13 +157,22 @@ BRN-XXXX-XXXX-XXXX-XXXX"
         Message::LicenceConfirmed => "Licenza confirmada.".to_owned(),
         Message::UpdateAvailable { version } => format!("Xa está dispoñible avalio-lite {version}."),
         Message::UpToDate { version } => format!("avalio-lite está ao día ({version})."),
-        Message::UpdateCheckFailed { reason } => format!("Non se puideron buscar actualizacións: {reason}"),
-        Message::LinkFailed { error } => format!("Non se puido abrir a páxina: {error}"),
+        Message::UpdateCheckFailed { problem } => {
+            format!("Non se puideron buscar actualizacións: {}", update_problem(*problem))
+        }
+        Message::LinkFailed { url } => format!("Non se puido abrir a páxina no navegador. O seu enderezo é {url}"),
         Message::UpdateNotVerified => {
             "Non se puido verificar a actualización, así que non se instalou.".to_owned()
         }
-        Message::UpdateDownloadFailed { reason } => format!("Non se puido descargar a actualización: {reason}"),
-        Message::UpdateNotPlaced { reason } => format!("Non se puido colocar a actualización: {reason}"),
+        Message::UpdateDownloadFailed { problem } => {
+            format!("Non se puido descargar a actualización: {}", update_problem(*problem))
+        }
+        Message::UpdateNotPlaced => {
+            "Non se puido colocar a actualización: o ficheiro da aplicación está en uso ou non se pode cambiar. Descarga a nova versión desde a páxina da versión; o rexistro ten os detalles.".to_owned()
+        }
+        Message::UpdateLeftAside { path } => format!(
+            "Non se puido colocar a actualización, e o ficheiro da aplicación quedou como {path}. Cámbialle o nome de novo a avalio-lite.exe (sen .old) antes de abrir a aplicación."
+        ),
         Message::UpdateFolderReadOnly => {
             "Non se pode escribir neste cartafol. Descarga a nova versión desde a páxina da versión.".to_owned()
         }
@@ -159,9 +180,21 @@ BRN-XXXX-XXXX-XXXX-XXXX"
             format!("A versión non ten {file}. Descarga a nova versión desde a páxina da versión.")
         }
         Message::UpdatedTo { version } => format!("Actualizado a avalio-lite {version}."),
-        Message::UpdateNotStarted { reason } => {
-            format!("Non se puido iniciar a actualización: {reason}. Descárgaa desde a páxina da versión.")
+        Message::UpdateNotStarted => {
+            "Non se puido iniciar a actualización. Descárgaa desde a páxina da versión; o rexistro ten os detalles.".to_owned()
         }
+    }
+}
+
+/// The end of an update failure's sentence in Galician, as `english::update_problem` says.
+fn update_problem(problem: UpdateProblem) -> &'static str {
+    match problem {
+        UpdateProblem::Offline => "non se pode contactar con GitHub. Comproba a conexión a internet e téntao de novo.",
+        UpdateProblem::RateLimited => "GitHub pide agardar un pouco. Téntao de novo máis tarde.",
+        UpdateProblem::BadAnswer => {
+            "non se entendeu a resposta de GitHub. Téntao de novo máis tarde; o rexistro ten os detalles."
+        }
+        UpdateProblem::Disk => "non se puido gardar neste ordenador. Comproba que hai espazo libre e téntao de novo.",
     }
 }
 
@@ -205,6 +238,12 @@ pub(super) fn error(error: &AppError) -> String {
         AppError::NoConfigDir => "Non se atopou o teu cartafol de axustes.".to_owned(),
         AppError::EmptyPath(Folder::Database) => "Escolle un cartafol para a base de datos.".to_owned(),
         AppError::EmptyPath(Folder::Logs) => "Escolle un cartafol para os rexistros.".to_owned(),
+        AppError::RelativePath(Folder::Database) => {
+            r"Indica o cartafol da base de datos completo, coa súa unidade, como D:\Notas.".to_owned()
+        }
+        AppError::RelativePath(Folder::Logs) => {
+            r"Indica o cartafol dos rexistros completo, coa súa unidade, como D:\Notas.".to_owned()
+        }
         AppError::NotFound(path) => format!("{} non existe.", path.display()),
         AppError::AlreadyExists(path) => format!("{} xa existe.", path.display()),
         AppError::NewerSchema { found, supported } => format!(
@@ -266,9 +305,10 @@ pub(super) fn error(error: &AppError) -> String {
             "{} non é un libro que se poida ler. Comproba que é un ficheiro .xlsx de Excel e que non está danado.",
             path.display()
         ),
-        AppError::NoPupilsInFile(path) => {
-            format!("{} non ten alumnos: os nomes van na columna A, desde a fila 2.", path.display())
-        }
+        AppError::NoPupilsInFile(path) => format!(
+            "{} non ten alumnos: a súa primeira fila precisa unha cabeceira Nome (ou os nomes na súa primeira columna), cun alumno en cada fila de debaixo.",
+            path.display()
+        ),
         AppError::DuplicatePupilInFile(name) => {
             format!("O ficheiro ten «{name}» dúas veces; cada alumno só pode estar nel unha vez.")
         }

@@ -33,7 +33,8 @@ export component GridCell inherits Rectangle {
 
     input := ScrollingTextInput {
         visible: !root.computed;
-        spoken-label: root.spoken-label;
+        // the red shading says "not a valid mark" only to the eye; the label says it to the ear
+        spoken-label: root.invalid ? root.spoken-label + " (" + @tr("not a valid mark") + ")" : root.spoken-label;
         x: 12px;
         width: parent.width - 24px;
         height: parent.height;

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/11/11 17:11:02.084860
+//+ Revised: 	2026/11/12 14:39:57.419282
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -39,6 +39,7 @@ fn create_database_saves_choice_and_next_start_is_ready() {
         log_dir: fixture.path("logs"),
         preferences: Preferences::default(),
         shortcuts: Default::default(),
+        last_class: None,
     };
     assert_eq!(state.config(), Some(&expected));
     assert_eq!(fixture.store().load().unwrap(), Some(expected));
@@ -122,6 +123,44 @@ fn empty_folder_is_rejected_and_nothing_is_saved() {
     assert!(matches!(result, Err(AppError::EmptyPath(Folder::Database))));
     assert_eq!(fixture.store().load().unwrap(), None);
     assert!(state.config().is_none());
+}
+
+/// A folder typed without its drive would put the database wherever the app was started from.
+#[test]
+fn a_relative_folder_is_rejected_and_nothing_is_saved() {
+    let fixture = Fixture::new();
+    let mut state = fixture.state();
+    let result = state.create_database(Path::new("Marks"), &fixture.path("logs"));
+    assert!(matches!(result, Err(AppError::RelativePath(Folder::Database))), "{result:?}");
+    let result = state.create_database(&fixture.path("data"), Path::new(r"logs\here"));
+    assert!(matches!(result, Err(AppError::RelativePath(Folder::Logs))), "{result:?}");
+    assert_eq!(fixture.store().load().unwrap(), None);
+    assert!(!Path::new("Marks").exists(), "nothing was made in the current folder");
+}
+
+/// A crash mid PIN change can leave only `.previous`, the database gone; making a new database in
+/// that folder must not delete it, since it may be the only good copy.
+#[test]
+fn a_new_database_keeps_the_previous_copy_of_one_that_went_missing() {
+    let fixture = Fixture::new();
+    std::fs::create_dir_all(fixture.path("data")).unwrap();
+    let previous = std::path::PathBuf::from(format!("{}.previous", fixture.database().display()));
+    std::fs::write(&previous, b"the only good copy").unwrap();
+    let mut state = fixture.state();
+    state.create_database(&fixture.path("data"), &fixture.path("logs")).unwrap();
+    assert!(previous.exists());
+}
+
+/// The same for a database without a PIN: the copies go as soon as it opens at start.
+#[test]
+fn copies_left_by_an_interrupted_change_go_when_the_database_opens() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let leftover = std::path::PathBuf::from(format!("{}.previous", fixture.database().display()));
+    std::fs::write(&leftover, b"old copy").unwrap();
+    let mut state = fixture.state();
+    assert_eq!(state.start(), Startup::Ready);
+    assert!(!leftover.exists());
 }
 
 #[test]
@@ -296,6 +335,8 @@ fn move_database_keeps_data_updates_settings_and_removes_original() {
     let original = state.config().unwrap().database_path.clone();
 
     let moved = state.move_database(&fixture.path("moved")).unwrap();
+    assert_eq!(moved.left_behind, None);
+    let moved = moved.path;
     assert_eq!(moved, fixture.path("moved").join(DATABASE_FILE_NAME));
     assert!(!original.exists());
     assert_eq!(pupil_count(&state), 1);
@@ -307,7 +348,7 @@ fn move_database_to_same_folder_does_nothing() {
     let fixture = Fixture::new();
     let mut state = fixture.set_up();
     let original = state.config().unwrap().database_path.clone();
-    assert_eq!(state.move_database(&fixture.path("data")).unwrap(), original);
+    assert_eq!(state.move_database(&fixture.path("data")).unwrap().path, original);
     assert!(original.is_file());
 }
 

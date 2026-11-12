@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.689707
-//+ Revised: 	2026/11/03 10:00:15.831316
+//+ Revised: 	2026/11/12 14:39:54.781608
 // -----------------------------------------------------------------------------
 
 //! Moving the database or the log file to another folder, never leaving the settings pointing
@@ -17,14 +17,22 @@ use crate::platform::db;
 use crate::platform::logging;
 use crate::platform::storage;
 
+/// Where a moved database is now, and the original's path when it couldn't be deleted (in use by
+/// another program, say): the move worked, but the old copy is still there for the user to delete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Moved {
+    pub path: PathBuf,
+    pub left_behind: Option<PathBuf>,
+}
+
 impl AppState {
     /// Copies the database to `destination_dir`, verifies the copy, switches to it,
     /// and only then deletes the original.
-    pub fn move_database(&mut self, destination_dir: &Path) -> Result<PathBuf> {
+    pub fn move_database(&mut self, destination_dir: &Path) -> Result<Moved> {
         let current = self.open_config()?.clone();
         let destination = destination_dir.join(DATABASE_FILE_NAME);
         if storage::same_location(&current.database_path, &destination) {
-            return Ok(destination);
+            return Ok(Moved { path: destination, left_behind: None });
         }
         if destination.exists() {
             return Err(AppError::AlreadyExists(destination));
@@ -46,12 +54,27 @@ impl AppState {
                 return Err(error);
             }
         };
-        if let Err(error) = self.replace_connection(new_connection) {
-            log::warn!("previous database did not close cleanly: {error}");
-        }
-        db::remove_files(&current.database_path)?;
+        self.replace_connection(new_connection);
         log::info!("moved database from {} to {}", current.database_path.display(), destination.display());
-        Ok(destination)
+        // the copy kept before the last update goes along with the database
+        let kept = storage::with_suffix(&current.database_path, db::BEFORE_UPDATE_SUFFIX);
+        if kept.is_file()
+            && let Err(error) = storage::move_file(&kept, &storage::with_suffix(&destination, db::BEFORE_UPDATE_SUFFIX))
+        {
+            log::warn!("the copy kept before the last update stays at {}: {error}", kept.display());
+        }
+        // the app already uses the new file: a failed delete doesn't undo the move, it is said
+        let left_behind = match db::remove_files(&current.database_path) {
+            Ok(()) => None,
+            Err(error) => {
+                log::error!(
+                    "the moved database's original {} couldn't be deleted: {error}",
+                    current.database_path.display()
+                );
+                Some(current.database_path)
+            }
+        };
+        Ok(Moved { path: destination, left_behind })
     }
 
     pub fn move_logs(&mut self, destination_dir: &Path) -> Result<()> {

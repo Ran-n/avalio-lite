@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/11/11 23:00:49.593570
+//+ Revised: 	2026/11/12 14:39:56.237280
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
@@ -279,6 +279,15 @@ impl Ui {
         let licence = FakeLicence::activated();
         let client = licence.client();
         Self::open_licensed(fixture, system_language, licence, client)
+    }
+
+    /// Quits as the app does (the state shut down, the window gone) and starts it again on the same
+    /// files, as the next start would.
+    pub fn restart(mut self) -> Self {
+        // the files stay; a blank fixture takes their place in the app being closed
+        let fixture = std::mem::replace(&mut self.fixture, Fixture::new());
+        drop(self);
+        Self::open(fixture)
     }
 
     /// Opens the app on a computer that was never activated.

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:44.148390
-//+ Revised: 	2026/11/03 10:00:16.953445
+//+ Revised: 	2026/11/12 14:39:55.104404
 // -----------------------------------------------------------------------------
 
 //! Locking, unlocking and changing the PIN that encrypts the open database.
@@ -20,6 +20,32 @@ use crate::platform::storage::with_suffix;
 const REKEY_SUFFIX: &str = ".rekey";
 const BACKUP_SUFFIX: &str = ".previous";
 
+/// Removes what a crash or power cut in the middle of a PIN change or a backup could leave next to
+/// the database at `path`: the half-made copy (`.rekey`), the file set aside (`.previous`) and the
+/// copy of a backup (`.restore`). Any of them may be an unencrypted copy of the data. Only called
+/// once the database itself is open (unlocked, when it has a PIN): until then `.previous` may be
+/// the one good copy, which the error of the failed change named. A failure is logged; the next
+/// open tries again.
+pub(super) fn clear_leftovers(path: &Path) {
+    let mut leftovers: Vec<_> = [REKEY_SUFFIX, BACKUP_SUFFIX, super::backups::RESTORE_SUFFIX]
+        .iter()
+        .map(|suffix| with_suffix(path, suffix))
+        .collect();
+    // the copy kept before an update stays, unless it is readable beside a database that has a PIN
+    // (a PIN set since, whose clean-up couldn't delete it)
+    let kept = with_suffix(path, db::BEFORE_UPDATE_SUFFIX);
+    if kept.exists() && db::is_encrypted(path).unwrap_or(false) && !db::is_encrypted(&kept).unwrap_or(true) {
+        leftovers.push(kept);
+    }
+    for leftover in leftovers.iter().filter(|leftover| leftover.exists()) {
+        match db::remove_files(leftover) {
+            Ok(()) => log::info!("removed {} left by an interrupted change", leftover.display()),
+            // a backup open for restoring holds its `.restore` copy until it is answered
+            Err(error) => log::warn!("couldn't remove {} yet, the next open tries again: {error}", leftover.display()),
+        }
+    }
+}
+
 impl AppState {
     /// The database is encrypted with a PIN (whether it is open or locked right now).
     pub fn is_protected(&self) -> bool {
@@ -34,10 +60,14 @@ impl AppState {
     /// Opens the locked database with `pin`. A wrong PIN is `WrongPin` and changes nothing.
     pub fn unlock(&mut self, pin: &str) -> Result<()> {
         let path = self.open_config()?.database_path.clone();
-        let connection = db::open_existing(&path, Some(pin))?;
+        if !path.is_file() {
+            return Err(AppError::NotFound(path));
+        }
+        let connection = db::open_upgrading(&path, Some(pin))?;
         self.connection = Some(connection);
         self.key = Some(Pin::new(pin));
         log::info!("database unlocked");
+        clear_leftovers(&path);
         Ok(())
     }
 
@@ -138,9 +168,17 @@ impl AppState {
         if let Err(error) = self.reopen(&path, new_key, open) {
             return Err(self.roll_back(&path, old_key.as_ref(), error));
         }
-        // the new file is in place and opens, so the old one is only a leftover now; failing to
-        // delete it is still reported, since it may be an unencrypted copy of the data
-        db::remove_files(&with_suffix(&path, BACKUP_SUFFIX))
+        // the new file is in place and opens, so the change worked: the old file is only a leftover
+        // now, and so is the copy kept before the last update (under the old PIN, or none). A
+        // failure to delete either doesn't undo the change; it is logged, and the next open of the
+        // database tries again (`clear_leftovers`)
+        for leftover in [BACKUP_SUFFIX, db::BEFORE_UPDATE_SUFFIX] {
+            let leftover = with_suffix(&path, leftover);
+            if let Err(error) = db::remove_files(&leftover) {
+                log::error!("couldn't remove {} after the PIN change: {error}", leftover.display());
+            }
+        }
+        Ok(())
     }
 
     /// The new file would not open: removes it and puts the old one back (`put_back`).

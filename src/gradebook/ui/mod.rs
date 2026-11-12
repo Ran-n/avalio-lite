@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.139186
-//+ Revised: 	2026/11/03 11:13:31.539517
+//+ Revised: 	2026/11/12 14:39:52.636376
 // -----------------------------------------------------------------------------
 
 mod cells;
@@ -106,8 +106,9 @@ pub fn show_database(window: &AppWindow, state: &SharedState) -> bool {
     let preferences = state.borrow().preferences();
     window.global::<Gradebook>().set_show_column_settings(preferences.show_column_settings);
     window.global::<Gradebook>().set_sidebar_collapsed(preferences.sidebar_collapsed);
+    let remembered = state.borrow().last_class();
     let loaded = run(window, state, "load classes", |connection| {
-        view::show_new_database(window, connection)?;
+        view::show_new_database(window, connection, remembered)?;
         Ok(Refresh::Nothing)
     });
     shortcuts::ui::show(window, state);
@@ -136,6 +137,14 @@ pub(crate) fn run(
     match result {
         Ok(()) => {
             window_view::clear_error(window);
+            // the class on screen is remembered for the next start, whichever action opened it; a
+            // failure to save that is said, but the action itself worked
+            let class_id = view::current_class_id(window);
+            if class_id >= 0
+                && let Err(error) = state.borrow_mut().set_last_class(class_id)
+            {
+                report_failure!(window, "remembering the open class", &error);
+            }
             true
         }
         Err(error) => {

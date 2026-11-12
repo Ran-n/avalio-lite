@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.812550
-//+ Revised: 	2026/11/03 10:00:17.179454
+//+ Revised: 	2026/11/12 14:39:53.746708
 // -----------------------------------------------------------------------------
 
 //! The database file. SQLite through SQLCipher: without a key it is a plain SQLite file;
@@ -27,16 +27,56 @@ const NO_KEY: &str = "";
 /// SQLite's smallest page size; every database file, encrypted or not, is a whole number of pages.
 pub const SMALLEST_PAGE: u64 = 512;
 
+/// Next to a database, the copy of it as it was before an update changed its schema.
+pub const BEFORE_UPDATE_SUFFIX: &str = ".before-update";
+
 /// Opens (creating if needed) the database at `path`, unlocking it with `key` when it is
 /// encrypted, and brings its schema up to date. A wrong or missing key is `WrongPin`.
 pub fn open(path: &Path, key: Option<&str>) -> Result<Connection> {
+    let connection = connect(path, key)?;
+    finish_opening(path, key, connection)
+}
+
+/// `open` for the teacher's own database: when this version is about to change its schema (the
+/// first start after an update), it first keeps a copy as it was, at `<path>.before-update`
+/// (encrypted like the database; replacing the copy an earlier update left). A migration that
+/// rewrites data (008 splits names) can then be undone by hand. Backups and scratch copies don't
+/// need one: the file they were copied from is left as it was.
+pub fn open_upgrading(path: &Path, key: Option<&str>) -> Result<Connection> {
+    let connection = connect(path, key)?;
+    let version = migrations::schema_version(&connection)?;
+    if version > 0 && version < migrations::latest_version() {
+        let copy = storage::with_suffix(path, BEFORE_UPDATE_SUFFIX);
+        remove_files(&copy)?;
+        // without its copy the update doesn't go ahead (008 rewrites names); a part-made copy goes
+        if let Err(error) = export(&connection, &copy, key) {
+            discard(&copy);
+            return Err(error);
+        }
+        log::info!("kept a copy of the database at schema {version} as {} before updating it", copy.display());
+    }
+    finish_opening(path, key, connection)
+}
+
+/// The connection to `path`, unlocked with `key`, before any pragma or migration.
+fn connect(path: &Path, key: Option<&str>) -> Result<Connection> {
     storage::ensure_parent(path)?;
-    let mut connection = Connection::open(path)?;
+    let connection = Connection::open(path)?;
     apply_key(&connection, key).map_err(|error| match (error, key) {
-        // a plain file had no PIN to get wrong: it is damaged, or not a database at all
-        (AppError::WrongPin, None) if !is_encrypted(path).unwrap_or(true) => AppError::NotADatabase(path.to_path_buf()),
+        // a plain file had no PIN to get wrong: it is damaged, or not a database at all; and a file
+        // that can't even be read to tell is reported as that, not as a wrong PIN
+        (AppError::WrongPin, None) => match is_encrypted(path) {
+            Ok(true) => AppError::WrongPin,
+            Ok(false) => AppError::NotADatabase(path.to_path_buf()),
+            Err(unreadable) => unreadable,
+        },
         (error, _) => error,
     })?;
+    Ok(connection)
+}
+
+/// Foreign keys on, WAL, and the schema brought up to date.
+fn finish_opening(path: &Path, key: Option<&str>, mut connection: Connection) -> Result<Connection> {
     connection.pragma_update(None, "foreign_keys", true)?;
     connection.pragma_update(None, "journal_mode", "WAL")?;
     migrations::migrate(&mut connection)?;

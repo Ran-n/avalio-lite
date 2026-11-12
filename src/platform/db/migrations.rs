@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.660497
-//+ Revised: 	2026/11/11 17:10:59.944215
+//+ Revised: 	2026/11/12 14:39:53.658906
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, OptionalExtension};
@@ -18,6 +18,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../../migrations/005_column_widths.sql"),
     include_str!("../../../migrations/006_pupil_surnames.sql"),
     include_str!("../../../migrations/007_name_columns.sql"),
+    include_str!("../../../migrations/008_split_comma_names.sql"),
+    include_str!("../../../migrations/009_column_limits.sql"),
 ];
 
 pub fn latest_version() -> usize {
@@ -79,7 +81,9 @@ fn with_foreign_keys_off(connection: &mut Connection, task: impl FnOnce(&mut Con
 /// dangling reference (foreign keys being off meanwhile, nothing else would catch one).
 fn apply_one(connection: &mut Connection, version: usize, sql: &str, record: bool) -> Result<()> {
     let transaction = connection.transaction()?;
+    let before = transaction.total_changes();
     transaction.execute_batch(sql)?;
+    let changed = transaction.total_changes() - before;
     let broken: Option<String> = transaction
         .query_row("SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1", [], |row| row.get(0))
         .optional()?;
@@ -94,6 +98,6 @@ fn apply_one(connection: &mut Connection, version: usize, sql: &str, record: boo
         transaction.pragma_update(None, "user_version", version as i64)?;
     }
     transaction.commit()?;
-    log::info!("applied schema migration {version}");
+    log::info!("applied schema migration {version} ({changed} rows changed)");
     Ok(())
 }

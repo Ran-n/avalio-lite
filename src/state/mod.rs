@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.365284
-//+ Revised: 	2026/11/03 10:00:15.393673
+//+ Revised: 	2026/11/12 14:39:54.897358
 // -----------------------------------------------------------------------------
 
 //! The app's core: the settings, the open database and its PIN, data moves and backups. No UI
@@ -13,6 +13,7 @@ mod preferences;
 mod protection;
 mod startup;
 
+pub use locations::Moved;
 pub use startup::{Opened, SetupReason, Startup};
 
 use std::path::Path;
@@ -79,7 +80,8 @@ impl AppState {
         self.save_config(config)?;
         self.reopen_logger(&log_dir);
         self.key = None;
-        self.replace_connection(connection)
+        self.replace_connection(connection);
+        Ok(())
     }
 
     /// Closes the database (and forgets its key), logging rather than failing: used on
@@ -116,10 +118,13 @@ impl AppState {
         Ok(())
     }
 
-    fn replace_connection(&mut self, connection: Connection) -> Result<()> {
-        match self.connection.replace(connection) {
-            Some(previous) => db::close(previous),
-            None => Ok(()),
+    /// Switches to `connection`. The previous one is closed; a failure to close it is logged, not
+    /// returned, since the switch has happened and the new database is the one in use.
+    fn replace_connection(&mut self, connection: Connection) {
+        if let Some(previous) = self.connection.replace(connection)
+            && let Err(error) = db::close(previous)
+        {
+            log::error!("the previous database did not close cleanly: {error}");
         }
     }
 

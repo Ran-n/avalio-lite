@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.630220
-//+ Revised: 	2026/11/07 20:25:36.488705
+//+ Revised: 	2026/11/12 14:39:55.001992
 // -----------------------------------------------------------------------------
 
 //! The view preferences and keyboard shortcuts kept in the settings file.
@@ -85,6 +85,27 @@ impl AppState {
 
     pub fn set_language(&mut self, language: Language) -> Result<()> {
         self.update_preferences(|preferences| preferences.language = Some(language))
+    }
+
+    /// The class that was open when the app last showed this database, if any.
+    pub fn last_class(&self) -> Option<i64> {
+        self.config().and_then(|config| config.last_class)
+    }
+
+    /// Notes the open class, for the next start; only written when it changed.
+    pub fn set_last_class(&mut self, class_id: i64) -> Result<()> {
+        if self.last_class() == Some(class_id) {
+            return Ok(());
+        }
+        self.update_config(|config| config.last_class = Some(class_id))
+    }
+
+    /// Forgets the open class, when the database's contents were replaced under the same file.
+    pub(super) fn forget_last_class(&mut self) -> Result<()> {
+        if self.last_class().is_none() {
+            return Ok(());
+        }
+        self.update_config(|config| config.last_class = None)
     }
 
     pub fn set_sidebar_collapsed(&mut self, collapsed: bool) -> Result<()> {

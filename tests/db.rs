@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.116536
-//+ Revised: 	2026/11/11 17:11:01.271886
+//+ Revised: 	2026/11/12 14:39:56.432186
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -656,6 +656,156 @@ fn migration_7_puts_the_name_columns_first_and_keeps_every_cell() {
         .query_row("SELECT sql FROM sqlite_master WHERE name = 'sheet_columns'", [], |row| row.get(0))
         .unwrap();
     assert!(schema.contains("REFERENCES sheet_columns (id)") && !schema.contains("sheet_columns_new"), "{schema}");
+}
+
+/// The teacher's own database keeps a copy of itself as it was before an update changed its
+/// schema, so a migration that rewrote data (008 splits names) can be undone by hand; opening it
+/// again, already up to date, makes no new copy.
+#[test]
+fn opening_an_older_database_keeps_a_copy_from_before_the_update() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("avalio-lite.db");
+    let mut old = Connection::open(&path).unwrap();
+    migrations::migrate_to(&mut old, 7).unwrap();
+    old.execute("INSERT INTO pupils (first_name, surname) VALUES ('Pérez, Ana', '')", []).unwrap();
+    drop(old);
+    let copy = dir.path().join(format!("avalio-lite.db{}", db::BEFORE_UPDATE_SUFFIX));
+
+    let connection = db::open_upgrading(&path, None).unwrap();
+    assert_eq!(pupil_names(&connection), [("Ana".to_owned(), "Pérez".to_owned())]);
+    drop(connection);
+    let kept = Connection::open(&copy).unwrap();
+    assert_eq!(migrations::schema_version(&kept).unwrap(), 7, "the copy is as the file was");
+    assert_eq!(pupil_names(&kept), [("Pérez, Ana".to_owned(), String::new())]);
+    drop(kept);
+
+    fs::remove_file(&copy).unwrap();
+    db::open_upgrading(&path, None).unwrap();
+    assert!(!copy.exists(), "an up-to-date database needs no copy");
+}
+
+/// A new database, and the plain `open` used for backups and scratch copies, make no copy.
+#[test]
+fn a_new_database_or_a_scratch_copy_keeps_no_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    db::open_upgrading(&dir.path().join("new.db"), None).unwrap();
+    let mut old = Connection::open(dir.path().join("scratch.db")).unwrap();
+    migrations::migrate_to(&mut old, 5).unwrap();
+    drop(old);
+    db::open(&dir.path().join("scratch.db"), None).unwrap();
+    let names: Vec<String> = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(names.iter().all(|name| !name.contains(db::BEFORE_UPDATE_SUFFIX)), "{names:?}");
+}
+
+/// The `(first_name, surname)` of every pupil, by id.
+fn pupil_names(connection: &Connection) -> Vec<(String, String)> {
+    let mut statement = connection.prepare("SELECT first_name, surname FROM pupils ORDER BY id").unwrap();
+    statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?))).unwrap().map(Result::unwrap).collect()
+}
+
+/// Migration 8 splits names typed surname first at their one comma, and leaves every name it
+/// can't split without guessing as it was.
+#[test]
+fn migration_8_splits_names_written_surname_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut connection = Connection::open(dir.path().join("x.db")).unwrap();
+    migrations::migrate_to(&mut connection, 7).unwrap();
+    let stored: &[(&str, &str)] = &[
+        ("Pérez López, Ana", ""),
+        ("Pérez López,Ana", ""),
+        ("Pérez, Ana María", ""),
+        (" de la Fuente García ,\u{a0}Xoán Carlos\t", ""),
+        ("Xoán Carlos Pérez", ""),
+        ("Pérez, Ana, B", ""),
+        (", Ana", ""),
+        ("Pérez,", ""),
+        (" , ", ""),
+        ("Pérez, Ana", "Gómez"),
+    ];
+    for (first_name, surname) in stored {
+        connection.execute("INSERT INTO pupils (first_name, surname) VALUES (?1, ?2)", [first_name, surname]).unwrap();
+    }
+    migrations::migrate_to(&mut connection, 8).unwrap();
+    let expected: Vec<(String, String)> = [
+        ("Ana", "Pérez López"),
+        ("Ana", "Pérez López"),
+        ("Ana María", "Pérez"),
+        ("Xoán Carlos", "de la Fuente García"),
+        ("Xoán Carlos Pérez", ""),
+        ("Pérez, Ana, B", ""),
+        (", Ana", ""),
+        ("Pérez,", ""),
+        (" , ", ""),
+        ("Pérez, Ana", "Gómez"),
+    ]
+    .iter()
+    .map(|(first_name, surname)| ((*first_name).to_owned(), (*surname).to_owned()))
+    .collect();
+    assert_eq!(pupil_names(&connection), expected);
+}
+
+/// Migration 8 changes the names only: the pupil, their classes and their marks stay.
+#[test]
+fn migration_8_leaves_marks_and_classes_alone() {
+    use avalio_lite::gradebook::sheet;
+    let dir = tempfile::tempdir().unwrap();
+    let mut connection = Connection::open(dir.path().join("x.db")).unwrap();
+    connection.pragma_update(None, "foreign_keys", true).unwrap();
+    migrations::migrate_to(&mut connection, 7).unwrap();
+    connection
+        .execute_batch(
+            "INSERT INTO classes (id, name) VALUES (1, '1A'), (2, '2B');
+             INSERT INTO pupils (id, first_name, surname) VALUES (7, 'Pérez, Ana', '');
+             INSERT INTO class_pupils VALUES (1, 7, 1), (2, 7, 1);
+             INSERT INTO sheet_columns (id, class_id, position, title, kind, weight, max_score)
+                 VALUES (10, 1, 3, 'Exam', 'test', 100, 10), (20, 2, 3, 'Quiz', 'test', 100, 10);
+             INSERT INTO cells VALUES (10, 7, '7,5'), (20, 7, '9');",
+        )
+        .unwrap();
+    migrations::migrate_to(&mut connection, 8).unwrap();
+    assert_eq!(count(&connection, "SELECT COUNT(*) FROM class_pupils WHERE pupil_id = 7"), 2);
+    assert_eq!(count(&connection, "SELECT COUNT(*) FROM cells WHERE pupil_id = 7"), 2);
+    for (class, mark) in [(1, "7,5"), (2, "9")] {
+        let loaded = sheet::load_sheet(&connection, class).unwrap();
+        assert_eq!(loaded.rows.len(), 1);
+        assert_eq!(loaded.rows[0].pupil.id, 7, "the same pupil in class {class}");
+        assert_eq!(loaded.rows[0].values, ["Ana", "Pérez", mark], "class {class}");
+    }
+}
+
+/// Migration 9: the limits typing keeps are kept by the database too, and a class never loses
+/// its name columns, except with the class itself.
+#[test]
+fn migration_9_keeps_column_limits_and_the_name_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let connection = db::open(&dir.path().join("x.db"), None).unwrap();
+    connection.execute("INSERT INTO classes (id, name) VALUES (1, '1A')", []).unwrap();
+    let insert = |title: &str, weight: f64, max_score: f64| {
+        connection.execute(
+            "INSERT INTO sheet_columns (class_id, position, title, kind, weight, max_score) VALUES (1, 3, ?1, 'test', ?2, ?3)",
+            rusqlite::params![title, weight, max_score],
+        )
+    };
+    assert!(insert("Exam", 1000.0, 10_000.0).is_ok(), "the limits themselves are allowed");
+    assert!(insert("Big", 1000.5, 10.0).is_err(), "a weight over 1000");
+    assert!(insert("Huge", 10.0, 10_000.5).is_err(), "a maximum score over 10 000");
+    assert!(insert("  ", 10.0, 10.0).is_err(), "no title");
+    assert!(connection.execute("UPDATE sheet_columns SET weight = 2000 WHERE title = 'Exam'", []).is_err());
+    assert!(connection.execute("UPDATE sheet_columns SET title = '' WHERE title = 'Exam'", []).is_err());
+
+    let delete_name = connection.execute("DELETE FROM sheet_columns WHERE class_id = 1 AND kind = 'surname'", []);
+    assert!(delete_name.is_err(), "a class keeps its surname column");
+    let into_info =
+        connection.execute("UPDATE sheet_columns SET kind = 'info', title = 'x' WHERE kind = 'first_name'", []);
+    assert!(into_info.is_err(), "nor turns it into another kind");
+    let into_name = connection.execute("UPDATE sheet_columns SET kind = 'surname' WHERE title = 'Exam'", []);
+    assert!(into_name.is_err(), "and no column turns into a name column");
+
+    connection.execute("DELETE FROM classes WHERE id = 1", []).unwrap();
+    assert_eq!(count(&connection, "SELECT COUNT(*) FROM sheet_columns"), 0, "deleting the class takes them all");
 }
 
 #[test]

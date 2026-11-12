@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.678835
-//+ Revised: 	2026/11/07 20:25:34.678835
+//+ Revised: 	2026/11/12 14:39:55.467722
 // -----------------------------------------------------------------------------
 
 //! Updating the app from its releases on GitHub: whether a newer version is out (`source`), and
@@ -67,9 +67,28 @@ pub enum UpdateError {
     /// the download isn't signed with the release key: it may have been tampered with
     #[error("the update couldn't be verified: {0}")]
     NotVerified(signature::SigError),
-    /// the new portable exe couldn't be put in place of the running one
+    /// the new portable exe couldn't be put in place of the running one, which stays where it was
     #[error("{0}")]
     Swap(String),
+    /// the new portable exe couldn't be put in place, and the running one couldn't be put back
+    /// either: it is left at `old` (`<exe>.old`)
+    #[error("{detail}; the app's exe is left at {}", old.display())]
+    SwapLeftAside { old: std::path::PathBuf, detail: String },
+}
+
+impl UpdateError {
+    /// What the user is told about a failed check or download; `None` for the failures that
+    /// have a message of their own (a missing file, a bad signature, a failed swap).
+    pub fn problem(&self) -> Option<crate::i18n::UpdateProblem> {
+        use crate::i18n::UpdateProblem;
+        match self {
+            Self::Network(_) => Some(UpdateProblem::Offline),
+            Self::RateLimited => Some(UpdateProblem::RateLimited),
+            Self::BadAnswer(_) => Some(UpdateProblem::BadAnswer),
+            Self::Disk(_) => Some(UpdateProblem::Disk),
+            Self::MissingAsset(_) | Self::NotVerified(_) | Self::Swap(_) | Self::SwapLeftAside { .. } => None,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -99,7 +118,9 @@ pub fn newer(release: &Release, current: &semver::Version) -> bool {
     release.version > *current
 }
 
-/// Whether an automatic check is due: never checked, or the last one is a day old.
+/// Whether an automatic check is due: never checked, the last one is a day old, or it is noted
+/// in the future (the clock was once set ahead), which would otherwise stop the checks until the
+/// clock caught up with it.
 pub fn due(last: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
-    last.is_none_or(|last| now - last >= CHECK_INTERVAL)
+    last.is_none_or(|last| last > now || now - last >= CHECK_INTERVAL)
 }

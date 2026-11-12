@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.257330
-//+ Revised: 	2026/11/08 04:36:59.226471
+//+ Revised: 	2026/11/12 14:39:56.979129
 // -----------------------------------------------------------------------------
 
 //! The licence logic: what the licence screen says for each answer of the Clavren client, when it
@@ -72,7 +72,7 @@ fn a_check_that_could_not_decide_has_its_notice() {
     assert_eq!(notice_for_failure(&Temporary::Server("HTTP 502".into())), Notice::Unreachable);
     assert_eq!(notice_for_failure(&Temporary::RateLimited(Duration::from_secs(300))), Notice::Wait { minutes: 5 });
     let storage = Temporary::Storage(StoreError::Corrupt);
-    assert_eq!(notice_for_failure(&storage), Notice::NotSaved(StoreError::Corrupt.to_string()));
+    assert_eq!(notice_for_failure(&storage), Notice::NotSaved, "the reason goes to the log, not the screen");
 }
 
 #[test]
@@ -133,7 +133,7 @@ fn every_notice_is_worded_in_every_language() {
         Notice::NeedsInternet,
         Notice::Wait { minutes: 3 },
         Notice::Unreachable,
-        Notice::NotSaved("disk full".into()),
+        Notice::NotSaved,
     ];
     for notice in &all {
         let english = licence_notice(Language::English, notice);
@@ -142,7 +142,7 @@ fn every_notice_is_worded_in_every_language() {
         assert_ne!(english, galician, "{notice:?} is translated");
     }
     assert!(licence_notice(Language::English, &Notice::Wait { minutes: 3 }).contains('3'));
-    assert!(licence_notice(Language::Galician, &Notice::NotSaved("disk full".into())).contains("disk full"));
+    assert!(licence_notice(Language::Galician, &Notice::NotSaved).contains("rexistro"), "points at the log");
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -194,6 +194,8 @@ export component FolderField inherits VerticalLayout {
         }
         ActionButton {
             text: @tr("Browse…");
+            // a screen reader hears which folder: the setup screen has two of these
+            spoken-label: @tr("Browse… ({})", root.label);
             clicked => { root.browse(); }
         }
     }

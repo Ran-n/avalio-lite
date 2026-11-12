@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/02 21:31:24.223445 )
-[//]: # (+ Revised: 	2026/11/11 17:10:57.473621 )
+[//]: # (+ Revised: 	2026/11/12 14:39:51.201075 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Design decisions
@@ -148,7 +148,9 @@ repository; the matching public key is built into the app (`src/update/mod.rs`).
 covers a fixed context, the file name and the file's BLAKE3 hash (`src/update/signature.rs`), so
 it can't be reused for another file or purpose. `src/update/` downloads the file and its `.sig`,
 checks both, and deletes a file that doesn't verify before anything can run it. Releases are read
-from GitHub only.
+from GitHub; only for trying an update end to end, `AVALIO_RELEASES_API` points the app at another
+release list (it logs a warning), and a file from there is still used only if it carries a valid
+signature.
 
 **Consequences:** no certificate to buy or renew, and a compromised GitHub account alone can't push
 a working update. Losing the private key means existing copies can no longer update themselves (a
@@ -165,7 +167,8 @@ put them anywhere (Surname first, or an info column before the names), needed th
 part in the column order that `sheet_columns.position` already kept for the mark columns.
 
 **Decision:** every class has exactly one `first_name` and one `surname` row in `sheet_columns`
-(migration 007; a trigger adds them to each new class, a partial unique index keeps them single).
+(migration 007; a trigger adds them to each new class, a partial unique index keeps them single,
+and since migration 009 triggers keep them from being deleted or changed into another kind).
 They hold no title, settings or cells: the names themselves stay in `pupils`, because a pupil is
 shared by all their classes and their name is one fact. `SheetRow.values` carries the names in
 those columns, so the sheet, the export and the import line up with `columns` without a special
@@ -176,5 +179,26 @@ foreign keys off around migrations and checks them with `foreign_key_check` befo
 × that removes a pupil moved to a fixed strip at the start of each row, so it stays reachable
 wherever the names are. Code that means "typed cells" asks `ColumnKind::holds_cells` rather than
 "not computed", since name columns are neither.
+
+**Status:** Done
+
+## D10. Comma names are split once, by a migration
+
+**Context:** migration 006 gave pupils a surname but left every existing name whole in the first
+name, because guessing where "Xoán Carlos Pérez" splits would get some names wrong. Many teachers
+had typed their pupils as school lists write them, "Pérez López, Ana", and in that form the comma
+marks the split, so fixing them by hand was work the app could do without guessing.
+
+**Decision:** migration 008 splits a pupil whose surname is empty and whose name has exactly one
+comma with text on both sides: the part before the comma becomes the surname, the part after the
+first name, both trimmed. Everything else stays as it was. It is a migration rather than a script
+for teachers to run or a check at start-up: it runs once per database, in its own transaction, and
+backups opened for restoring or adding classes go through the same migrations, so old backups are
+split too. It is a new migration rather than an edit to 006, which had already run on databases
+at version 6 and 7.
+
+**Consequences:** no Rust code path and nothing at a normal start; names without a comma are
+still never guessed. A whole-name column in an Excel import still lands in the first name, since
+splitting it there would be permanent code; that can be a decision of its own.
 
 **Status:** Done

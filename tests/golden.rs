@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/11/11 17:11:01.788874
+//+ Revised: 	2026/11/12 14:39:56.636938
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -61,6 +61,7 @@ fn current_config() -> AppConfig {
             update_failed: Some("the installer couldn't start".to_owned()),
         },
         shortcuts: [("lock".to_owned(), "Ctrl+K".to_owned())].into(),
+        last_class: Some(3),
     }
 }
 
@@ -294,6 +295,43 @@ fn a_version_6_database_upgrades_with_its_names_first() {
     let class = classes::list_classes(&connection).unwrap()[0].id;
     let loaded = sheet::load_sheet(&connection, class).unwrap();
     assert_eq!(loaded.rows[0].values[..2], ["Ana", "Pérez"], "the name columns show the pupil's names");
+}
+
+/// The v7 sample is the current one of its day plus a class "2B" whose one pupil was typed surname
+/// first, "Pérez López, Ana", as many teachers did before surnames had a column of their own.
+#[test]
+fn a_version_7_database_upgrades_and_splits_comma_names() {
+    let (_dir, path) = scratch_copy("db-v7.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 7, "the sample really is version 7");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    assert_eq!(column_order(&connection), "FmSmmm", "the column order is kept");
+    let listed = classes::list_classes(&connection).unwrap();
+    let class = listed.iter().find(|class| class.name == "2B").expect("the sample's second class").id;
+    let names: Vec<(String, String)> = pupils::list_class_pupils(&connection, class)
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.first_name, pupil.surname))
+        .collect();
+    assert_eq!(names, [("Ana".to_owned(), "Pérez López".to_owned())], "split at its comma");
+    let first_class = pupils::list_class_pupils(&connection, listed[0].id).unwrap();
+    assert_eq!((first_class[0].surname.as_str(), first_class[1].surname.as_str()), ("Pérez", ""), "the rest is kept");
+}
+
+#[test]
+fn a_version_8_database_upgrades_with_all_its_data() {
+    let (_dir, path) = scratch_copy("db-v8.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 8, "the sample really is version 8");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    assert_eq!(column_order(&connection), "FmSmmm");
+    assert_eq!(sheet_widths(&connection), [Some(260), None, Some(180), None, None, Some(300)]);
 }
 
 #[test]

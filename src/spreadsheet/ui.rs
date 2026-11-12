@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.870291
-//+ Revised: 	2026/11/11 17:11:00.872714
+//+ Revised: 	2026/11/12 14:39:54.531610
 // -----------------------------------------------------------------------------
 
 //! The sheet's Excel menu entries: export the open class to a workbook, and import pupils and
@@ -98,6 +98,9 @@ fn import_report(language: Language, class: &str, summary: &ImportSummary) -> St
     }
     if summary.error_cells > 0 {
         report.push(i18n::text(language, &Message::ImportErrorCells { count: summary.error_cells }));
+    }
+    if summary.unnamed_rows > 0 {
+        report.push(i18n::text(language, &Message::ImportUnnamedRows { count: summary.unnamed_rows }));
     }
     report.join(" ")
 }

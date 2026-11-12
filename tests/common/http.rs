@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.096644
-//+ Revised: 	2026/11/08 04:36:58.952474
+//+ Revised: 	2026/11/12 14:39:56.130884
 // -----------------------------------------------------------------------------
 
 //! A tiny HTTP server on 127.0.0.1 for the download tests: serves fixed files, answers 404 for
@@ -20,6 +20,8 @@ pub struct Served {
     pub announced: Option<usize>,
     /// the HTTP status line after `HTTP/1.1 `
     pub status: &'static str,
+    /// extra header lines, such as `"X-RateLimit-Remaining: 0"`
+    pub headers: Vec<&'static str>,
 }
 
 /// Starts serving `files` (path → content) on a free port; returns the base URL. The server runs
@@ -48,8 +50,10 @@ pub fn serve(files: HashMap<String, Served>) -> String {
                     Some(served) => {
                         let length = served.announced.unwrap_or(served.body.len());
                         let status = served.status;
-                        let head =
-                            format!("HTTP/1.1 {status}\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n");
+                        let extra: String = served.headers.iter().map(|header| format!("{header}\r\n")).collect();
+                        let head = format!(
+                            "HTTP/1.1 {status}\r\n{extra}Content-Length: {length}\r\nConnection: close\r\n\r\n"
+                        );
                         stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(&served.body))
                     }
                     None => {
@@ -63,7 +67,7 @@ pub fn serve(files: HashMap<String, Served>) -> String {
 }
 
 pub fn file(body: &[u8]) -> Served {
-    Served { body: body.to_vec(), announced: None, status: "200 OK" }
+    Served { body: body.to_vec(), announced: None, status: "200 OK", headers: Vec::new() }
 }
 
 /// An answer with another status, such as `"403 Forbidden"`.

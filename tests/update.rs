@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.336843
-//+ Revised: 	2026/11/08 04:36:59.159781
+//+ Revised: 	2026/11/12 14:39:57.606064
 // -----------------------------------------------------------------------------
 
 //! Updating: release signatures (what is signed, the `.sig` line, and every way a check fails),
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use avalio_lite::update::download::{agent, download, verify_file};
 use avalio_lite::update::install::{
-    Copy, asset_for, clean_leftovers, copy_kind, new_exe, old_exe, swap_portable, writable,
+    Copy, asset_for, clean_leftovers, copy_kind, new_exe, old_exe, swap_portable, swap_portable_with, writable,
 };
 use avalio_lite::update::signature::{
     self, CONTEXT, SigError, encode_key, file_hash, message, parse_sig_line, private_key, public_key, sig_line, verify,
@@ -184,6 +184,7 @@ fn a_check_is_due_once_a_day() {
     assert!(due(None, now), "never checked");
     assert!(!due(Some(now - TimeDelta::minutes(23 * 60 + 59)), now));
     assert!(due(Some(now - TimeDelta::hours(24)), now));
+    assert!(due(Some(now + TimeDelta::days(3)), now), "noted in the future: the clock was set ahead once");
 }
 
 #[test]
@@ -359,6 +360,29 @@ fn a_failed_swap_puts_the_old_exe_back() {
     assert_eq!(fs::read(&exe).unwrap(), b"old", "the running exe is where it was");
 }
 
+/// When the undo fails too, the error says where the old exe is, since the user has to rename it
+/// back: here the second rename (new into place) and the third (old back) both fail.
+#[test]
+fn a_swap_that_cannot_be_undone_says_where_the_old_exe_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("avalio-lite.exe");
+    fs::write(&exe, b"old").unwrap();
+    fs::write(new_exe(&exe), b"new").unwrap();
+    let mut renames = 0;
+    let swapped = swap_portable_with(&exe, |from, to| {
+        renames += 1;
+        if renames == 1 { fs::rename(from, to) } else { Err(std::io::Error::other("in use")) }
+    });
+    match swapped {
+        Err(UpdateError::SwapLeftAside { old, .. }) => {
+            assert_eq!(old, old_exe(&exe));
+            assert_eq!(fs::read(&old).unwrap(), b"old", "the old exe is there, whole");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(renames, 3, "the undo was tried");
+}
+
 #[test]
 fn an_unwritable_folder_is_noticed_before_downloading() {
     let dir = tempfile::tempdir().unwrap();
@@ -421,8 +445,20 @@ fn github_reads_the_latest_release() {
 
 #[test]
 fn github_asking_to_wait_is_rate_limited() {
-    assert_eq!(github_answering(http::answer("403 Forbidden", b"{}")), Err(UpdateError::RateLimited));
+    let out_of_requests = Served { headers: vec!["X-RateLimit-Remaining: 0"], ..http::answer("403 Forbidden", b"{}") };
+    assert_eq!(github_answering(out_of_requests), Err(UpdateError::RateLimited));
+    // the secondary limit: a 403 with a Retry-After, requests left or not
+    let secondary = Served { headers: vec!["Retry-After: 60"], ..http::answer("403 Forbidden", b"{}") };
+    assert_eq!(github_answering(secondary), Err(UpdateError::RateLimited));
     assert_eq!(github_answering(http::answer("429 Too Many Requests", b"{}")), Err(UpdateError::RateLimited));
+}
+
+/// A 403 with requests left is GitHub refusing for another reason, so "wait" would mislead.
+#[test]
+fn github_refusing_with_requests_left_is_a_bad_answer() {
+    assert_eq!(github_answering(http::answer("403 Forbidden", b"{}")), Err(UpdateError::BadAnswer("HTTP 403".into())));
+    let left = Served { headers: vec!["X-RateLimit-Remaining: 12"], ..http::answer("403 Forbidden", b"{}") };
+    assert_eq!(github_answering(left), Err(UpdateError::BadAnswer("HTTP 403".into())));
 }
 
 #[test]

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.812932
-//+ Revised: 	2026/11/03 08:27:27.690281
+//+ Revised: 	2026/11/12 14:39:53.941661
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -33,9 +33,12 @@ pub fn move_file(source: &Path, destination: &Path) -> Result<()> {
     moved
 }
 
+/// Copies `source` to `destination` and checks the copy is whole and on the disk, since the caller
+/// deletes the original next.
 fn copy_complete(source: &Path, destination: &Path) -> Result<()> {
     let expected = fs::metadata(source).map_err(io_at(source))?.len();
     fs::copy(source, destination).map_err(io_at(destination))?;
+    fs::File::options().write(true).open(destination).and_then(|copy| copy.sync_all()).map_err(io_at(destination))?;
     let copied = fs::metadata(destination).map_err(io_at(destination))?.len();
     if copied != expected {
         let reason = format!("the copy has {copied} bytes, the original {expected}");

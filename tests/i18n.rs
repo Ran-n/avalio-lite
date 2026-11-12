@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/11/11 17:11:01.935521
+//+ Revised: 	2026/11/12 14:39:56.875887
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -12,8 +12,8 @@ use avalio_lite::error::{AppError, Folder, NumberField};
 use avalio_lite::gradebook::model::{ColumnTitles, ColumnType};
 use avalio_lite::i18n::shortcuts::{action_label, display, key_names};
 use avalio_lite::i18n::{
-    LANGUAGES, Language, Message, column_type_name, current, default_column_title, error_message, export_labels,
-    localize_number, set_current, text,
+    LANGUAGES, Language, Message, UpdateProblem, column_type_name, current, default_column_title, error_message,
+    export_labels, localize_number, set_current, text,
 };
 use avalio_lite::shortcuts::{Action, KeyCombo, ProblemKind, ShortcutError, ShortcutProblem};
 
@@ -205,6 +205,8 @@ fn every_message() -> Vec<Message<'static>> {
         Message::ImportDone { pupils: 2, new_pupils: 1, marks: 3, class: "1A" },
         Message::ImportLeftOut { headers: "Phone", count: 1 },
         Message::ImportErrorCells { count: 2 },
+        Message::ImportUnnamedRows { count: 1 },
+        Message::ImportUnnamedRows { count: 3 },
         Message::UntitledColumn { letter: "D" },
         Message::LicenceAskForKey,
         Message::LicenceInvalidKey,
@@ -216,8 +218,8 @@ fn every_message() -> Vec<Message<'static>> {
         Message::LicenceNeedsInternet,
         Message::LicenceWait { minutes: 2 },
         Message::LicenceUnreachable,
-        Message::LicenceNotSaved { error: "disk full" },
-        Message::BackgroundFailed { error: "no threads" },
+        Message::LicenceNotSaved,
+        Message::BackgroundFailed,
         Message::LicenceConnectBy { date: "30/06/2027" },
         Message::LicenceEndsOn { date: "30/06/2027", email: "a@b.c" },
         Message::LicencePermanent,
@@ -226,15 +228,20 @@ fn every_message() -> Vec<Message<'static>> {
         Message::LicenceConfirmed,
         Message::UpdateAvailable { version: "0.6.0" },
         Message::UpToDate { version: "0.5.0" },
-        Message::UpdateCheckFailed { reason: "offline" },
-        Message::LinkFailed { error: "no browser" },
+        Message::UpdateCheckFailed { problem: UpdateProblem::Offline },
+        Message::UpdateCheckFailed { problem: UpdateProblem::RateLimited },
+        Message::UpdateCheckFailed { problem: UpdateProblem::BadAnswer },
+        Message::UpdateCheckFailed { problem: UpdateProblem::Disk },
+        Message::LinkFailed { url: "https://example.org/release" },
         Message::UpdateNotVerified,
-        Message::UpdateDownloadFailed { reason: "offline" },
-        Message::UpdateNotPlaced { reason: "in use" },
+        Message::UpdateDownloadFailed { problem: UpdateProblem::Offline },
+        Message::UpdateDownloadFailed { problem: UpdateProblem::Disk },
+        Message::UpdateNotPlaced,
+        Message::UpdateLeftAside { path: r"D:\Apps\avalio-lite.exe.old" },
         Message::UpdateFolderReadOnly,
         Message::UpdateFileMissing { file: "x.exe" },
         Message::UpdatedTo { version: "0.6.0" },
-        Message::UpdateNotStarted { reason: "denied" },
+        Message::UpdateNotStarted,
     ];
     for message in &all {
         match message {
@@ -243,6 +250,7 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::ConfirmDeleteColumn { .. }
             | Message::ConfirmDeletePupil { .. }
             | Message::DatabaseMoved { .. }
+            | Message::DatabaseMovedOldKept { .. }
             | Message::LogsMoved { .. }
             | Message::DatabaseFileType
             | Message::BackupFileType
@@ -266,6 +274,7 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::ImportDone { .. }
             | Message::ImportLeftOut { .. }
             | Message::ImportErrorCells { .. }
+            | Message::ImportUnnamedRows { .. }
             | Message::UntitledColumn { .. }
             | Message::LicenceAskForKey
             | Message::LicenceInvalidKey
@@ -276,8 +285,8 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::LicenceNeedsInternet
             | Message::LicenceWait { .. }
             | Message::LicenceUnreachable
-            | Message::LicenceNotSaved { .. }
-            | Message::BackgroundFailed { .. }
+            | Message::LicenceNotSaved
+            | Message::BackgroundFailed
             | Message::LicenceConnectBy { .. }
             | Message::LicenceEndsOn { .. }
             | Message::LicencePermanent
@@ -290,11 +299,12 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::LinkFailed { .. }
             | Message::UpdateNotVerified
             | Message::UpdateDownloadFailed { .. }
-            | Message::UpdateNotPlaced { .. }
+            | Message::UpdateNotPlaced
+            | Message::UpdateLeftAside { .. }
             | Message::UpdateFolderReadOnly
             | Message::UpdateFileMissing { .. }
             | Message::UpdatedTo { .. }
-            | Message::UpdateNotStarted { .. } => {}
+            | Message::UpdateNotStarted => {}
         }
     }
     all
@@ -311,6 +321,8 @@ fn every_error() -> Vec<AppError> {
         AppError::NoConfigDir,
         AppError::EmptyPath(Folder::Database),
         AppError::EmptyPath(Folder::Logs),
+        AppError::RelativePath(Folder::Database),
+        AppError::RelativePath(Folder::Logs),
         AppError::NotFound("D:\\x".into()),
         AppError::AlreadyExists("D:\\x".into()),
         AppError::NewerSchema { found: 3, supported: 1 },
@@ -350,6 +362,7 @@ fn every_error() -> Vec<AppError> {
             | AppError::ConfigSerialize(_)
             | AppError::NoConfigDir
             | AppError::EmptyPath(_)
+            | AppError::RelativePath(_)
             | AppError::NotFound(_)
             | AppError::AlreadyExists(_)
             | AppError::NewerSchema { .. }

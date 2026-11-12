@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.606999
-//+ Revised: 	2026/11/07 20:25:34.606999
+//+ Revised: 	2026/11/12 14:39:55.383558
 // -----------------------------------------------------------------------------
 
 //! Putting a downloaded, verified update in place: which file this copy needs (the installer for an
@@ -13,6 +13,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::{Asset, Release, UpdateError};
+use crate::platform::storage::with_suffix;
 
 /// How this copy of the app was put on the computer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,26 +78,31 @@ pub fn old_exe(exe: &Path) -> PathBuf {
     with_suffix(exe, ".old")
 }
 
-fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
-    let mut name = path.as_os_str().to_owned();
-    name.push(suffix);
-    PathBuf::from(name)
+/// Puts `<exe>.new` in the running exe's place, keeping the old one as `<exe>.old`. Windows lets a
+/// running exe be renamed, not overwritten. If the second rename fails, the first is undone; if
+/// that fails too, the error says where the old exe is, since the app's shortcut no longer finds it.
+pub fn swap_portable(exe: &Path) -> Result<(), UpdateError> {
+    swap_portable_with(exe, |from, to| fs::rename(from, to))
 }
 
-/// Puts `<exe>.new` in the running exe's place, keeping the old one as `<exe>.old`. Windows lets a
-/// running exe be renamed, not overwritten. If the second rename fails, the first is undone.
-pub fn swap_portable(exe: &Path) -> Result<(), UpdateError> {
+/// `swap_portable` with the renaming done by `rename`, so the tests can make a rename fail.
+#[doc(hidden)]
+pub fn swap_portable_with(
+    exe: &Path,
+    mut rename: impl FnMut(&Path, &Path) -> io::Result<()>,
+) -> Result<(), UpdateError> {
     let (new, old) = (new_exe(exe), old_exe(exe));
     if old.exists() {
         fs::remove_file(&old).map_err(|error| UpdateError::Swap(format!("{}: {error}", old.display())))?;
     }
-    fs::rename(exe, &old).map_err(|error| UpdateError::Swap(format!("{}: {error}", exe.display())))?;
-    if let Err(error) = fs::rename(&new, exe) {
-        let undone = fs::rename(&old, exe);
-        if let Err(undo) = undone {
+    rename(exe, &old).map_err(|error| UpdateError::Swap(format!("{}: {error}", exe.display())))?;
+    if let Err(error) = rename(&new, exe) {
+        let detail = format!("{}: {error}", new.display());
+        if let Err(undo) = rename(&old, exe) {
             log::error!("couldn't put {} back after a failed update: {undo}", exe.display());
+            return Err(UpdateError::SwapLeftAside { old, detail });
         }
-        return Err(UpdateError::Swap(format!("{}: {error}", new.display())));
+        return Err(UpdateError::Swap(detail));
     }
     Ok(())
 }
@@ -104,8 +110,9 @@ pub fn swap_portable(exe: &Path) -> Result<(), UpdateError> {
 /// What to start once the app has shut down.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pending {
-    /// the new installer, run silently; it opens the app again
-    RunInstaller(PathBuf),
+    /// the new installer, run silently; it opens the app again. `hash` is its BLAKE3 hash when it
+    /// was verified, checked again just before it runs.
+    RunInstaller { installer: PathBuf, hash: String },
     /// the new portable exe, already in place
     StartNew(PathBuf),
 }

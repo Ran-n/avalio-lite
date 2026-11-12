@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.463651
-//+ Revised: 	2026/11/07 20:25:34.463651
+//+ Revised: 	2026/11/12 14:39:53.406193
 // -----------------------------------------------------------------------------
 
 //! The licence screen's wiring: what it shows for each answer of the licence client, activating a
@@ -17,7 +17,7 @@ use slint::{ComponentHandle, SharedString};
 use crate::i18n::{self, Message};
 use crate::licence::{Notice, asks_for_key, notice_for, notice_for_failure, reminder, standing};
 use crate::ui::{AppWindow, Licence};
-use crate::window::worker::{self, SharedWorker};
+use crate::window::worker::{self, Panicked, SharedWorker};
 use crate::window::{view, with_window, with_window1};
 
 /// What an activation or check came back with: the client's answer, or why there was none.
@@ -32,7 +32,7 @@ pub fn wire(window: &AppWindow, client: &Arc<Client>, worker: &SharedWorker) {
         let job = move || {
             client.activate(&key).map_err(|error| {
                 log::error!("the licence couldn't be saved: {error}");
-                Notice::NotSaved(error.to_string())
+                Notice::NotSaved
             })
         };
         let client = shared.clone();
@@ -151,10 +151,18 @@ fn start(
     let licence = window.global::<Licence>();
     licence.set_busy(true);
     view::clear_messages(window);
-    if let Err(error) = worker::run(worker.as_ref(), window, job, done) {
+    let finished = move |window: &AppWindow, answer: Result<Answer, Panicked>| match answer {
+        Ok(answer) => done(window, answer),
+        Err(Panicked) => failed(window),
+    };
+    if let Err(error) = worker::run(worker.as_ref(), window, job, finished) {
         log::error!("the licence check couldn't be started: {error}");
-        licence.set_busy(false);
-        let error = error.to_string();
-        view::show_error_text(window, i18n::text(i18n::current(), &Message::BackgroundFailed { error: &error }));
+        failed(window);
     }
+}
+
+/// The check couldn't run (it couldn't start, or it broke off): the screen stops waiting and says so.
+fn failed(window: &AppWindow) {
+    window.global::<Licence>().set_busy(false);
+    view::show_error_text(window, i18n::text(i18n::current(), &Message::BackgroundFailed));
 }

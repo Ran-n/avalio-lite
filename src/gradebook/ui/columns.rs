@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.012344
-//+ Revised: 	2026/11/11 17:10:59.325790
+//+ Revised: 	2026/11/12 14:39:52.540187
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model, SharedString};
@@ -44,7 +44,9 @@ fn wire_structure(window: &AppWindow, state: &SharedState, dialogs: &SharedDialo
     let shared = state.clone();
     gradebook.on_move_column_to(with_window2(window, move |window, column_id, index| {
         run(window, &shared, "move column", |connection| {
-            columns::move_column_to(connection, i64::from(column_id), usize::try_from(index).unwrap_or(0))?;
+            // a place before the first can't come from the sheet; it is reported, not moved to the front
+            let index = usize::try_from(index).map_err(|_| AppError::NotEditable)?;
+            columns::move_column_to(connection, i64::from(column_id), index)?;
             Ok(Refresh::Sheet)
         });
     }));
@@ -56,8 +58,12 @@ fn wire_structure(window: &AppWindow, state: &SharedState, dialogs: &SharedDialo
             .get_columns()
             .iter()
             .find(|column| column.id == column_id)
-            .map(|column| column.title)
-            .unwrap_or_default();
+            .map(|column| column.title);
+        // a column the sheet no longer shows: said, rather than asking about a nameless one
+        let Some(title) = title else {
+            run(window, &shared, "delete column", |_| Err(AppError::NotEditable));
+            return;
+        };
         if !dialogs.confirm(&i18n::text(i18n::current(), &Message::ConfirmDeleteColumn { column: &title })) {
             return;
         }

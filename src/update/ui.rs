@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.893101
-//+ Revised: 	2026/11/08 16:31:32.043640
+//+ Revised: 	2026/11/12 14:39:55.679372
 // -----------------------------------------------------------------------------
 
 //! The update bar and the Updates card: looking for a newer release on the worker, by itself (at
@@ -18,15 +18,16 @@ use chrono::Utc;
 use ed25519_dalek::VerifyingKey;
 use slint::{ComponentHandle, SharedString};
 
-use crate::i18n::{self, Message};
+use crate::i18n::{self, Message, UpdateProblem};
 use crate::ui::{AppWindow, Update};
 use crate::update::download::{self, verify_file};
 use crate::update::install::{
     Copy, Installation, Pending, asset_for, clean_leftovers, new_exe, swap_portable, writable,
 };
+use crate::update::signature::file_hash;
 use crate::update::source::SharedSource;
 use crate::update::{Asset, Release, UpdateError, current_version, due, newer};
-use crate::window::worker::{self, SharedWorker};
+use crate::window::worker::{self, Panicked, SharedWorker};
 use crate::window::{SharedDialogs, SharedState, report_failure, view, with_window, with_window1};
 
 /// How often the app looks whether a day has passed since the last check.
@@ -138,7 +139,7 @@ pub fn after_start(window: &AppWindow, updater: &Updater) {
     let failed = updater.state.borrow().preferences().update_failed;
     if let Some(reason) = failed {
         log::warn!("the last update couldn't start: {reason}");
-        view::show_error_text(window, i18n::text(i18n::current(), &Message::UpdateNotStarted { reason: &reason }));
+        view::show_error_text(window, i18n::text(i18n::current(), &Message::UpdateNotStarted));
         if let Err(error) = updater.state.borrow_mut().set_update_failed(None) {
             log::warn!("couldn't clear the note of the failed update: {error}");
         }
@@ -153,6 +154,19 @@ pub fn after_start(window: &AppWindow, updater: &Updater) {
         }
         Ok(None) => {}
         Err(error) => log::warn!("couldn't note the version that ran: {error}"),
+    }
+}
+
+/// The update bar in the current language, after the language changed: it was worded in the old
+/// one when the new version was found. A hidden (empty) bar stays hidden.
+pub fn reword(window: &AppWindow, updater: &Updater) {
+    let update = window.global::<Update>();
+    if update.get_notice().is_empty() {
+        return;
+    }
+    if let Some(release) = updater.found() {
+        let version = release.version.to_string();
+        update.set_notice(i18n::text(i18n::current(), &Message::UpdateAvailable { version: &version }).into());
     }
 }
 
@@ -195,13 +209,23 @@ fn look(window: &AppWindow, updater: &Updater, asked: Asked) {
         updater.worker.as_ref(),
         window,
         move || source.latest(),
-        move |window, latest| looked(window, &shared, asked, latest),
+        move |window, latest| match latest {
+            Ok(latest) => looked(window, &shared, asked, latest),
+            Err(Panicked) => not_run(window, asked),
+        },
     );
     if let Err(error) = started {
         log::error!("looking for a new version couldn't be started: {error}");
-        update.set_busy(false);
-        let error = error.to_string();
-        view::show_error_text(window, i18n::text(i18n::current(), &Message::BackgroundFailed { error: &error }));
+        not_run(window, asked);
+    }
+}
+
+/// Work that couldn't start, or broke off: the card stops waiting; like a failed automatic check,
+/// an automatic one is only logged.
+fn not_run(window: &AppWindow, asked: Asked) {
+    window.global::<Update>().set_busy(false);
+    if asked == Asked::ByTheUser {
+        view::show_error_text(window, i18n::text(i18n::current(), &Message::BackgroundFailed));
     }
 }
 
@@ -217,11 +241,9 @@ fn looked(window: &AppWindow, updater: &Updater, asked: Asked, latest: Result<Re
         Err(error) => {
             log::warn!("looking for a new version failed: {error}");
             if asked == Asked::ByTheUser {
-                let reason = error.to_string();
-                view::show_error_text(
-                    window,
-                    i18n::text(i18n::current(), &Message::UpdateCheckFailed { reason: &reason }),
-                );
+                // looking only goes online, so every failure is one of the problems
+                let problem = error.problem().unwrap_or(UpdateProblem::BadAnswer);
+                view::show_error_text(window, i18n::text(i18n::current(), &Message::UpdateCheckFailed { problem }));
             }
             return;
         }
@@ -251,7 +273,7 @@ fn open_page(window: &AppWindow, updater: &Updater) {
     let Some(release) = updater.found() else { return };
     if let Err(error) = updater.dialogs.open_link(&release.page) {
         log::warn!("couldn't open {}: {error}", release.page);
-        view::show_error_text(window, i18n::text(i18n::current(), &Message::LinkFailed { error: &error }));
+        view::show_error_text(window, i18n::text(i18n::current(), &Message::LinkFailed { url: &release.page }));
     }
 }
 
@@ -268,11 +290,12 @@ fn update_now(window: &AppWindow, updater: &Updater) {
         Ok((asset, sig)) => (asset.clone(), sig.clone()),
         Err(error) => {
             log::warn!("can't update from {}: {error}", release.version);
-            let file = match &error {
-                UpdateError::MissingAsset(file) => file.clone(),
-                other => other.to_string(),
+            let text = match &error {
+                UpdateError::MissingAsset(file) => Message::UpdateFileMissing { file },
+                // asset_for only ever misses a file; any other error reads as a failed download
+                other => Message::UpdateDownloadFailed { problem: other.problem().unwrap_or(UpdateProblem::BadAnswer) },
             };
-            view::show_error_text(window, i18n::text(language, &Message::UpdateFileMissing { file: &file }));
+            view::show_error_text(window, i18n::text(language, &text));
             return;
         }
     };
@@ -291,17 +314,20 @@ fn update_now(window: &AppWindow, updater: &Updater) {
     let (key, downloads) = (updater.updates.key, updater.updates.downloads.clone());
     let job = move || fetch_and_place(&installation.copy, &asset, &sig, &key, &downloads);
     let shared = updater.clone();
-    let started =
-        worker::run(updater.worker.as_ref(), window, job, move |window, placed| ready(window, &shared, placed));
+    let started = worker::run(updater.worker.as_ref(), window, job, move |window, placed| match placed {
+        Ok(placed) => ready(window, &shared, placed),
+        Err(Panicked) => not_run(window, Asked::ByTheUser),
+    });
     if let Err(error) = started {
         log::error!("the update couldn't be started: {error}");
-        update.set_busy(false);
-        let error = error.to_string();
-        view::show_error_text(window, i18n::text(language, &Message::BackgroundFailed { error: &error }));
+        not_run(window, Asked::ByTheUser);
     }
 }
 
-/// Off the UI thread: download the file and its signature, verify, and put it in place.
+/// Off the UI thread: download the file and its signature and verify them. Whatever went wrong,
+/// nothing downloaded and unverified is left behind. A portable exe is swapped in later, on the UI
+/// thread (`ready`): done here, a window closed meanwhile would replace the exe with no restart, or
+/// the process could end between the swap's two renames and leave no exe at all.
 fn fetch_and_place(
     copy: &Copy,
     asset: &Asset,
@@ -316,21 +342,42 @@ fn fetch_and_place(
     };
     let sig_file = downloads.join(&sig.name);
     let agent = download::agent();
-    download::download(&agent, asset, &file)?;
-    download::download(&agent, sig, &sig_file)?;
-    verify_file(key, &file, &sig_file, &asset.name)?;
+    let fetched = download::download(&agent, asset, &file)
+        .and_then(|()| download::download(&agent, sig, &sig_file))
+        .and_then(|()| verify_file(key, &file, &sig_file, &asset.name));
+    if let Err(error) = fetched {
+        discard(&file);
+        discard(&sig_file);
+        return Err(error);
+    }
     match copy {
-        Copy::Installed => Ok(Pending::RunInstaller(file)),
-        Copy::Portable(exe) => {
-            swap_portable(exe)?;
-            Ok(Pending::StartNew(exe.clone()))
+        Copy::Installed => {
+            // noted so the installer is checked again just before it runs (it waits in a temp folder)
+            let hash = file_hash(&file).map_err(|error| UpdateError::Disk(format!("{}: {error}", file.display())))?;
+            Ok(Pending::RunInstaller { installer: file, hash })
         }
+        Copy::Portable(exe) => Ok(Pending::StartNew(exe.clone())),
+    }
+}
+
+/// Removes a download that failed or didn't verify, if it is there; a failure is logged, and the
+/// next start's clean-up tries again.
+fn discard(file: &std::path::Path) {
+    if let Err(error) = fs::remove_file(file)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        log::warn!("couldn't remove the failed download {}: {error}", file.display());
     }
 }
 
 /// Back on the UI thread: close the app for the new version to start, or say what went wrong.
-fn ready(window: &AppWindow, updater: &Updater, placed: Result<Pending, UpdateError>) {
+fn ready(window: &AppWindow, updater: &Updater, fetched: Result<Pending, UpdateError>) {
     let language = i18n::current();
+    // the verified portable exe takes the running one's place now, just before the app closes
+    let placed = fetched.and_then(|pending| match &pending {
+        Pending::StartNew(exe) => swap_portable(exe).map(|()| pending),
+        Pending::RunInstaller { .. } => Ok(pending),
+    });
     match placed {
         Ok(pending) => {
             log::info!("the update is ready; the app closes for it: {pending:?}");
@@ -359,12 +406,20 @@ fn ready(window: &AppWindow, updater: &Updater, placed: Result<Pending, UpdateEr
                 }
                 UpdateError::Swap(reason) => {
                     log::error!("the new version couldn't be put in place: {reason}");
-                    i18n::text(language, &Message::UpdateNotPlaced { reason })
+                    i18n::text(language, &Message::UpdateNotPlaced)
+                }
+                UpdateError::SwapLeftAside { old, detail } => {
+                    log::error!("the new version couldn't be put in place, nor the old one back: {detail}");
+                    i18n::text(language, &Message::UpdateLeftAside { path: &old.display().to_string() })
+                }
+                UpdateError::MissingAsset(file) => {
+                    log::warn!("the release has no {file}");
+                    i18n::text(language, &Message::UpdateFileMissing { file })
                 }
                 other => {
                     log::warn!("the update couldn't be downloaded: {other}");
-                    let reason = other.to_string();
-                    i18n::text(language, &Message::UpdateDownloadFailed { reason: &reason })
+                    let problem = other.problem().unwrap_or(UpdateProblem::BadAnswer);
+                    i18n::text(language, &Message::UpdateDownloadFailed { problem })
                 }
             };
             view::show_error_text(window, text);

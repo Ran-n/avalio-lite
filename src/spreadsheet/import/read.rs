@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.470617
-//+ Revised: 	2026/11/11 17:11:00.785570
+//+ Revised: 	2026/11/12 14:39:54.405468
 // -----------------------------------------------------------------------------
 
 //! Reading the workbook's first tab into text cells, as the sheet would show them.
@@ -13,7 +13,7 @@ use calamine::{Data, Reader, open_workbook_auto};
 
 use super::{ImportRow, ImportTable, NameHeaders};
 use crate::error::{AppError, Result};
-use crate::gradebook::model::name_match_key;
+use crate::gradebook::model::{name_match_key, split_listed_name};
 
 /// The first tab of the workbook at `path` (.xlsx, .xls or .ods), its name columns found by their
 /// headers: the first-name and surname columns wherever their headers are, else the whole name in
@@ -31,6 +31,9 @@ fn read_first_tab(path: &Path, names: &NameHeaders) -> Result<ImportTable> {
     let no_pupils = || AppError::NoPupilsInFile(path.to_path_buf());
     let first = workbook.sheet_names().into_iter().next().ok_or_else(no_pupils)?;
     let range = workbook.worksheet_range(&first).map_err(|error| read_error(error.to_string()))?;
+    // the range starts at the first cell holding anything, which needn't be A1: the headers are
+    // its first row and the names' fallback column its first column
+    let (first_row_at, first_column_at) = range.start().ok_or_else(no_pupils)?;
     let (last_row, last_column) = range.end().ok_or_else(no_pupils)?;
     let mut error_cells = 0;
     let mut text = |row: u32, column: u32| {
@@ -40,23 +43,37 @@ fn read_first_tab(path: &Path, names: &NameHeaders) -> Result<ImportTable> {
         }
         cell_text(data)
     };
-    let first_row: Vec<String> = (0..=last_column).map(|column| text(0, column).unwrap_or_default()).collect();
-    let found = NameColumns::find(&first_row, names);
-    let header_columns: Vec<u32> = (0..=last_column).filter(|column| !found.holds(*column)).collect();
-    let headers = header_columns.iter().map(|column| first_row[*column as usize].clone()).collect();
+    let columns = first_column_at..=last_column;
+    let first_row: Vec<String> = columns.clone().map(|column| text(first_row_at, column).unwrap_or_default()).collect();
+    let found = NameColumns::find(&first_row, names).offset_by(first_column_at);
+    let header_columns: Vec<u32> = columns.filter(|column| !found.holds(*column)).collect();
+    let headers = header_columns.iter().map(|column| first_row[(column - first_column_at) as usize].clone()).collect();
     let mut rows = Vec::new();
-    for row in 1..=last_row {
-        // a row with no first name isn't a pupil, even with a surname
-        let Some(first_name) = text(row, found.first_name) else { continue };
-        let surname = found.surname.and_then(|column| text(row, column)).unwrap_or_default();
-        let values = header_columns.iter().map(|column| text(row, *column)).collect();
+    let mut unnamed_rows = 0;
+    for row in first_row_at + 1..=last_row {
+        let surname = found.surname.and_then(|column| text(row, column));
+        let values: Vec<Option<String>> = header_columns.iter().map(|column| text(row, *column)).collect();
+        // a row with no first name isn't a pupil, even with a surname; one with anything else in
+        // it is counted, so the report can say it was skipped
+        let Some(first_name) = text(row, found.first_name) else {
+            if surname.is_some() || values.iter().any(Option::is_some) {
+                unnamed_rows += 1;
+            }
+            continue;
+        };
+        let (first_name, surname) = match surname {
+            Some(surname) => (first_name, surname),
+            // one name column: "Pérez López, Ana" is written surname first, as school lists do
+            None if found.surname.is_none() => split_listed_name(&first_name).unwrap_or((first_name, String::new())),
+            None => (first_name, String::new()),
+        };
         rows.push(ImportRow { first_name, surname, values });
     }
     if rows.is_empty() {
         return Err(no_pupils());
     }
     let header_columns = header_columns.into_iter().map(|column| column as usize).collect();
-    Ok(ImportTable { header_columns, headers, rows, error_cells })
+    Ok(ImportTable { header_columns, headers, rows, error_cells, unnamed_rows })
 }
 
 /// Where a file keeps its pupils' names, from the headers of its first row (compared as names are,
@@ -80,6 +97,11 @@ impl NameColumns {
             .filter(|column| Some(*column) != surname)
             .unwrap_or(if surname == Some(0) { 1 } else { 0 });
         Self { first_name, surname }
+    }
+
+    /// The columns found among headers read from column `first` on, as columns of the sheet.
+    fn offset_by(self, first: u32) -> Self {
+        Self { first_name: self.first_name + first, surname: self.surname.map(|column| column + first) }
     }
 
     fn holds(&self, column: u32) -> bool {

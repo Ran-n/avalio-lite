@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.081050
-//+ Revised: 	2026/11/07 20:25:36.558700
+//+ Revised: 	2026/11/12 14:39:55.867740
 // -----------------------------------------------------------------------------
 
 use std::path::{Path, PathBuf};
@@ -83,6 +83,10 @@ impl Dialogs for NativeDialogs {
         opened_at(filtered(kind, kind.save_extensions()), start).set_file_name(file_name).save_file()
     }
 
+    /// The question is in the app's language; the Yes and No buttons are Windows' own, in Windows'
+    /// language, since the system dialog can't be given other words for them (a Galician app on an
+    /// English Windows asks in Galician and answers "Yes"/"No"). A dialog of the app's own would
+    /// fix that, at the cost of the system's look and its screen-reader support.
     fn confirm(&self, question: &str) -> bool {
         MessageDialog::new()
             .set_level(MessageLevel::Warning)

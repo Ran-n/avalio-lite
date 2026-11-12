@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.826099
-//+ Revised: 	2026/11/08 04:36:59.384454
+//+ Revised: 	2026/11/12 14:39:55.551894
 // -----------------------------------------------------------------------------
 
 //! Where releases are read from: GitHub's API in the app, a fixed answer in the tests. Behind a
@@ -78,7 +78,13 @@ impl ReleaseSource for GitHub {
             .call()
             .map_err(|error| UpdateError::Network(error.to_string()))?;
         let status = response.status().as_u16();
-        if matches!(status, 403 | 429) {
+        // GitHub answers 429, or 403 with no requests left or a Retry-After (its secondary limit),
+        // when it wants the app to wait; any other 403 is a refusal of its own, reported as an
+        // unexpected answer below
+        let headers = response.headers();
+        let none_left = headers.get("x-ratelimit-remaining").is_some_and(|left| left.as_bytes() == b"0");
+        let wait = headers.contains_key("retry-after");
+        if status == 429 || (status == 403 && (none_left || wait)) {
             return Err(UpdateError::RateLimited);
         }
         let body = response.body_mut().read_to_string().map_err(|error| UpdateError::Network(error.to_string()))?;
@@ -94,9 +100,15 @@ impl ReleaseSource for GitHub {
 pub struct FixedRelease {
     answer: Mutex<Option<Result<Release, UpdateError>>>,
     calls: Mutex<usize>,
+    panics: std::sync::atomic::AtomicBool,
 }
 
 impl FixedRelease {
+    /// Makes the next asks panic, as a bug in the lookup would.
+    pub fn panic_on_ask(&self) {
+        self.panics.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub fn set(&self, answer: Result<Release, UpdateError>) {
         *self.answer.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(answer);
     }
@@ -110,6 +122,7 @@ impl FixedRelease {
 impl ReleaseSource for FixedRelease {
     fn latest(&self) -> Result<Release, UpdateError> {
         *self.calls.lock().unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+        assert!(!self.panics.load(std::sync::atomic::Ordering::Relaxed), "the lookup broke");
         self.answer
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/11/11 17:10:57.321681 )
+[//]: # (+ Revised: 	2026/11/12 14:39:50.739460 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 <p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
@@ -132,7 +132,7 @@ Each file comes with a `.sig` file. The app uses it to check its own updates; yo
 1. **Choose a folder** for your marks when the app first opens (`Documents\avalio-lite` is suggested).
 2. **Enter your licence key**, the `BRN-…` key you received by email, and press **Activate**.
 3. **Add a class:** type its name in **+ New class** and press Enter.
-4. **Add pupils:** type each name in the last row and press Enter.
+4. **Add pupils:** in the last row, type the first name, press Enter, type the surname and press Enter again.
 5. **Add columns** with **+ Add column**, for example two tests and a final grade. Click a column's header to set its weight and maximum mark.
 6. **Type marks.** The final grade, the class average and the pass/fail count update straight away.
 

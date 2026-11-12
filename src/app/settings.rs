@@ -1,12 +1,13 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:53:31.368093
-//+ Revised: 	2026/11/03 10:00:17.729266
+//+ Revised: 	2026/11/12 14:39:51.581038
 // -----------------------------------------------------------------------------
 
 //! The Settings screen: language, theme, moving the data, switching database.
 
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use slint::SharedString;
 
@@ -19,9 +20,13 @@ use crate::window::report_failure;
 use crate::window::{SharedDialogs, SharedState, language, theme, view, with_window, with_window1};
 use crate::{gradebook, lock, shortcuts};
 
-pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
+/// Rewords, in the language just chosen, texts the Rust side built in the old one and still shows
+/// (the update bar, the licence card); passed in by `app`, which owns those parts.
+pub type Reword = Rc<dyn Fn(&AppWindow)>;
+
+pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs, reword: Reword) {
     wire_settings(window, state, dialogs);
-    wire_language(window, state);
+    wire_language(window, state, reword);
 }
 
 fn wire_settings(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
@@ -30,10 +35,18 @@ fn wire_settings(window: &AppWindow, state: &SharedState, dialogs: &SharedDialog
         let start = as_path(&window.get_database_path()).parent().map(Path::to_path_buf).unwrap_or_default();
         let Some(folder) = picker.pick_folder(&start) else { return };
         let result = shared.borrow_mut().move_database(&folder);
-        let moved_to = result.as_ref().ok().map(|path| path.display().to_string());
+        let moved = result.as_ref().ok().cloned();
         after_data_change(window, &shared, "move database", result.map(|_| ()));
-        if let Some(path) = moved_to {
-            view::show_status(window, i18n::text(i18n::current(), &Message::DatabaseMoved { path: &path }));
+        if let Some(moved) = moved {
+            let path = moved.path.display().to_string();
+            match moved.left_behind {
+                None => view::show_status(window, i18n::text(i18n::current(), &Message::DatabaseMoved { path: &path })),
+                Some(old) => {
+                    let old = old.display().to_string();
+                    let text = i18n::text(i18n::current(), &Message::DatabaseMovedOldKept { path: &path, old: &old });
+                    view::show_error_text(window, text);
+                }
+            }
         }
     }));
     let (shared, picker) = (state.clone(), dialogs.clone());
@@ -56,7 +69,7 @@ fn wire_settings(window: &AppWindow, state: &SharedState, dialogs: &SharedDialog
     }));
 }
 
-fn wire_language(window: &AppWindow, state: &SharedState) {
+fn wire_language(window: &AppWindow, state: &SharedState, reword: Reword) {
     let shared = state.clone();
     window.on_choose_language(with_window1(window, move |window, code: SharedString| {
         let Some(language) = Language::from_code(&code) else {
@@ -73,14 +86,18 @@ fn wire_language(window: &AppWindow, state: &SharedState) {
         shortcuts::ui::show(window, &shared);
         // numbers in the sheet carry the language's decimal separator, so redraw it
         gradebook::ui::redraw(window, &shared);
+        reword(window);
     }));
 
     let shared = state.clone();
     window.on_choose_theme(with_window1(window, move |window, dark| {
-        theme::apply(window, dark);
+        // saved first, like the language: a theme that couldn't be saved would be gone at the next
+        // start, so the screen keeps the one that is saved and says why
         if let Err(error) = shared.borrow_mut().set_theme(theme::choice(dark)) {
             report_failure!(window, "saving the theme", &error);
+            return;
         }
+        theme::apply(window, dark);
     }));
 }
 

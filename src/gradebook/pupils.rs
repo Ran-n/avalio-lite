@@ -1,8 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.468773
-//+ Revised: 	2026/11/11 17:10:58.522309
+//+ Revised: 	2026/11/12 14:39:52.341790
 // -----------------------------------------------------------------------------
+
+use std::collections::HashMap;
 
 use rusqlite::{Connection, Params, params};
 
@@ -87,9 +89,23 @@ pub fn insert_new_pupil(connection: &Connection, class_id: i64, first_name: &str
 /// pupil whose whole name is still in the first name.
 pub fn pupils_named(connection: &Connection, full_name: &str) -> Result<Vec<Pupil>> {
     let key = name_match_key(full_name);
-    let mut pupils = query_pupils(connection, "SELECT id, first_name, surname FROM pupils ORDER BY id", [])?;
+    let mut pupils = all_pupils(connection)?;
     pupils.retain(|pupil| name_match_key(&pupil.full_name()) == key);
     Ok(pupils)
+}
+
+/// Every pupil's id by their full name as `pupils_named` compares it, read once: for matching many
+/// names (a whole backup) without reading every pupil for each.
+pub fn pupils_by_name(connection: &Connection) -> Result<HashMap<String, Vec<i64>>> {
+    let mut by_name: HashMap<String, Vec<i64>> = HashMap::new();
+    for pupil in all_pupils(connection)? {
+        by_name.entry(name_match_key(&pupil.full_name())).or_default().push(pupil.id);
+    }
+    Ok(by_name)
+}
+
+fn all_pupils(connection: &Connection) -> Result<Vec<Pupil>> {
+    query_pupils(connection, "SELECT id, first_name, surname FROM pupils ORDER BY id", [])
 }
 
 pub fn add_existing_pupil(connection: &Connection, class_id: i64, pupil_id: i64) -> Result<()> {

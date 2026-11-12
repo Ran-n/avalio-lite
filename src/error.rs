@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.190729
-//+ Revised: 	2026/11/02 08:27:49.889031
+//+ Revised: 	2026/11/12 14:39:51.751203
 // -----------------------------------------------------------------------------
 
 use std::io;
@@ -46,6 +46,11 @@ pub enum AppError {
 
     #[error("no folder was chosen for the {0:?}")]
     EmptyPath(Folder),
+
+    /// a folder typed without its drive ("Marks"), which would land wherever the app happened to
+    /// be started from
+    #[error("the folder for the {0:?} isn't a full path")]
+    RelativePath(Folder),
 
     #[error("{0} does not exist")]
     NotFound(PathBuf),
@@ -110,10 +115,11 @@ pub enum AppError {
     #[error("could not read {path}: {reason}")]
     SpreadsheetRead { path: PathBuf, reason: String },
 
-    #[error("{0} has no pupils in column A from row 2")]
+    #[error("{0} has no pupils under a first-name header or in its first column")]
     NoPupilsInFile(PathBuf),
 
-    #[error("the file has \"{0}\" more than once")]
+    /// the name is for the user's message only: this text, which goes to the log, leaves it out
+    #[error("the file has a pupil's name more than once")]
     DuplicatePupilInFile(String),
 }
 
