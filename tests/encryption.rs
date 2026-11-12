@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/11/11 17:11:01.710054
+//+ Revised: 	2026/11/12 14:39:56.518833
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -148,12 +148,50 @@ fn the_schema_version_survives_re_keying() {
     assert_eq!(db::migrations::schema_version(state.connection().unwrap()).unwrap(), before);
 }
 
+/// A crash in the middle of a PIN change or a restore leaves copies beside the database, possibly
+/// unencrypted; they go once the database is open again, and not before (while it is locked, the
+/// `.previous` file may be the one good copy).
+#[test]
+fn copies_left_by_an_interrupted_change_go_once_the_database_is_unlocked() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    state.set_pin("246810", "246810").unwrap();
+    state.shutdown();
+    let database = fixture.database();
+    let leftovers: Vec<std::path::PathBuf> = [".rekey", ".previous", ".restore"]
+        .iter()
+        .map(|suffix| std::path::PathBuf::from(format!("{}{suffix}", database.display())))
+        .collect();
+    for leftover in &leftovers {
+        fs::write(leftover, SECRET).unwrap();
+    }
+    let mut state = fixture.state();
+    assert_eq!(state.start(), Startup::Locked);
+    assert!(leftovers.iter().all(|leftover| leftover.exists()), "kept while locked");
+    state.unlock("246810").unwrap();
+    for leftover in &leftovers {
+        assert!(!leftover.exists(), "{} is removed once unlocked", leftover.display());
+    }
+}
+
+/// The copy kept before an update is under the old PIN (or none): changing the PIN removes it, so
+/// no readable copy stays beside an encrypted database.
+#[test]
+fn setting_a_pin_removes_the_copy_kept_before_an_update() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    let copy = std::path::PathBuf::from(format!("{}{}", fixture.database().display(), db::BEFORE_UPDATE_SUFFIX));
+    fs::write(&copy, SECRET).unwrap();
+    state.set_pin("246810", "246810").unwrap();
+    assert!(!copy.exists());
+}
+
 #[test]
 fn a_moved_encrypted_database_stays_encrypted() {
     let fixture = Fixture::new();
     let mut state = set_up(&fixture);
     state.set_pin("246810", "246810").unwrap();
-    let moved = state.move_database(&fixture.path("elsewhere")).unwrap();
+    let moved = state.move_database(&fixture.path("elsewhere")).unwrap().path;
     assert_eq!(pupil_names(&state), [SECRET]);
     state.shutdown();
     assert!(db::is_encrypted(&moved).unwrap());

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.703532
-//+ Revised: 	2026/11/03 11:39:46.703532
+//+ Revised: 	2026/11/12 14:39:54.037297
 // -----------------------------------------------------------------------------
 
 //! Safe names for a workbook's tabs and for the file itself.
@@ -49,7 +49,8 @@ pub fn tab_name(text: &str, fallback: &str) -> String {
 
 /// A file name (without extension) Windows accepts: the refused characters `\ / : * ? " < > |`
 /// and control characters become `-`, as do dots and spaces at the end, and a device name
-/// (CON, NUL, COM1…) gets a `-` after it.
+/// (CON, NUL, COM1…) gets a `-` after it, also before a dot: Windows takes "NUL.x.xlsx" for the
+/// device too.
 pub fn file_name(text: &str) -> String {
     let mut name: String = text
         .chars()
@@ -63,8 +64,9 @@ pub fn file_name(text: &str) -> String {
     let trailing = name.len() - kept;
     name.truncate(kept);
     name.extend(std::iter::repeat_n(REPLACEMENT, trailing));
-    if DEVICE_NAMES.iter().any(|device| name.eq_ignore_ascii_case(device)) {
-        name.push(REPLACEMENT);
+    let stem = name.split('.').next().unwrap_or_default().trim_end_matches(' ').len();
+    if DEVICE_NAMES.iter().any(|device| name[..stem].eq_ignore_ascii_case(device)) {
+        name.insert(stem, REPLACEMENT);
     }
     name
 }

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.523539
-//+ Revised: 	2026/11/03 08:42:01.692243
+//+ Revised: 	2026/11/12 14:39:53.842921
 // -----------------------------------------------------------------------------
 
 use std::fs::{self, File, OpenOptions};
@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use log::{LevelFilter, Log, Metadata, Record};
+use log::{Level, LevelFilter, Log, Metadata, Record};
 
 use crate::error::{Result, io_at};
 use crate::platform::config::LOG_FILE_NAME;
@@ -74,7 +74,10 @@ impl FileLogger {
 
 impl Log for FileLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= self.level && metadata.target().starts_with(APP_TARGET_PREFIX)
+        // the app's own records at the chosen level; another crate's (the licence client, the
+        // HTTP client, SQLite, the window) only when it is an error, which may explain one of ours
+        metadata.level() <= self.level
+            && (metadata.target().starts_with(APP_TARGET_PREFIX) || metadata.level() <= Level::Error)
     }
 
     fn log(&self, record: &Record) {

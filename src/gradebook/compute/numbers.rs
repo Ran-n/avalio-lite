@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.297306
-//+ Revised: 	2026/11/03 11:39:46.297306
+//+ Revised: 	2026/11/12 14:39:52.174842
 // -----------------------------------------------------------------------------
 
 //! Reading and showing marks: decimal commas, rounding, and the float noise in between.
 
-pub(super) const DISPLAY_DECIMALS: u8 = 2;
+pub const DISPLAY_DECIMALS: u8 = 2;
 
 const FLOAT_SNAP: f64 = 1e6;
 

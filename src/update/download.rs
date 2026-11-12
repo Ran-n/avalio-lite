@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.534581
-//+ Revised: 	2026/11/07 20:25:34.534581
+//+ Revised: 	2026/11/12 14:39:55.295731
 // -----------------------------------------------------------------------------
 
 //! Downloading a release file and checking it against its signature before anything runs it.
@@ -50,7 +50,8 @@ fn fetch(agent: &ureq::Agent, asset: &Asset, to: &Path) -> Result<(), UpdateErro
         .map_err(|error| UpdateError::Network(error.to_string()))?;
     let status = response.status().as_u16();
     if status != 200 {
-        return Err(UpdateError::Network(format!("{}: HTTP {status}", asset.name)));
+        // the server answered, so this is no connection problem
+        return Err(UpdateError::BadAnswer(format!("{}: HTTP {status}", asset.name)));
     }
     let mut file = File::create(to).map_err(|error| UpdateError::Disk(format!("{}: {error}", to.display())))?;
     let mut body = response.body_mut().with_config().limit(asset.size.saturating_add(1)).reader();

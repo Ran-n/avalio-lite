@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.661079 )
-[//]: # (+ Revised: 	2026/11/11 17:10:57.643973 )
+[//]: # (+ Revised: 	2026/11/12 14:39:51.420836 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite user guide
@@ -25,7 +25,7 @@ Everything the app does, screen by screen. To download and install it, see the [
 ### Classes and pupils
 
 - **Classes** are listed on the left. Type a name in **+ New class** and press Enter.
-- **Pupils** are the rows of a class's sheet. Each has a **first name** and a **surname**, in two columns of their own. To add one, type the first name in the last row (or click **+ Add pupil**), press Enter to go to the surname, and press Enter again: the pupil is added and the first-name field is ready for the next one. The surname may be left empty; the first name can't. Pupils from before surnames existed keep their whole name as the first name; fix them by hand. A pupil can be in several classes (**⋯ → Add from another class**, which lists pupils as "Surname, First name", sorted by surname). Renaming a pupil renames them everywhere. Removing them from one class (the × at the start of their row) deletes only their marks in that class.
+- **Pupils** are the rows of a class's sheet. Each has a **first name** and a **surname**, in two columns of their own. To add one, type the first name in the last row (or click **+ Add pupil**), press Enter to go to the surname, and press Enter again: the pupil is added and the first-name field is ready for the next one. The surname may be left empty; the first name can't. Pupils from before surnames existed that were typed surname first, as in "Pérez López, Ana", are split into the two columns when you update (also in older backups you restore or add from); the others keep their whole name as the first name, to fix by hand. A pupil can be in several classes (**⋯ → Add from another class**, which lists pupils as "Surname, First name", sorted by surname). Renaming a pupil renames them everywhere. Removing them from one class (the × at the start of their row) deletes only their marks in that class.
 - Under the class name you see the number of pupils, the class average of the final grade, and how many pass and fail.
 - Classes and pupils are sorted alphabetically, ignoring accents and case (Álvaro goes with the A's; Ñ comes after N).
 
@@ -62,14 +62,14 @@ Everything saves as you type.
 ### Excel
 
 - **⋯ → Export to Excel…** saves the sheet as an .xlsx file in the sheet's column order, First name and Surname included, with the marks as numbers and a second tab listing each column's settings. When the two name columns come first, they stay in view as you scroll sideways.
-- **⋯ → Import from Excel…** adds the pupils of a workbook (.xlsx, .xls or .ods) and fills in the marks under columns with the same titles. It finds the names by their headers anywhere in the first row: **First name** / **Nome** and **Surname** / **Apelidos**. With neither header, column A holds the whole name (and with only a surname header, column A is the first name). Pupils are matched by their full name, so a file with one name column still finds Ana Pérez. It asks before replacing marks that are already there.
+- **⋯ → Import from Excel…** adds the pupils of a workbook (.xlsx, .xls or .ods) and fills in the marks under columns with the same titles. It finds the names by their headers anywhere in the first row: **First name** / **Nome** and **Surname** / **Apelidos**. With neither header, the first column holds the whole name (and with only a surname header, the first column is the first name, or the second when the surname is in the first); a name written surname first there, as in "Pérez López, Ana", is split at its comma. The headers are the first row that has anything in it, so a blank row or column before the table doesn't matter. Pupils are matched by their full name, so a file with one name column still finds Ana Pérez. Rows with marks or a surname but no first name are skipped, and the report says how many. It asks before replacing marks that are already there.
 
 To back up all classes at once, use a [backup](#backups) instead.
 
 ### Appearance and language
 
 - **Light and dark:** use the moon / sun button at the bottom of the sidebar, or **Settings → Appearance**. The app follows the Windows setting until you pick one.
-- **Narrow sidebar:** the « button at the top of the sidebar (or Ctrl+B) folds it to a strip of icons, giving the sheet more room; » opens it again. The app remembers which you chose.
+- **Narrow sidebar:** the arrow button at the top of the sidebar (or Ctrl+B) folds it to a strip of icons, giving the sheet more room; the same button opens it again. The app remembers which you chose.
 - **Language:** the app comes in **Galician** and **English**. It follows the Windows language until you pick one in **Settings → Language**. In Galician, calculated marks use a decimal comma (8,5).
 
 ### Keyboard
@@ -103,7 +103,9 @@ On first launch the app asks where to keep:
 - **the database:** `avalio-lite.db`, everything you enter
 - **the logs:** `avalio-lite.log`, for diagnosing problems. Once it passes 5 MB, the app sets it aside as `avalio-lite.log.1` when it starts, replacing any older one
 
-Both default to `Documents\avalio-lite`. Either can be moved later from **Settings**: the app copies the file, checks the copy, switches to it, and only then deletes the original. **Open another database…** switches to an existing database file (one from another PC, say). To bring a backup's data into the app, use [Backups](#backups) instead.
+Both default to `Documents\avalio-lite`, and a folder must be given in full, with its drive. Either can be moved later from **Settings**: the app copies the file, checks the copy, switches to it, and only then deletes the original (if another program keeps the original from being deleted, the app says where it is, to delete by hand).
+
+The first start after an update that changes how the database is stored keeps a copy of it as it was, `avalio-lite.db.before-update`, next to it (with the same PIN, if it has one); the next such update replaces it, and setting or changing the PIN deletes it. Copies a crash could leave while a PIN was being changed or a backup restored (`.rekey`, `.previous`, `.restore`) are deleted the next time the database opens. **Open another database…** switches to an existing database file (one from another PC, say). To bring a backup's data into the app, use [Backups](#backups) instead.
 
 The only file in a fixed place is `%APPDATA%\avalio-lite\config.toml`, which holds those two locations. If that file can't be read, the app keeps it as `config.toml.bad`, asks for the locations again, and writes a new one. If a database file is empty, cut short or not an avalio-lite database, the app reports it and never sets up a new database over it. Uninstalling never deletes your database or logs.
 
@@ -112,7 +114,7 @@ The only file in a fixed place is `%APPDATA%\avalio-lite\config.toml`, which hol
 **Settings → Backup → Export everything…** saves the whole database to one `.avalio` file while the app stays open. The file is encrypted with your PIN if you have set one.
 
 - **Restore from a backup…** replaces everything in the app with the backup. It asks first, and keeps your current PIN.
-- **Add classes from a backup…** copies a backup's classes, pupils and marks into the app without changing what's already there. Pupils with the same full name (first name and surname) are joined.
+- **Add classes from a backup…** copies a backup's classes, pupils and marks into the app without changing what's already there. A backup pupil joins the pupil here with the same full name (first name and surname) when there is exactly one; with none, or several, a new pupil is made, so two people are never merged by guess.
 
 ### PIN and encryption
 
@@ -138,7 +140,7 @@ avalio-lite needs a licence key, which looks like `BRN-7KPX-4M9D-QW2R-8NFC` and 
 
 - **Activating:** after choosing your folders (and typing your PIN, if the database has one), the app shows **Enter your licence key**. Type the key (capitals, spaces and dashes don't matter) and press **Activate** or Enter. This needs the internet.
 - **Offline:** once activated, the app opens straight away, with or without internet, for up to 30 days after its last check.
-- **Daily check:** while the computer is online, the app confirms the licence in the background once a day, at start or while it runs, without slowing anything down. If the licence was cancelled or has ended, the licence screen appears over the sheet (everything you typed is already saved); if it was extended, it goes away again by itself.
+- **Daily check:** while the computer is online, the app confirms the licence in the background once a day, at start or while it runs, without slowing anything down. If the licence was cancelled or has ended, the licence screen takes the sheet's place (everything you typed is already saved); if it was extended, it goes away again by itself.
 - **Warnings on the sheet:** five days before the 30 days offline run out, the sheet says *Connect to the internet by …*; two weeks before a licence for a set period ends, it says *Your licence ends on …* and who to write to.
 - **Settings → Licence** shows whether the licence is permanent or until when it lasts, and until when the app works offline. **Check now** confirms it straight away.
 - **One computer at a time:** a key belongs to one Windows account on one computer. The licence is kept, protected by Windows, in `%APPDATA%\Breren\avalio-lite\licence.dat`; copied to another computer, it doesn't work there. Uninstalling keeps it, so a reinstall needs no new activation.
@@ -168,4 +170,5 @@ What the licence screen can say:
 
   Everything you typed is already saved. The next start says *Updated to X.Y.Z*.
 - **Settings → Updates:** **Check for updates automatically** turns the daily check on or off (it starts on). **Check now** looks straight away, even for a version you hid, and says *avalio-lite X.Y.Z is up to date* when there is nothing newer.
-- If the check or the download fails (no internet, GitHub asking to wait, a file missing from the release), the app says why and stays as it was. Try again later, or download the new version by hand from the release page.
+- If the check or the download fails (no internet, GitHub asking to wait, a file missing from the release), the app says why in plain words, keeps the technical details for the log, and stays as it was; a download that failed is deleted. Try again later, or download the new version by hand from the release page. A check that runs by itself and fails says nothing; it tries again the next day.
+- Closing the app during a download stops it; nothing is changed, and the half-downloaded file is deleted at the next start.

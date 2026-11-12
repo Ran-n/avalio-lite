@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.961496
-//+ Revised: 	2026/11/08 04:36:59.298297
+//+ Revised: 	2026/11/12 14:39:56.344489
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
@@ -18,6 +18,7 @@ fn sample() -> AppConfig {
         log_dir: PathBuf::from(r"D:\logs"),
         preferences: Preferences { show_column_settings: false, ..Preferences::default() },
         shortcuts: BTreeMap::new(),
+        last_class: None,
     }
 }
 
@@ -186,6 +187,7 @@ proptest::proptest! {
         language in any_language(),
         theme in any_theme(),
         shortcuts in proptest::collection::btree_map("[a-z-]{1,22}", "[ -~]{0,16}", 0..4),
+        last_class in proptest::option::of(1i64..1_000_000),
     ) {
         let dir = tempfile::tempdir().unwrap();
         let store = ConfigStore::in_dir(dir.path());
@@ -204,6 +206,7 @@ proptest::proptest! {
                 update_failed: None,
             },
             shortcuts,
+            last_class,
         };
         store.save(&config).unwrap();
         proptest::prop_assert_eq!(store.load().unwrap(), Some(config));

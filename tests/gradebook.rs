@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/11/11 23:00:49.335269
+//+ Revised: 	2026/11/12 14:39:56.771556
 // -----------------------------------------------------------------------------
 
 use avalio_lite::error::AppError;
@@ -254,6 +254,11 @@ fn column_settings_are_validated() {
     assert!(matches!(columns::set_max_score(&connection, test, "0"), Err(AppError::InvalidNumber { .. })));
     assert!(matches!(columns::set_weight(&connection, info, "10"), Err(AppError::NotEditable)));
     assert!(matches!(columns::set_decimals(&connection, round, "4"), Err(AppError::InvalidNumber { .. })));
+    for refused in ["+2", "-1", "1.0", "", " "] {
+        let result = columns::set_decimals(&connection, round, refused);
+        assert!(matches!(result, Err(AppError::InvalidNumber { .. })), "{refused:?}: {result:?}");
+    }
+    columns::set_decimals(&connection, round, " 2 ").unwrap();
     columns::set_decimals(&connection, round, "2").unwrap();
     assert!(matches!(columns::rename_column(&connection, test, ""), Err(AppError::EmptyName)));
 }
@@ -665,6 +670,25 @@ fn weights_and_maximums_have_an_upper_bound() {
         kind,
         ColumnKind::Test { weight: columns::MAX_WEIGHT, max_score: columns::MAX_SCORE_LIMIT, bonus: false }
     );
+}
+
+/// Two final grades both called "Final grade" couldn't be told apart in the rounded column's source
+/// list, the import or the export; every kind's default title is free, numbered once it is taken.
+#[test]
+fn a_new_column_of_any_kind_gets_a_title_of_its_own() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    for column_type in
+        [ColumnType::Weighted, ColumnType::Weighted, ColumnType::Info, ColumnType::Info, ColumnType::Info]
+    {
+        columns::add_column(&connection, class, column_type, Language::English).unwrap();
+    }
+    assert_eq!(titles(&connection, class), ["Final grade", "Final grade 2", "Notes", "Notes 2", "Notes 3"]);
+    // a title taken by renaming another column, in other letter case, counts as taken
+    let average = columns::add_column(&connection, class, ColumnType::Info, Language::English).unwrap();
+    columns::rename_column(&connection, average, "AVERAGE").unwrap();
+    columns::add_column(&connection, class, ColumnType::Average, Language::English).unwrap();
+    assert_eq!(titles(&connection, class).last().unwrap(), "Average 2");
 }
 
 #[test]

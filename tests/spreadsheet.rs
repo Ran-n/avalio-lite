@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.959439
-//+ Revised: 	2026/11/11 17:11:02.007439
+//+ Revised: 	2026/11/12 14:39:57.310390
 // -----------------------------------------------------------------------------
 
 //! The Excel export, read back with calamine as Excel would read it, and the import, from
@@ -321,6 +321,10 @@ fn file_names_windows_refuses_are_changed() {
     assert_eq!(file_name("con"), "con-");
     assert_eq!(file_name("COM1"), "COM1-");
     assert_eq!(file_name("Console"), "Console");
+    // Windows takes a device name before any dot for the device too
+    assert_eq!(file_name("NUL.x"), "NUL-.x");
+    assert_eq!(file_name("aux .notes"), "aux- .notes");
+    assert_eq!(file_name("Conan.x"), "Conan.x");
 }
 
 #[test]
@@ -767,6 +771,58 @@ fn rows_without_a_name_are_skipped() {
     );
     let summary = scratch.import(class, &path);
     assert_eq!((summary.pupils, summary.marks), (1, 1));
+    assert_eq!(summary.unnamed_rows, 2, "the skipped rows held marks, so the report says so");
+}
+
+/// A row that is empty all through is no row at all, so it isn't counted as skipped.
+#[test]
+fn empty_rows_are_not_counted_as_skipped() {
+    let scratch = Scratch::new();
+    let (class, ..) = small_class(&scratch);
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[vec![Text("Pupil"), Text("Exam")], vec![Text("Ana"), Number(3.0)], vec![], vec![Text("Bea"), Number(5.0)]],
+    );
+    assert_eq!(scratch.import(class, &path).unnamed_rows, 0);
+}
+
+/// The sheet's first used cell needn't be A1: a blank first row and column (a title row left
+/// empty, a margin column) leave the headers and names where they are.
+#[test]
+fn a_sheet_starting_below_and_right_of_a1_is_read_from_its_first_cell() {
+    let scratch = Scratch::new();
+    let (class, ..) = small_class(&scratch);
+    let path = scratch
+        .workbook("x.xlsx", &[vec![], vec![Empty, Text("Pupil"), Text("Exam")], vec![Empty, Text("Ana"), Number(6.0)]]);
+    let summary = scratch.import(class, &path);
+    assert_eq!((summary.pupils, summary.new_pupils, summary.marks), (1, 0, 1), "Ana matched, her mark read");
+    assert!(summary.left_out.is_empty(), "{:?}", summary.left_out);
+    let loaded = sheet::load_sheet(&scratch.connection, class).unwrap();
+    let ana = loaded.rows.iter().find(|row| row.pupil.first_name == "Ana").unwrap();
+    assert!(ana.values.contains(&"6".to_owned()), "{:?}", ana.values);
+}
+
+/// One name column with names written surname first, as school lists have them: each splits at its
+/// comma, so "Pérez, Ana" finds the pupil Ana Pérez instead of making a second one.
+#[test]
+fn a_one_column_name_written_surname_first_finds_its_pupil() {
+    let scratch = Scratch::new();
+    let class = classes::create_class(&scratch.connection, "1A").unwrap();
+    let ana = pupils::add_new_pupil(&scratch.connection, class, "Ana", "Pérez López").unwrap();
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[vec![Text("Pupil")], vec![Text("Pérez López, Ana")], vec![Text("Iglesias,Carla")], vec![Text("Xoán Carlos")]],
+    );
+    let summary = scratch.import(class, &path);
+    assert_eq!((summary.pupils, summary.new_pupils), (3, 2));
+    let names: Vec<(i64, String, String)> = pupils::list_class_pupils(&scratch.connection, class)
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.id, pupil.first_name, pupil.surname))
+        .collect();
+    assert_eq!(names[0], (ana, "Ana".to_owned(), "Pérez López".to_owned()), "matched, not duplicated");
+    assert!(names.iter().any(|(_, first, surname)| first == "Carla" && surname == "Iglesias"));
+    assert!(names.iter().any(|(_, first, surname)| first == "Xoán Carlos" && surname.is_empty()));
 }
 
 #[test]
@@ -873,6 +929,7 @@ proptest::proptest! {
                 .map(|(first_name, exam, notes)| ImportRow { first_name, surname: String::new(), values: vec![exam, notes] })
                 .collect(),
             error_cells: 0,
+            unnamed_rows: 0,
         };
         let (before, pupils_before) = (scratch.rows(class), scratch.pupil_count());
         let plan = plan_import(&scratch.connection, class, &table).unwrap();

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.490512
-//+ Revised: 	2026/11/03 10:00:17.108352
+//+ Revised: 	2026/11/12 14:39:55.198736
 // -----------------------------------------------------------------------------
 
 //! Starting up and choosing a database: the settings file read at start, the first-run choice,
@@ -81,8 +81,9 @@ impl AppState {
                 )));
             }
         }
-        match db::open(&config.database_path, None) {
+        match db::open_upgrading(&config.database_path, None) {
             Ok(connection) => {
+                super::protection::clear_leftovers(&config.database_path);
                 self.connection = Some(connection);
                 self.config = Some(config);
                 Startup::Ready
@@ -103,6 +104,7 @@ impl AppState {
             log_dir: log_dir.to_path_buf(),
             preferences: self.preferences(),
             shortcuts: self.shortcut_overrides(),
+            last_class: None,
         };
         self.choose(config)
     }
@@ -117,6 +119,7 @@ impl AppState {
             log_dir: log_dir.to_path_buf(),
             preferences: self.preferences(),
             shortcuts: self.shortcut_overrides(),
+            last_class: None,
         };
         self.choose(config)
     }
@@ -134,8 +137,15 @@ impl AppState {
             self.close_connection();
             return Ok(Opened::Locked);
         }
-        let connection = db::open(&config.database_path, None)?;
+        let connection = db::open_upgrading(&config.database_path, None)?;
+        let path = config.database_path.clone();
         self.activate(config, connection)?;
+        // a database made here just now (none was there) has no leftovers of its own: a
+        // `.previous` beside it is what a crashed PIN change left of the one that went missing,
+        // maybe the only good copy, so it stays
+        if kind.is_some() {
+            super::protection::clear_leftovers(&path);
+        }
         Ok(Opened::Ready)
     }
 }
@@ -170,6 +180,9 @@ fn existing_kind(path: &Path) -> Result<FileKind> {
 fn require_path(path: &Path, purpose: Folder) -> Result<()> {
     if path.as_os_str().is_empty() {
         return Err(AppError::EmptyPath(purpose));
+    }
+    if !path.is_absolute() {
+        return Err(AppError::RelativePath(purpose));
     }
     Ok(())
 }

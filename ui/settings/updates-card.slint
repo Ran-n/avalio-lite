@@ -15,10 +15,12 @@ export component UpdatesCard inherits Card {
             label: @tr("Check for updates automatically");
             toggled(on) => { Update.set-automatic(on); }
         }
+        // the toggle itself carries these words for a screen reader, which would hear them twice
         Text {
             text: @tr("Check for updates automatically");
             vertical-alignment: center;
             color: Theme.text;
+            accessible-role: none;
         }
     }
     HorizontalLayout {

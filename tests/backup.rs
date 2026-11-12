@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.935204
-//+ Revised: 	2026/11/11 17:11:00.952129
+//+ Revised: 	2026/11/12 14:39:56.046078
 // -----------------------------------------------------------------------------
 
 //! `.avalio` backups: exporting everything to one file, read back from the real file on disk.
@@ -726,6 +726,51 @@ fn a_version_5_backup_opens_with_its_names_as_first_names() {
         .collect();
     assert_eq!(names, [("Ana".to_owned(), String::new()), ("Bea".to_owned(), String::new())]);
     assert_eq!(common::name_widths(connection, summary.class_ids[0]), (Some(260), None), "its width too");
+}
+
+/// A backup made before surnames had a column (schema 5), holding class "1A" with one pupil typed
+/// surname first and one with a single name.
+fn comma_name_backup(fixture: &Fixture) -> PathBuf {
+    let file = fixture.path("old.avalio");
+    let mut old = Connection::open(&file).unwrap();
+    migrations::migrate_to(&mut old, 5).unwrap();
+    old.execute_batch(
+        "INSERT INTO classes (id, name) VALUES (1, '1A');
+         INSERT INTO pupils (id, name) VALUES (1, 'Pérez López, Ana'), (2, 'Bea');
+         INSERT INTO class_pupils VALUES (1, 1, 1), (1, 2, 2);",
+    )
+    .unwrap();
+    drop(old);
+    file
+}
+
+fn class_pupil_names(connection: &Connection, class: i64) -> Vec<(String, String)> {
+    pupils::list_class_pupils(connection, class)
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.first_name, pupil.surname))
+        .collect()
+}
+
+/// Old backups go through the migrations too, so their comma names arrive split, restored or added.
+#[test]
+fn restoring_an_old_backup_splits_comma_names() {
+    let split = [("Ana".to_owned(), "Pérez López".to_owned()), ("Bea".to_owned(), String::new())];
+    let fixture = Fixture::new();
+    let file = comma_name_backup(&fixture);
+    let mut state = fixture.set_up();
+    let opened = state.open_backup(&file, None).unwrap();
+    state.restore_backup(opened).unwrap();
+    let connection = state.connection().unwrap();
+    let class = classes::list_classes(connection).unwrap()[0].id;
+    assert_eq!(class_pupil_names(connection, class), split, "restored");
+
+    let other = Fixture::new();
+    let file = comma_name_backup(&other);
+    let state = other.set_up();
+    let opened = state.open_backup(&file, None).unwrap();
+    let summary = state.add_backup_classes(opened).unwrap();
+    assert_eq!(class_pupil_names(state.connection().unwrap(), summary.class_ids[0]), split, "added");
 }
 
 #[test]

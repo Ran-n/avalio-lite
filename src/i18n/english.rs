@@ -1,14 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:30.944950
-//+ Revised: 	2026/11/08 04:36:59.523637
+//+ Revised: 	2026/11/12 14:39:52.896916
 // -----------------------------------------------------------------------------
 
 //! The Rust-side texts and error messages in English.
 
 use super::Language;
 use super::errors::{DatabaseProblem, IoProblem, entries};
-use super::messages::{Message, counted, plural, renamings};
+use super::messages::{Message, UpdateProblem, counted, plural, renamings};
 use super::shortcuts::{action_label, display};
 use crate::error::{AppError, Folder, NumberField};
 use crate::shortcuts::ShortcutError;
@@ -33,6 +33,9 @@ pub(super) fn message(message: &Message) -> String {
             format!("Delete {pupil}? They're in no class; this can't be undone.")
         }
         Message::DatabaseMoved { path } => format!("Database moved to {path}"),
+        Message::DatabaseMovedOldKept { path, old } => format!(
+            "Database moved to {path}, but the old copy at {old} couldn't be deleted. Delete it yourself once no other program uses it."
+        ),
         Message::LogsMoved { path } => format!("Logs moved to {path}"),
         Message::DatabaseFileType => "avalio-lite database".to_owned(),
         Message::BackupFileType => "avalio-lite backup".to_owned(),
@@ -94,6 +97,13 @@ pub(super) fn message(message: &Message) -> String {
                 format!("{count} cells with Excel errors were skipped.")
             }
         }
+        Message::ImportUnnamedRows { count } => {
+            if *count == 1 {
+                "1 row with no first name was skipped.".to_owned()
+            } else {
+                format!("{count} rows with no first name were skipped.")
+            }
+        }
         Message::UntitledColumn { letter } => format!("column {letter} (no title)"),
         Message::LicenceAskForKey => {
             "avalio-lite needs a licence key to run. You received it by email; it looks like this:
@@ -119,8 +129,10 @@ BRN-XXXX-XXXX-XXXX-XXXX"
         Message::LicenceUnreachable => {
             "The licence server can't be reached. Check the internet connection and try again.".to_owned()
         }
-        Message::LicenceNotSaved { error } => format!("The licence couldn't be saved on this computer: {error}"),
-        Message::BackgroundFailed { error } => format!("The check couldn't be started: {error}"),
+        Message::LicenceNotSaved => {
+            "The licence couldn't be saved on this computer. Check that there is free space and try again; the log has the details.".to_owned()
+        }
+        Message::BackgroundFailed => "That couldn't be started. Try again; the log has the details.".to_owned(),
         Message::LicenceConnectBy { date } => format!("Connect to the internet by {date} to keep using avalio-lite."),
         Message::LicenceEndsOn { date, email } => {
             format!("Your licence ends on {date}. Write to {email} to renew it.")
@@ -131,11 +143,18 @@ BRN-XXXX-XXXX-XXXX-XXXX"
         Message::LicenceConfirmed => "Licence confirmed.".to_owned(),
         Message::UpdateAvailable { version } => format!("avalio-lite {version} is available."),
         Message::UpToDate { version } => format!("avalio-lite is up to date ({version})."),
-        Message::UpdateCheckFailed { reason } => format!("Couldn't check for updates: {reason}"),
-        Message::LinkFailed { error } => format!("Couldn't open the page: {error}"),
+        Message::UpdateCheckFailed { problem } => format!("Couldn't check for updates: {}", update_problem(*problem)),
+        Message::LinkFailed { url } => format!("Couldn't open the page in the browser. Its address is {url}"),
         Message::UpdateNotVerified => "The update couldn't be verified, so it wasn't installed.".to_owned(),
-        Message::UpdateDownloadFailed { reason } => format!("Couldn't download the update: {reason}"),
-        Message::UpdateNotPlaced { reason } => format!("The update couldn't be put in place: {reason}"),
+        Message::UpdateDownloadFailed { problem } => {
+            format!("Couldn't download the update: {}", update_problem(*problem))
+        }
+        Message::UpdateNotPlaced => {
+            "The update couldn't be put in place: the app's file is in use or can't be changed. Download the new version from the release page; the log has the details.".to_owned()
+        }
+        Message::UpdateLeftAside { path } => format!(
+            "The update couldn't be put in place, and the app's file was left as {path}. Rename it back to avalio-lite.exe (without .old) before opening the app again."
+        ),
         Message::UpdateFolderReadOnly => {
             "This folder can't be written to. Download the new version from the release page.".to_owned()
         }
@@ -143,9 +162,19 @@ BRN-XXXX-XXXX-XXXX-XXXX"
             format!("The release has no {file}. Download the new version from the release page.")
         }
         Message::UpdatedTo { version } => format!("Updated to avalio-lite {version}."),
-        Message::UpdateNotStarted { reason } => {
-            format!("The update couldn't be started: {reason}. Download it from the release page.")
+        Message::UpdateNotStarted => {
+            "The update couldn't be started. Download it from the release page; the log has the details.".to_owned()
         }
+    }
+}
+
+/// The end of an update failure's sentence: what went wrong, as the user can act on it.
+fn update_problem(problem: UpdateProblem) -> &'static str {
+    match problem {
+        UpdateProblem::Offline => "GitHub can't be reached. Check the internet connection and try again.",
+        UpdateProblem::RateLimited => "GitHub asks to wait a while. Try again later.",
+        UpdateProblem::BadAnswer => "GitHub's answer wasn't understood. Try again later; the log has the details.",
+        UpdateProblem::Disk => "it couldn't be saved on this computer. Check that there is free space and try again.",
     }
 }
 
@@ -189,6 +218,12 @@ pub(super) fn error(error: &AppError) -> String {
         AppError::NoConfigDir => "Couldn't find your settings folder.".to_owned(),
         AppError::EmptyPath(Folder::Database) => "Choose a folder for the database.".to_owned(),
         AppError::EmptyPath(Folder::Logs) => "Choose a folder for the logs.".to_owned(),
+        AppError::RelativePath(Folder::Database) => {
+            r"Give the database folder in full, with its drive, such as D:\Marks.".to_owned()
+        }
+        AppError::RelativePath(Folder::Logs) => {
+            r"Give the log folder in full, with its drive, such as D:\Marks.".to_owned()
+        }
         AppError::NotFound(path) => format!("{} doesn't exist.", path.display()),
         AppError::AlreadyExists(path) => format!("{} already exists.", path.display()),
         AppError::NewerSchema { found, supported } => format!(
@@ -246,9 +281,10 @@ pub(super) fn error(error: &AppError) -> String {
             "{} isn't a workbook that can be read. Check that it is an Excel .xlsx file and isn't damaged.",
             path.display()
         ),
-        AppError::NoPupilsInFile(path) => {
-            format!("{} has no pupils: names go in column A, from row 2.", path.display())
-        }
+        AppError::NoPupilsInFile(path) => format!(
+            "{} has no pupils: its first row needs a First name header (or the names in its first column), with one pupil on each row below.",
+            path.display()
+        ),
         AppError::DuplicatePupilInFile(name) => {
             format!("The file has \"{name}\" twice; each pupil can only be in it once.")
         }

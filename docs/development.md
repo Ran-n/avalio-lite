@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.728640 )
-[//]: # (+ Revised: 	2026/11/11 17:10:57.552253 )
+[//]: # (+ Revised: 	2026/11/12 14:39:51.321866 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Developing avalio-lite
@@ -136,6 +136,6 @@ The in-app updater only uses a download whose `.sig` checks out against the publ
 
 - The private key is a file outside the repository: `..\secrets\avalio-lite-release.key`, or the path in `AVALIO_RELEASE_KEY`. `release.ps1` stops if it is missing. Keep a second copy somewhere safe, off this computer: without it, no copy of the app can update itself again.
 - `cargo run --example release_sign -- sign <key file> <file>...` signs files by hand (each `.sig` goes next to its file), `verify <file>` checks one against the built-in key (or `--public-key <key>`), and `new-key <key file>` makes a new key. After a new key, update `PUBLIC_KEY`; copies built with the old key won't accept files signed with the new one, so their users must install by hand once.
-- The updater finds its files by name: a release must keep `avalio-lite-<version>-setup.exe`, `avalio-lite-<version>-portable.exe` and their `.sig` files, under the tag `v<version>`. It reads GitHub only.
+- The updater finds its files by name: a release must keep `avalio-lite-<version>-setup.exe`, `avalio-lite-<version>-portable.exe` and their `.sig` files, under the tag `v<version>`. It reads GitHub's latest release, unless `AVALIO_RELEASES_API` is set to another release list's URL (for trying an update end to end with a scratch release; the files must still carry the release key's signature).
 
 

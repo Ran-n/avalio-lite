@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.266960
-//+ Revised: 	2026/11/11 17:10:59.548876
+//+ Revised: 	2026/11/12 14:39:52.730390
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model, SharedString};
@@ -46,8 +46,11 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
         let name = usize::try_from(index)
             .ok()
             .and_then(|index| window.global::<Gradebook>().get_addable_pupils().row_data(index))
-            .map(|pupil| pupil.name)
-            .unwrap_or_default();
+            .map(|pupil| pupil.name);
+        let Some(name) = name else {
+            run(window, &shared, "delete pupil in no class", |_| Err(AppError::NotEditable));
+            return;
+        };
         if !asker.confirm(&i18n::text(i18n::current(), &Message::ConfirmDeletePupil { pupil: &name })) {
             return;
         }
@@ -79,7 +82,11 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
 
     let (shared, dialogs) = (state.clone(), dialogs.clone());
     gradebook.on_remove_pupil(with_window1(window, move |window, pupil_id| {
-        if !dialogs.confirm(&removal_question(window, pupil_id)) {
+        let Some(question) = removal_question(window, pupil_id) else {
+            run(window, &shared, "remove pupil", |_| Err(AppError::NotEditable));
+            return;
+        };
+        if !dialogs.confirm(&question) {
             return;
         }
         let class_id = current_class_id(window);
@@ -90,10 +97,10 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
     }));
 }
 
-fn removal_question(window: &AppWindow, pupil_id: i32) -> String {
+/// The question before removing the pupil, or `None` when the sheet no longer shows them.
+fn removal_question(window: &AppWindow, pupil_id: i32) -> Option<String> {
     let gradebook = window.global::<Gradebook>();
-    let name =
-        gradebook.get_rows().iter().find(|row| row.pupil_id == pupil_id).map(|row| row.full_name).unwrap_or_default();
+    let name = gradebook.get_rows().iter().find(|row| row.pupil_id == pupil_id).map(|row| row.full_name)?;
     let class = gradebook.get_class_name();
-    i18n::text(i18n::current(), &Message::ConfirmRemovePupil { pupil: &name, class: &class })
+    Some(i18n::text(i18n::current(), &Message::ConfirmRemovePupil { pupil: &name, class: &class }))
 }

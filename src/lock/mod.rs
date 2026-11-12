@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:41.384483
-//+ Revised: 	2026/11/02 22:53:32.611047
+//+ Revised: 	2026/11/12 14:39:53.486067
 // -----------------------------------------------------------------------------
 
 //! PIN rules and guess limiting. The PIN itself is the database's encryption key
@@ -24,6 +24,8 @@ const WAIT_AFTER_FREE_ATTEMPTS: Duration = Duration::from_secs(30);
 
 /// A PIN kept in memory while the database is open. Its bytes are overwritten with zeros when
 /// it is dropped (on lock, on quit, when the PIN changes), and it never shows up in debug output.
+/// This covers the app's own copy only: the text typed on the lock screen passes through Slint's
+/// strings, which are freed without being zeroed.
 #[derive(Clone)]
 pub struct Pin(Zeroizing<String>);
 

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.250028
-//+ Revised: 	2026/11/03 08:27:18.648895
+//+ Revised: 	2026/11/12 14:39:57.071778
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -37,12 +37,14 @@ fn writes_app_records_at_or_above_level_to_the_file() {
     logger.open(dir.path()).unwrap();
     logger.log(&record_for("avalio_lite::app", Level::Info, format_args!("kept")));
     logger.log(&record_for("avalio_lite::app", Level::Debug, format_args!("too verbose")));
-    logger.log(&record_for("winit::window", Level::Error, format_args!("third party")));
+    logger.log(&record_for("winit::window", Level::Warn, format_args!("third party warning")));
+    logger.log(&record_for("ureq::unit", Level::Error, format_args!("third party error")));
     logger.close();
     let text = fs::read_to_string(dir.path().join(LOG_FILE_NAME)).unwrap();
     assert!(text.contains("kept"));
     assert!(!text.contains("too verbose"));
-    assert!(!text.contains("third party"));
+    assert!(!text.contains("third party warning"), "other crates' warnings are noise");
+    assert!(text.contains("third party error"), "other crates' errors may explain one of ours");
 }
 
 #[test]

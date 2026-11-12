@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.393346
-//+ Revised: 	2026/11/07 20:25:34.393346
+//+ Revised: 	2026/11/12 14:39:53.322000
 // -----------------------------------------------------------------------------
 
 //! The licence check through Clavren, Breren's licence server: which server, product and token keys
@@ -54,8 +54,8 @@ pub enum Notice {
         minutes: u64,
     },
     Unreachable,
-    /// the licence state couldn't be saved on this computer; the reason, for the user
-    NotSaved(String),
+    /// the licence state couldn't be saved on this computer (the reason goes to the log)
+    NotSaved,
 }
 
 /// The screen's text for an answer, or `None` when the app may run.
@@ -79,7 +79,7 @@ pub fn notice_for_failure(failure: &Temporary) -> Notice {
     match failure {
         Temporary::Unreachable(_) | Temporary::Server(_) => Notice::Unreachable,
         Temporary::RateLimited(wait) => Notice::Wait { minutes: whole_minutes(*wait) },
-        Temporary::Storage(error) => Notice::NotSaved(error.to_string()),
+        Temporary::Storage(_) => Notice::NotSaved,
     }
 }
 

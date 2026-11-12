@@ -33,7 +33,10 @@ export component MoreMenuContent inherits MenuSurface {
     callback add-from-another-class();
 
     Menu {
-        // "Add from another class" is only offered while some pupil could be added
+        // "Add from another class" is only offered while some pupil could be added. Slint can't join
+        // or filter arrays, so the two lists are written out; keep them the same but for id 0. The
+        // ids are plain numbers (a menu entry's id is an int, which an enum can't be turned into),
+        // matched in `chosen` below.
         entries: Gradebook.addable-pupils.length > 0 ? [
             { id: 0, title: @tr("Add from another class…") },
             { id: 5, title: @tr("Duplicate class"), hint: @tr("Same columns and settings, no pupils") },

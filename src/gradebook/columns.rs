@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.917995
-//+ Revised: 	2026/11/11 17:10:58.120730
+//+ Revised: 	2026/11/12 14:39:52.004713
 // -----------------------------------------------------------------------------
 
 use std::collections::HashMap;
@@ -10,7 +10,9 @@ use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::compute::{FULL_WEIGHT, parse_number, weight_total};
-use super::model::{Column, ColumnKind, ColumnTitles, ColumnType, MIN_COLUMN_WIDTH, clamp_width, clean_name};
+use super::model::{
+    Column, ColumnKind, ColumnTitles, ColumnType, MIN_COLUMN_WIDTH, clamp_width, clean_name, name_match_key,
+};
 use super::update_one;
 use crate::error::{AppError, NumberField, Result};
 
@@ -88,7 +90,9 @@ pub fn rename_column(connection: &Connection, column_id: i64, title: &str) -> Re
         connection,
         "UPDATE sheet_columns SET title = ?2 WHERE id = ?1 AND kind NOT IN ('first_name', 'surname')",
         params![column_id, title],
-    )
+    )?;
+    log::info!("renamed column {column_id}");
+    Ok(())
 }
 
 /// Gives class `class_id`, newly made (so it has only its two name columns), copies of `columns`
@@ -150,7 +154,9 @@ pub fn set_bonus(connection: &Connection, column_id: i64, bonus: bool) -> Result
         connection,
         "UPDATE sheet_columns SET bonus = ?2 WHERE id = ?1 AND kind = 'test'",
         params![column_id, bonus],
-    )
+    )?;
+    log::info!("set column {column_id} to count as a bonus: {bonus}");
+    Ok(())
 }
 
 pub fn set_weight(connection: &Connection, column_id: i64, text: &str) -> Result<()> {
@@ -161,7 +167,9 @@ pub fn set_weight(connection: &Connection, column_id: i64, text: &str) -> Result
         connection,
         "UPDATE sheet_columns SET weight = ?2 WHERE id = ?1 AND kind = 'test'",
         params![column_id, weight],
-    )
+    )?;
+    log::info!("set the weight of column {column_id} to {weight}");
+    Ok(())
 }
 
 pub fn set_max_score(connection: &Connection, column_id: i64, text: &str) -> Result<()> {
@@ -172,21 +180,26 @@ pub fn set_max_score(connection: &Connection, column_id: i64, text: &str) -> Res
         connection,
         "UPDATE sheet_columns SET max_score = ?2 WHERE id = ?1 AND kind IN ('test', 'weighted', 'average')",
         params![column_id, max_score],
-    )
+    )?;
+    log::info!("set the maximum score of column {column_id} to {max_score}");
+    Ok(())
 }
 
 pub fn set_decimals(connection: &Connection, column_id: i64, text: &str) -> Result<()> {
-    let decimals = text
-        .trim()
-        .parse::<u8>()
-        .ok()
+    // digits only: Rust's parse would take "+2", which no other number field accepts
+    let digits = text.trim();
+    let decimals = (!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| digits.parse::<u8>().ok())
+        .flatten()
         .filter(|decimals| *decimals <= MAX_DECIMALS)
         .ok_or_else(|| AppError::InvalidNumber { field: NumberField::Decimals, value: text.to_owned() })?;
     update_one(
         connection,
         "UPDATE sheet_columns SET decimals = ?2 WHERE id = ?1 AND kind = 'round'",
         params![column_id, decimals],
-    )
+    )?;
+    log::info!("set column {column_id} to round to {decimals} decimals");
+    Ok(())
 }
 
 /// Points a rounded column at another column of the same class (or at nothing).
@@ -202,6 +215,7 @@ pub fn set_round_source(connection: &Connection, column_id: i64, source: Option<
     if changed == 0 {
         return Err(AppError::InvalidRoundSource);
     }
+    log::info!("set rounded column {column_id} to round {source:?}");
     Ok(())
 }
 
@@ -276,14 +290,23 @@ fn default_kind(column_type: ColumnType, existing: &[Column]) -> ColumnKind {
     }
 }
 
-/// Tests are numbered on from how many there are, skipping a title already in use ("Test 2"
-/// after "Test 1" was deleted).
+/// A title no other column of the class has, so the rounded column's source list, the import and
+/// the export's settings tab can tell columns apart: tests are numbered on from how many there are,
+/// skipping a title in use ("Test 2" after "Test 1" was deleted); another kind's title gets a
+/// number only once its plain one is taken ("Final grade", then "Final grade 2").
 fn default_title(column_type: ColumnType, existing: &[Column], titles: &impl ColumnTitles) -> String {
-    let same_type = existing.iter().filter(|column| column.kind.column_type() == column_type).count();
-    let taken = |title: &str| existing.iter().any(|column| column.title.to_lowercase() == title.to_lowercase());
-    (same_type + 1..)
-        .map(|number| titles.default_title(column_type, number))
-        .find(|title| column_type != ColumnType::Test || !taken(title))
+    let taken = |title: &str| existing.iter().any(|column| name_match_key(&column.title) == name_match_key(title));
+    if column_type == ColumnType::Test {
+        let tests = existing.iter().filter(|column| column.kind.column_type() == column_type).count();
+        return (tests + 1..)
+            .map(|number| titles.default_title(column_type, number))
+            .find(|title| !taken(title))
+            .unwrap_or_default();
+    }
+    let plain = titles.default_title(column_type, 1);
+    (1..)
+        .map(|number| if number == 1 { plain.clone() } else { format!("{plain} {number}") })
+        .find(|title| !taken(title))
         .unwrap_or_default()
 }
 

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/11/11 17:11:02.161710
+//+ Revised: 	2026/11/12 14:39:57.511971
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -18,7 +18,7 @@ use avalio_lite::backup;
 use avalio_lite::error::{AppError, Folder};
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{classes, columns, pupils};
-use avalio_lite::i18n::{self, Language, Message};
+use avalio_lite::i18n::{self, Language, Message, UpdateProblem};
 use avalio_lite::licence::{Notice, SUPPORT_EMAIL};
 use avalio_lite::platform::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::platform::db;
@@ -302,6 +302,27 @@ fn an_existing_database_opens_on_its_first_class() {
     assert_eq!(gradebook(&ui).get_rows().row_count(), 2);
 }
 
+/// The class that was open is open again at the next start; one deleted meanwhile falls back to
+/// the first class, and another database starts on its own first class.
+#[test]
+fn the_open_class_is_open_again_at_the_next_start() {
+    let ui = seeded();
+    let second = {
+        let state = ui.session.state.borrow();
+        classes::create_class(state.connection().unwrap(), "2B").unwrap()
+    };
+    gradebook(&ui).invoke_select_class(i32::try_from(second).unwrap());
+    assert_eq!(gradebook(&ui).get_class_name(), "2B");
+    assert_eq!(ui.fixture.store().load().unwrap().unwrap().last_class, Some(second), "saved at once");
+
+    let ui = ui.restart();
+    assert_eq!(gradebook(&ui).get_class_name(), "2B", "opened again");
+
+    classes::delete_class(ui.session.state.borrow().connection().unwrap(), second).unwrap();
+    let ui = ui.restart();
+    assert_eq!(gradebook(&ui).get_class_name(), "1A", "the remembered class is gone: the first one");
+}
+
 #[test]
 fn a_missing_database_asks_where_it_went() {
     let fixture = Fixture::new();
@@ -397,8 +418,9 @@ fn browse_fills_each_folder_field_from_the_picker() {
     let suggested = ui.session.window.get_setup_database_folder().to_string();
     ui.dialogs.pick_folder_next(Some(&data));
     ui.dialogs.pick_folder_next(Some(&logs));
-    click_nth(&ui, "Browse…", 0);
-    click_nth(&ui, "Browse…", 1);
+    // each says which folder it is for, so a screen reader tells the two apart
+    click(&ui, "Browse… (Database folder)");
+    click(&ui, "Browse… (Log folder)");
     assert_eq!(ui.session.window.get_setup_database_folder(), data.display().to_string());
     assert_eq!(ui.session.window.get_setup_log_folder(), logs.display().to_string());
     assert_eq!(ui.dialogs.folder_starts.borrow()[0].display().to_string(), suggested, "opens at the current folder");
@@ -410,8 +432,8 @@ fn a_cancelled_browse_keeps_the_folder() {
     let before = ui.session.window.get_setup_database_folder();
     ui.dialogs.pick_folder_next(None);
     ui.dialogs.pick_folder_next(None);
-    click_nth(&ui, "Browse…", 0);
-    click_nth(&ui, "Browse…", 1);
+    click(&ui, "Browse… (Database folder)");
+    click(&ui, "Browse… (Log folder)");
     assert_eq!(ui.session.window.get_setup_database_folder(), before);
     assert_eq!(ui.session.window.get_setup_log_folder(), before);
 }
@@ -2468,6 +2490,7 @@ fn an_out_of_range_mark_is_flagged_and_ignored() {
     let cell = gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(FIRST_MARK).unwrap();
     assert!(cell.invalid);
     assert_eq!(cell_text(&ui, 0, 1), "", "the final grade leaves it out, so nothing is marked yet");
+    assert!(shows(&ui, "Ana, Exam (not a valid mark)"), "said to a screen reader, not only shaded red");
 }
 
 #[test]
@@ -3118,7 +3141,7 @@ fn a_licence_that_cannot_be_saved_says_so() {
     let ui = Ui::open_licensed(fixture, Language::English, computer, client);
     activate(&ui, KEY);
     assert!(!licence(&ui).get_licensed());
-    assert!(licence(&ui).get_notice().starts_with("The licence couldn't be saved on this computer:"));
+    assert_eq!(licence(&ui).get_notice(), english(&Message::LicenceNotSaved), "the system's reason stays in the log");
 }
 
 #[test]
@@ -3392,6 +3415,25 @@ fn open_update_settings(ui: &Ui) {
     scroll_settings_to(ui, "Check for updates now");
 }
 
+/// The update bar and the licence card are worded by the Rust side when they are filled in; a
+/// language chosen afterwards rewords them, rather than leaving English until the next check.
+#[test]
+fn choosing_a_language_rewords_the_update_bar_and_the_licence_card() {
+    let ui = seeded_with(FakeLicence::activated(), Language::English);
+    let version = next_version();
+    ui.releases.set(Ok(release(&version)));
+    look_if_due(&ui);
+    assert_eq!(licence(&ui).get_term(), "Permanent");
+    open_settings(&ui);
+    click(&ui, "Galego");
+    assert_eq!(
+        update(&ui).get_notice(),
+        i18n::text(Language::Galician, &Message::UpdateAvailable { version: &version })
+    );
+    assert_eq!(licence(&ui).get_term(), "Permanente");
+    assert!(licence(&ui).get_offline_until().starts_with("Funciona sen conexión"));
+}
+
 #[test]
 fn a_newer_release_shows_the_update_bar() {
     let ui = seeded();
@@ -3473,9 +3515,11 @@ fn a_page_that_cannot_be_opened_says_so() {
     let ui = seeded();
     ui.releases.set(Ok(release(&next_version())));
     look_if_due(&ui);
-    *ui.dialogs.link_failure.borrow_mut() = Some("no browser".into());
+    *ui.dialogs.link_failure.borrow_mut() = Some("ShellExecuteW failed (31)".into());
     click(&ui, "What's new");
-    assert_eq!(error_on_screen(&ui), english(&Message::LinkFailed { error: "no browser" }));
+    let page = release(&next_version()).page;
+    assert_eq!(error_on_screen(&ui), english(&Message::LinkFailed { url: &page }), "with the address to copy");
+    assert!(!error_on_screen(&ui).contains("ShellExecuteW"), "the system's own text stays in the log");
 }
 
 #[test]
@@ -3497,8 +3541,32 @@ fn check_now_reports_a_failure() {
     ui.releases.set(Err(UpdateError::RateLimited));
     open_update_settings(&ui);
     click(&ui, "Check for updates now");
-    let reason = UpdateError::RateLimited.to_string();
-    assert_eq!(error_on_screen(&ui), english(&Message::UpdateCheckFailed { reason: &reason }));
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateCheckFailed { problem: UpdateProblem::RateLimited }));
+}
+
+/// A lookup that breaks off (a panic on the worker) ends the wait and says so, instead of leaving
+/// the button greyed out for good; one that runs by itself says nothing.
+#[test]
+fn check_now_that_breaks_off_ends_the_wait_and_says_so() {
+    let ui = seeded();
+    ui.releases.panic_on_ask();
+    look_if_due(&ui);
+    assert!(ui.session.window.get_error_message().is_empty(), "an automatic check is only logged");
+    open_update_settings(&ui);
+    click(&ui, "Check for updates now");
+    assert!(!update(&ui).get_busy());
+    assert_eq!(error_on_screen(&ui), english(&Message::BackgroundFailed));
+}
+
+/// The technical reason (here a network library's English text) never reaches the screen.
+#[test]
+fn check_now_words_a_network_failure_for_the_user() {
+    let ui = seeded();
+    ui.releases.set(Err(UpdateError::Network("io: Connection refused (os error 10061)".into())));
+    open_update_settings(&ui);
+    click(&ui, "Check for updates now");
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateCheckFailed { problem: UpdateProblem::Offline }));
+    assert!(!error_on_screen(&ui).contains("os error"));
 }
 
 #[test]
@@ -3695,7 +3763,8 @@ fn an_update_that_could_not_start_is_said_at_the_next_start() {
     state.shutdown();
     let ui = Ui::open(fixture);
     avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
-    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotStarted { reason: "access denied" }));
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotStarted));
+    assert!(!error_on_screen(&ui).contains("access denied"), "the reason went to the log");
     assert_eq!(saved_preferences(&ui.fixture).update_failed, None, "said once");
 }
 
@@ -4117,9 +4186,11 @@ fn a_right_aligned_mark_cell_scrolls_mirrored() {
     let ui = seeded();
     let long = "1234567890123456789012345678901234567890";
     type_into(&ui, "Ana, Exam", long);
-    assert!(shows_its_end(&ui, "Ana, Exam", 0), "the end of a long mark shows at the right edge");
+    // a number this long is past the test's maximum, so the cell now says it isn't a valid mark
+    let flagged = "Ana, Exam (not a valid mark)";
+    assert!(shows_its_end(&ui, flagged, 0), "the end of a long mark shows at the right edge");
     key(&ui, Key::Home);
-    assert!(!is_scrolled(&ui, "Ana, Exam", 0));
+    assert!(!is_scrolled(&ui, flagged, 0));
     type_into(&ui, "Bea, Exam", "7");
     let (text, field) = text_and_box(&ui, "Bea, Exam", 0);
     assert_eq!(text, field, "a short mark doesn't move");

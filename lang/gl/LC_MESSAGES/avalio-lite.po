@@ -18,6 +18,12 @@ msgstr "Decimais"
 msgid "Browse…"
 msgstr "Examinar…"
 
+msgid "Browse… ({})"
+msgstr "Examinar… ({})"
+
+msgid "not a valid mark"
+msgstr "non é unha nota válida"
+
 msgid "Settings"
 msgstr "Axustes"
 

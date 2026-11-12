@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.566701
-//+ Revised: 	2026/11/03 10:00:16.876321
+//+ Revised: 	2026/11/12 14:39:54.659167
 // -----------------------------------------------------------------------------
 
 //! Backups of the open database: exporting one, and opening one to restore or add classes from.
@@ -15,7 +15,7 @@ use crate::lock::Pin;
 use crate::platform::storage;
 
 /// A backup being restored or added from is copied next to the database under this suffix.
-const RESTORE_SUFFIX: &str = ".restore";
+pub(super) const RESTORE_SUFFIX: &str = ".restore";
 
 impl AppState {
     /// Saves everything to a backup file, encrypted with the PIN when the database has one; the
@@ -46,6 +46,10 @@ impl AppState {
         let key = self.key.clone();
         self.replace_with(Some(backup.connection()), key.as_ref().map(Pin::as_str))?;
         log::info!("restored the backup {}", backup.file_name());
+        // the remembered class's id was this database's; in the backup it may be another class
+        if let Err(error) = self.forget_last_class() {
+            log::warn!("couldn't forget the class open before the restore: {error}");
+        }
         Ok(())
     }
 

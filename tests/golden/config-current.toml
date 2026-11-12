@@ -1,5 +1,6 @@
 database_path = 'D:\Marks\avalio-lite.db'
 log_dir = 'D:\Marks\logs'
+last_class = 3
 
 [preferences]
 show_column_settings = false

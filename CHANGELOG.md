@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/12 09:08:54.170029 )
+[//]: # (+ Revised: 	2026/11/12 14:39:50.559814 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,43 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Pupils typed surname first, as in "Pérez López, Ana", get their first name and surname in the right columns when you update, also in older backups you restore or add from; other names stay as they were
+- The first start after an update that changes the database keeps a copy of it as it was (`avalio-lite.db.before-update`)
+- Importing a file with one name column splits names written surname first ("Pérez López, Ana"), so they find their pupil instead of making a second one
+- The import report says how many rows were skipped for having no first name
+- The class you had open is open again at the next start
+
+### Changed
+
+- Error messages about updates, the licence, opening a web page and background work are worded for you in your language; the technical details go to the log
+- A new column of any kind gets a title no other column has ("Final grade 2"), so the rounded column's list can tell them apart
+- Switching the language rewords the update bar and the licence card straight away
+- A screen reader hears which folder each Browse… button is for, and when a mark isn't valid
+- The log also keeps errors reported by the libraries the app uses
+- The database itself keeps the limits on weights and maximum scores, and keeps every class's name columns
+
+### Fixed
+
+- Closing the app during an update download no longer keeps it running unseen for up to 10 minutes, and a portable copy's exe is only swapped right before it restarts
+- Work in the background that failed unexpectedly no longer leaves a button greyed out for good
+- A failed or cut-off update download is deleted instead of left next to the app; the installer is checked again just before it runs
+- A failed portable update that couldn't put the old exe back says where it is, so it can be renamed back
+- Copies a crash could leave while a PIN was being changed or a backup restored are deleted the next time the database opens
+- Settings are flushed to the disk before they replace the old file, so a power cut can't leave them empty
+- An update check that fails by itself no longer shows an error banner, and one noted in the future (a clock once set ahead) no longer stops the daily check
+- GitHub refusing a request is no longer reported as "asks to wait"
+- A database moved to another folder whose old copy couldn't be deleted is no longer reported as not moved
+- A folder typed without its drive is refused instead of putting the database wherever the app was started from
+- A database file that can't be read is no longer reported as having a wrong PIN
+- Import reads a sheet whose table doesn't start at A1
+- Export names a file after a class like "NUL.x" so Windows can save it
+- Adding classes from a large backup no longer slows down with each pupil
+- Number of decimals no longer accepts "+2"
+- Panics are written to the log
+- Two security fixes in the libraries for reading Excel files and for the database: calamine 0.38 (RUSTSEC-2026-0436, a crash and runaway memory on a malformed .xls) and SQLCipher 4.20 with SQLite 3.54.1 (RUSTSEC-2026-0502)
 
 ## [0.8.0] - 2026-11-12
 

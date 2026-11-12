@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.721797
-//+ Revised: 	2026/11/07 20:25:36.214584
+//+ Revised: 	2026/11/12 14:39:53.068972
 // -----------------------------------------------------------------------------
 
 use super::{Language, english, galician};
@@ -28,6 +28,11 @@ pub enum Message<'a> {
     },
     DatabaseMoved {
         path: &'a str,
+    },
+    /// the database was moved to `path`, but its original at `old` couldn't be deleted
+    DatabaseMovedOldKept {
+        path: &'a str,
+        old: &'a str,
     },
     LogsMoved {
         path: &'a str,
@@ -94,6 +99,10 @@ pub enum Message<'a> {
     ImportErrorCells {
         count: usize,
     },
+    /// rows of the file with marks or a surname but no first name, skipped
+    ImportUnnamedRows {
+        count: usize,
+    },
     /// how a left-out column with no header is named, by its letter
     UntitledColumn {
         letter: &'a str,
@@ -119,13 +128,10 @@ pub enum Message<'a> {
         minutes: u64,
     },
     LicenceUnreachable,
-    LicenceNotSaved {
-        error: &'a str,
-    },
-    /// work meant to run in the background (a licence check) couldn't be started
-    BackgroundFailed {
-        error: &'a str,
-    },
+    /// the licence couldn't be written to this computer (the details go to the log)
+    LicenceNotSaved,
+    /// work meant to run in the background (a check or a download) couldn't be started
+    BackgroundFailed,
     /// on the sheet: 30 days offline run out on `date` (formatted)
     LicenceConnectBy {
         date: &'a str,
@@ -154,20 +160,23 @@ pub enum Message<'a> {
         version: &'a str,
     },
     UpdateCheckFailed {
-        reason: &'a str,
+        problem: UpdateProblem,
     },
-    /// a web page (a release's) couldn't be opened in the browser
+    /// a web page (a release's) couldn't be opened in the browser; `url` is its address
     LinkFailed {
-        error: &'a str,
+        url: &'a str,
     },
     /// the download isn't signed with the release key
     UpdateNotVerified,
     UpdateDownloadFailed {
-        reason: &'a str,
+        problem: UpdateProblem,
     },
-    /// the new portable exe couldn't take the old one's place
-    UpdateNotPlaced {
-        reason: &'a str,
+    /// the new portable exe couldn't take the old one's place; the old one is where it was
+    UpdateNotPlaced,
+    /// the new portable exe couldn't take the old one's place, and the old one couldn't be put
+    /// back either: it is at `path` (`<exe>.old`)
+    UpdateLeftAside {
+        path: &'a str,
     },
     /// a portable copy in a folder that can't be written to
     UpdateFolderReadOnly,
@@ -180,9 +189,21 @@ pub enum Message<'a> {
         version: &'a str,
     },
     /// the installer or new exe couldn't be started as the app closed
-    UpdateNotStarted {
-        reason: &'a str,
-    },
+    UpdateNotStarted,
+}
+
+/// Why looking for or downloading an update failed, as far as the user can act on it; the
+/// technical details go to the log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateProblem {
+    /// no connection, or GitHub couldn't be reached
+    Offline,
+    /// GitHub asks to wait before asking again
+    RateLimited,
+    /// GitHub's answer wasn't a release the app understands
+    BadAnswer,
+    /// the download couldn't be written to this computer
+    Disk,
 }
 
 /// A day as the licence texts show it, in both languages: 30/06/2027.
@@ -217,7 +238,7 @@ pub fn licence_notice(language: Language, notice: &Notice) -> String {
         Notice::NeedsInternet => Message::LicenceNeedsInternet,
         Notice::Wait { minutes } => Message::LicenceWait { minutes: *minutes },
         Notice::Unreachable => Message::LicenceUnreachable,
-        Notice::NotSaved(error) => Message::LicenceNotSaved { error },
+        Notice::NotSaved => Message::LicenceNotSaved,
     };
     text(language, &message)
 }

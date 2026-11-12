@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.960717
-//+ Revised: 	2026/11/07 20:25:34.960717
+//+ Revised: 	2026/11/12 14:39:55.771542
 // -----------------------------------------------------------------------------
 
 //! What updating needs from Windows: where the installer put the app, and starting the new
@@ -73,10 +73,16 @@ fn install_location(root: windows_sys::Win32::System::Registry::HKEY) -> Option<
     Some(PathBuf::from(String::from_utf16_lossy(&buffer[..length])))
 }
 
-/// Starts what is pending so it outlives this process, which is about to exit.
+/// Starts what is pending so it outlives this process, which is about to exit. The installer waited
+/// in a temp folder since it was verified, so it only runs if it is still the file that was.
 pub fn start(pending: &Pending) -> std::io::Result<()> {
     match pending {
-        Pending::RunInstaller(installer) => start_detached(installer, INSTALLER_ARGUMENTS),
+        Pending::RunInstaller { installer, hash } => {
+            if super::signature::file_hash(installer)? != *hash {
+                return Err(std::io::Error::other(format!("{} changed after it was verified", installer.display())));
+            }
+            start_detached(installer, INSTALLER_ARGUMENTS)
+        }
         Pending::StartNew(exe) => start_detached(exe, &[]),
     }
 }

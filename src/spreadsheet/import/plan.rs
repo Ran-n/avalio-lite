@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.545991
-//+ Revised: 	2026/11/11 17:11:00.686680
+//+ Revised: 	2026/11/12 14:39:54.288154
 // -----------------------------------------------------------------------------
 
 //! Matching the workbook's rows and columns to the class, before anything changes.
@@ -83,6 +83,7 @@ pub fn plan_import(connection: &Connection, class_id: i64, table: &ImportTable) 
         marks: planned.iter().map(|pupil| pupil.writes.len()).sum(),
         left_out,
         error_cells: table.error_cells,
+        unnamed_rows: table.unnamed_rows,
     };
     Ok(ImportPlan { pupils: planned, summary, overwrites })
 }

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.853714
-//+ Revised: 	2026/11/11 17:10:57.889217
+//+ Revised: 	2026/11/12 14:39:51.667239
 // -----------------------------------------------------------------------------
 
 //! Adding a backup's classes to the open database, keeping all that is there.
@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use crate::error::Result;
 use crate::gradebook::columns::copy_columns;
-use crate::gradebook::model::{Pupil, Sheet};
+use crate::gradebook::model::{Pupil, Sheet, name_match_key};
 use crate::gradebook::{cells, classes, pupils, sheet};
 
 /// What adding a backup's classes did, for the status line.
@@ -34,7 +34,7 @@ pub struct AddSummary {
 /// backup shares between classes stays one pupil. All or nothing: one transaction.
 pub fn add_classes(target: &Connection, source: &Connection) -> Result<AddSummary> {
     let transaction = target.unchecked_transaction()?;
-    let mut adding = Adding::default();
+    let mut adding = Adding { here: pupils::pupils_by_name(&transaction)?, ..Adding::default() };
     for class in classes::list_classes(source)? {
         adding.add_class(&transaction, &class.name, &sheet::load_sheet(source, class.id)?)?;
     }
@@ -52,6 +52,9 @@ struct Adding {
     pupils: HashMap<i64, i64>,
     /// pupils here that already stand for a backup pupil, never matched by name again
     claimed: HashSet<i64>,
+    /// the pupils that were here before the add, by name (`pupils_by_name`); the ones it makes are
+    /// claimed at once, so they never need to be found by name
+    here: HashMap<String, Vec<i64>>,
 }
 
 impl Adding {
@@ -66,11 +69,7 @@ impl Adding {
         let columns = copy_columns(connection, class_id, &sheet.columns)?;
         for row in &sheet.rows {
             let pupil_id = self.pupil(connection, class_id, &row.pupil)?;
-            for (column, value) in sheet.columns.iter().zip(&row.values) {
-                if column.kind.holds_cells() && !value.is_empty() {
-                    cells::set_cell(connection, columns[&column.id], pupil_id, value)?;
-                }
-            }
+            cells::copy_row_marks(connection, &sheet.columns, &row.values, &columns, pupil_id)?;
         }
         Ok(class_id)
     }
@@ -84,15 +83,17 @@ impl Adding {
         self.summary.pupils += 1;
         // a pupil here already stands for another backup pupil (one made during this add, or
         // the namesake joined for an earlier one), so two backup pupils never become one
-        let here: Vec<Pupil> = pupils::pupils_named(connection, &pupil.full_name())?
-            .into_iter()
-            .filter(|found| !self.claimed.contains(&found.id))
-            .collect();
+        let key = name_match_key(&pupil.full_name());
+        let here: Vec<i64> = self
+            .here
+            .get(&key)
+            .map(|ids| ids.iter().copied().filter(|id| !self.claimed.contains(id)).collect())
+            .unwrap_or_default();
         let id = match here.as_slice() {
             [only] => {
-                pupils::add_existing_pupil(connection, class_id, only.id)?;
+                pupils::add_existing_pupil(connection, class_id, *only)?;
                 self.summary.existing_pupils += 1;
-                only.id
+                *only
             }
             _ => pupils::insert_new_pupil(connection, class_id, &pupil.first_name, &pupil.surname)?,
         };

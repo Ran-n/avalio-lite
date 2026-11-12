@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 21:48:11.540835
-//+ Revised: 	2026/11/03 01:27:42.914774
+//+ Revised: 	2026/11/12 14:39:57.169503
 // -----------------------------------------------------------------------------
 
 //! Where the window opens (`app::placement::place`): the size and place rules on screens of every
@@ -13,6 +13,26 @@ use avalio_lite::app::placement::{
     self, Frame, MIN_HEIGHT, MIN_WIDTH, PREFERRED_HEIGHT, PREFERRED_WIDTH, Placement, WorkArea, place,
 };
 use common::Ui;
+
+/// The sizes are written twice, in `ui/app-window.slint` (the window's own) and in placement's
+/// constants (what it fits on the screen); a change to one alone would place the window wrong.
+#[test]
+fn the_window_sizes_match_the_slint_window() {
+    let slint = include_str!("../ui/app-window.slint");
+    let declared = |property: &str| -> f32 {
+        let line = slint
+            .lines()
+            .map(str::trim)
+            .find(|line| line.starts_with(&format!("{property}:")) || line.contains(&format!(" {property}:")))
+            .unwrap_or_else(|| panic!("ui/app-window.slint has no {property}"));
+        let value = line.rsplit(':').next().unwrap().trim().trim_end_matches(';').trim_end_matches("px");
+        value.parse().unwrap_or_else(|_| panic!("{property} isn't a plain length: {line}"))
+    };
+    assert_eq!(declared("fit-min-width"), avalio_lite::app::placement::MIN_WIDTH);
+    assert_eq!(declared("fit-min-height"), avalio_lite::app::placement::MIN_HEIGHT);
+    assert_eq!(declared("preferred-width"), avalio_lite::app::placement::PREFERRED_WIDTH);
+    assert_eq!(declared("preferred-height"), avalio_lite::app::placement::PREFERRED_HEIGHT);
+}
 use proptest::prelude::*;
 use slint::ComponentHandle;
 

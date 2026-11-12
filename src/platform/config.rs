@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.062570
-//+ Revised: 	2026/11/07 20:25:36.419075
+//+ Revised: 	2026/11/12 14:39:53.567632
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
@@ -36,6 +36,10 @@ pub struct AppConfig {
     /// by `shortcuts::Shortcuts::from_config`. Kept outside `Preferences` so that stays `Copy`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub shortcuts: BTreeMap<String, String>,
+    /// The class open when the app last showed this database, opened again at the next start.
+    /// It belongs to `database_path`: choosing another database starts without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_class: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,23 +143,27 @@ impl ConfigStore {
         loaded
     }
 
-    /// Writes to a temporary file first so a crash mid-write never leaves a truncated settings
-    /// file. A file that failed to load is copied aside (`config.toml.bad`) before it is replaced;
-    /// if that copy can't be made, nothing is written.
+    /// Writes to a temporary file, flushed to the disk, then renames it over the settings file, so
+    /// a crash or power cut leaves either the old file or the new one, never a truncated one. A
+    /// failed save leaves no temporary file behind. A file that failed to load is copied aside
+    /// (`config.toml.bad`) before it is replaced; if that copy can't be made, nothing is written.
     pub fn save(&self, config: &AppConfig) -> Result<()> {
         storage::ensure_parent(&self.path)?;
         if self.unreadable.load(Ordering::Relaxed) {
             self.keep_unreadable_copy()?;
         }
+        let text = toml::to_string_pretty(config)?;
         let temporary = self.path.with_extension("toml.tmp");
-        fs::write(&temporary, toml::to_string_pretty(config)?).map_err(io_at(&temporary))?;
-        if let Err(error) = fs::rename(&temporary, &self.path) {
-            if let Err(removal) = fs::remove_file(&temporary) {
-                log::error!("could not remove {}: {removal}", temporary.display());
-            }
-            return Err(io_at(&self.path)(error));
+        let written = write_flushed(&temporary, text.as_bytes())
+            .map_err(io_at(&temporary))
+            .and_then(|()| fs::rename(&temporary, &self.path).map_err(io_at(&self.path)));
+        if written.is_err()
+            && let Err(removal) = fs::remove_file(&temporary)
+            && removal.kind() != std::io::ErrorKind::NotFound
+        {
+            log::error!("could not remove {}: {removal}", temporary.display());
         }
-        Ok(())
+        written
     }
 
     /// Copies the settings file that failed to load to `config.toml.bad` (with a timestamp added
@@ -175,6 +183,13 @@ impl ConfigStore {
         self.unreadable.store(false, Ordering::Relaxed);
         Ok(())
     }
+}
+
+/// Writes `bytes` to a new `path` and waits until they are on the disk.
+fn write_flushed(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let mut file = fs::File::create(path)?;
+    std::io::Write::write_all(&mut file, bytes)?;
+    file.sync_all()
 }
 
 /// Folder suggested on the first-run screen.

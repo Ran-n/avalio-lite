@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.027873
-//+ Revised: 	2026/11/07 20:25:35.027873
+//+ Revised: 	2026/11/12 14:39:55.955439
 // -----------------------------------------------------------------------------
 
 //! Work that mustn't hold up the window, such as going online: it runs on its own thread, and its
@@ -14,9 +14,11 @@
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use slint::ComponentHandle;
 
@@ -32,23 +34,50 @@ pub type Done = Box<dyn FnOnce(&AppWindow, Payload)>;
 pub trait Worker {
     /// Starts `job`; `Err` when it couldn't be started, and then nothing runs.
     fn start(&self, window: &AppWindow, job: Job, done: Done) -> std::io::Result<()>;
-    /// Waits for the work still running, at shutdown.
+    /// Waits for the work still running, at shutdown, for up to `JOIN_LIMIT`.
     fn join(&self);
 }
 
+/// How long shutdown waits for background work: longer than a licence request may take (15 s),
+/// far shorter than a download (up to 10 min). Work still running then is left to end with the
+/// process; none of it changes anything that a cut-off would leave half done (a cut download is
+/// removed at the next start, and the portable exe is only swapped on the UI thread).
+pub const JOIN_LIMIT: Duration = Duration::from_secs(20);
+
 pub type SharedWorker = Rc<dyn Worker>;
 
-/// Runs `job` off the UI thread, then `done` with its result on the UI thread.
+/// A job that panicked instead of returning; the panic's message is already in the log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Panicked;
+
+impl Panicked {
+    /// Logs the panic `payload` (its message, when it has one) and stands for it.
+    fn logged(payload: &(dyn Any + Send)) -> Self {
+        let text = payload
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_owned())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "no message".to_owned());
+        log::error!("background work panicked: {text}");
+        Self
+    }
+}
+
+/// Runs `job` off the UI thread, then `done` with its result on the UI thread; `Err(Panicked)`
+/// when the job panicked, so whatever waits for it (a busy screen) can end and say so.
 pub fn run<T: Send + 'static>(
     worker: &dyn Worker,
     window: &AppWindow,
     job: impl FnOnce() -> T + Send + 'static,
-    done: impl FnOnce(&AppWindow, T) + 'static,
+    done: impl FnOnce(&AppWindow, Result<T, Panicked>) + 'static,
 ) -> std::io::Result<()> {
     worker.start(
         window,
-        Box::new(move || Box::new(job()) as Payload),
-        Box::new(move |window, payload| match payload.downcast::<T>() {
+        Box::new(move || {
+            let finished = catch_unwind(AssertUnwindSafe(job)).map_err(|payload| Panicked::logged(payload.as_ref()));
+            Box::new(finished) as Payload
+        }),
+        Box::new(move |window, payload| match payload.downcast::<Result<T, Panicked>>() {
             Ok(result) => done(window, *result),
             // run() pairs each job with its own done, so the types always match
             Err(_) => log::error!("a background result came back as the wrong type"),
@@ -101,10 +130,22 @@ impl Worker for ThreadWorker {
     }
 
     fn join(&self) {
-        for handle in self.running.take() {
-            if handle.join().is_err() {
-                log::error!("background work panicked");
+        let deadline = Instant::now() + JOIN_LIMIT;
+        let mut running = self.running.take();
+        while !running.is_empty() && Instant::now() < deadline {
+            let (finished, left): (Vec<_>, Vec<_>) = running.into_iter().partition(JoinHandle::is_finished);
+            for handle in finished {
+                if handle.join().is_err() {
+                    log::error!("background work panicked");
+                }
             }
+            running = left;
+            if !running.is_empty() {
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+        if !running.is_empty() {
+            log::warn!("{} background job(s) still running at shutdown are left to end with the app", running.len());
         }
     }
 }

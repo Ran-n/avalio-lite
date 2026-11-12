@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.784631
-//+ Revised: 	2026/11/11 17:11:00.237146
+//+ Revised: 	2026/11/12 14:39:54.178024
 // -----------------------------------------------------------------------------
 
 //! Reads pupils and marks from the first tab of a workbook into a class: the names from the columns
@@ -37,10 +37,13 @@ pub struct ImportTable {
     pub rows: Vec<ImportRow>,
     /// cells holding an Excel error (`#DIV/0!`, `#N/A`), read as empty
     pub error_cells: usize,
+    /// rows with something in them but no first name, which aren't pupils and are skipped
+    pub unnamed_rows: usize,
 }
 
 /// One pupil of the file: the names and the value under each header (`None` when empty). From a
-/// one-name-column file, the whole name is the first name and the surname is empty.
+/// one-name-column file, a name written surname first ("Pérez López, Ana") is split at its comma;
+/// any other is the first name, with no surname.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportRow {
     pub first_name: String,
@@ -51,7 +54,7 @@ pub struct ImportRow {
 impl ImportRow {
     /// The name as one string, how the row is matched to pupils: "Ana Pérez", or "Ana".
     pub fn full_name(&self) -> String {
-        if self.surname.is_empty() { self.first_name.clone() } else { format!("{} {}", self.first_name, self.surname) }
+        crate::gradebook::model::full_name(&self.first_name, &self.surname)
     }
 }
 
@@ -73,6 +76,8 @@ pub struct ImportSummary {
     pub marks: usize,
     pub left_out: Vec<LeftOut>,
     pub error_cells: usize,
+    /// rows skipped for having no first name
+    pub unnamed_rows: usize,
 }
 
 /// An import worked out against the class, before anything is written.

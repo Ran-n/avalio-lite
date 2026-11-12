@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.393948
-//+ Revised: 	2026/11/11 17:10:59.633780
+//+ Revised: 	2026/11/12 14:39:52.816727
 // -----------------------------------------------------------------------------
 
 use rusqlite::Connection;
@@ -10,7 +10,9 @@ use slint::{ComponentHandle, Model, SharedString};
 use super::items::{cell_items, column_item, number, round_sources, row_item, short_class_name};
 use super::panel;
 use crate::error::Result;
-use crate::gradebook::compute::{bonus_weight_total, grade_summary, grades_are_provisional, round_to, weight_total};
+use crate::gradebook::compute::{
+    DISPLAY_DECIMALS, bonus_weight_total, grade_summary, grades_are_provisional, round_to, weight_total,
+};
 use crate::gradebook::model::{ClassSummary, Column, Sheet};
 use crate::gradebook::{classes, columns, pupils, sheet};
 use crate::ui::{AddablePupil, AppWindow, ClassItem, Gradebook, RowItem};
@@ -50,12 +52,14 @@ pub fn apply(window: &AppWindow, connection: &Connection, refresh: Refresh) -> R
     }
 }
 
-/// Called when a database is opened: forgets the class selected in the previous one.
-pub fn show_new_database(window: &AppWindow, connection: &Connection) -> Result<()> {
+/// Called when a database is opened: forgets the class selected in the previous one and opens
+/// `remembered` (the class open when the app last showed this database), or the first when it is
+/// gone or there is none.
+pub fn show_new_database(window: &AppWindow, connection: &Connection, remembered: Option<i64>) -> Result<()> {
     // the panel belongs to a column of the previous database; the same row id there is another column
     panel::close(window);
     window.global::<Gradebook>().set_current_class_id(NO_CLASS);
-    show_all(window, connection, None)
+    show_all(window, connection, remembered)
 }
 
 pub fn current_class_id(window: &AppWindow) -> i64 {
@@ -212,7 +216,7 @@ fn show_summary(window: &AppWindow, loaded: &Sheet) {
     let gradebook = window.global::<Gradebook>();
     gradebook.set_has_summary(summary.is_some());
     if let Some(summary) = summary {
-        gradebook.set_class_average(number(round_to(summary.average, 2)).into());
+        gradebook.set_class_average(number(round_to(summary.average, DISPLAY_DECIMALS)).into());
         gradebook.set_passing(i32::try_from(summary.passing).unwrap_or(i32::MAX));
         gradebook.set_failing(i32::try_from(summary.failing).unwrap_or(i32::MAX));
     }

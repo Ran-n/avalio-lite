@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.224094
-//+ Revised: 	2026/11/08 04:36:59.450715
+//+ Revised: 	2026/11/12 14:39:51.499943
 // -----------------------------------------------------------------------------
 
 //! Starts the app and wires the features to the window: the composition root. The setup and
@@ -58,6 +58,7 @@ pub fn run() -> ExitCode {
 /// The whole app: logging, the window, the event loop, then a clean shutdown.
 pub fn run_with(dialogs: SharedDialogs) -> ExitCode {
     let logger = logging::install();
+    log_panics();
     log::info!("starting avalio-lite {}", env!("CARGO_PKG_VERSION"));
     // Until the settings file is read, anything shown follows the Windows language.
     let system_language = Language::from_system();
@@ -70,6 +71,24 @@ pub fn run_with(dialogs: SharedDialogs) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Puts every panic in the log, with where it happened: a release build has no console, so the
+/// default report (to stderr) would go nowhere. The default report still runs after it.
+fn log_panics() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info.location().map_or_else(|| "an unknown place".to_owned(), ToString::to_string);
+        let payload = info.payload();
+        let text = payload
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_owned())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "no message".to_owned());
+        log::error!("panicked at {location}: {text}");
+        log::logger().flush();
+        default(info);
+    }));
 }
 
 fn launch(logger: &'static FileLogger, dialogs: SharedDialogs, system_language: Language) -> Result<(), String> {
@@ -93,11 +112,7 @@ fn launch(logger: &'static FileLogger, dialogs: SharedDialogs, system_language: 
     let _looking = update::ui::start_looking(&session.window, &session.updater);
     if let Err(error) = &checks {
         log::error!("the daily licence check couldn't be started: {error}");
-        let error = error.to_string();
-        view::show_error_text(
-            &session.window,
-            i18n::text(i18n::current(), &Message::BackgroundFailed { error: &error }),
-        );
+        view::show_error_text(&session.window, i18n::text(i18n::current(), &Message::BackgroundFailed));
     }
     let result = session.window.run();
     // a licence request still under way ends within its 15 s limit
@@ -135,14 +150,22 @@ pub fn open(
     language::apply(&window, preferences.language.unwrap_or(system_language));
     theme::apply_preference(&window, &preferences);
     setup::wire(&window, &state, &dialogs);
-    settings::wire(&window, &state, &dialogs);
+    let updater = Updater::new(&state, &dialogs, &worker, updates);
+    let reword: settings::Reword = {
+        let (updater, licence) = (updater.clone(), licence.clone());
+        Rc::new(move |window: &AppWindow| {
+            update::ui::reword(window, &updater);
+            // the card's lines and any warning on the sheet, from the saved state (offline)
+            licence::ui::show(window, &licence, &Ok(licence.status()));
+        })
+    };
+    settings::wire(&window, &state, &dialogs, reword);
     backup::ui::wire(&window, &state, &dialogs);
     gradebook::ui::wire(&window, &state, &dialogs);
     spreadsheet::ui::wire(&window, &state, &dialogs);
     lock::ui::wire(&window, &state);
     shortcuts::ui::wire(&window, &state);
     licence::ui::wire(&window, &licence, &worker);
-    let updater = Updater::new(&state, &dialogs, &worker, updates);
     update::ui::wire(&window, &updater);
     show_startup(&window, &state);
     update::ui::show_setting(&window, &updater);

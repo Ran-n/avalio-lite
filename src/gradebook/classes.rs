@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/11/11 17:10:57.982962
+//+ Revised: 	2026/11/12 14:39:51.923522
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, ErrorCode, params};
@@ -80,11 +80,7 @@ pub fn duplicate_class(connection: &Connection, class_id: i64, contents: Duplica
     }
     if contents == DuplicateContents::Everything {
         for row in &original.rows {
-            for (column, value) in original.columns.iter().zip(&row.values) {
-                if column.kind.holds_cells() && !value.is_empty() {
-                    cells::set_cell(&transaction, column_ids[&column.id], row.pupil.id, value)?;
-                }
-            }
+            cells::copy_row_marks(&transaction, &original.columns, &row.values, &column_ids, row.pupil.id)?;
         }
     }
     transaction.commit()?;
@@ -100,6 +96,7 @@ pub fn rename_class(connection: &Connection, class_id: i64, name: &str) -> Resul
     if changed == 0 {
         return Err(AppError::NotEditable);
     }
+    log::info!("renamed class {class_id}");
     Ok(())
 }
 
