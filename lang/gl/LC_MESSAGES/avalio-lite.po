@@ -110,11 +110,17 @@ msgstr "Importar de Excel…"
 msgid "Delete class"
 msgstr "Eliminar clase"
 
-msgid "Pupil"
-msgstr "Alumno"
+msgid "First name"
+msgstr "Nome"
 
-msgid "Add pupil…"
-msgstr "Engadir alumno…"
+msgid "Surname"
+msgstr "Apelidos"
+
+msgid "First name…"
+msgstr "Nome…"
+
+msgid "Surname…"
+msgstr "Apelidos…"
 
 msgid "Next, add a column: a test to mark, or an info column for notes."
 msgstr "Agora engade unha columna: unha proba para cualificar ou unha columna de información para anotacións."
@@ -483,3 +489,9 @@ msgstr "Buscar actualizacións agora"
 
 msgid "Column width"
 msgstr "Largura da columna"
+
+msgid "First name: the same in every class the pupil is in"
+msgstr "Nome: o mesmo en todas as clases do alumno"
+
+msgid "Surname: the same in every class the pupil is in"
+msgstr "Apelidos: o mesmo en todas as clases do alumno"

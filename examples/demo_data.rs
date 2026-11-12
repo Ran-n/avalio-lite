@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.331624
-//+ Revised: 	2026/11/03 08:27:15.585901
+//+ Revised: 	2026/11/11 17:10:57.805131
 // -----------------------------------------------------------------------------
 
 //! Creates a database with sample classes, pupils and marks, for trying the app or taking screenshots.
@@ -17,7 +17,14 @@ use avalio_lite::i18n::Language;
 use avalio_lite::platform::db;
 use rusqlite::Connection;
 
-const PUPILS: [&str; 5] = ["Ana Pérez", "Brais Otero", "Carla Iglesias", "Daniel Souto", "Uxía Fernández"];
+/// First name and surname.
+const PUPILS: [(&str, &str); 5] = [
+    ("Ana", "Pérez López"),
+    ("Brais", "Otero"),
+    ("Carla", "Iglesias Vázquez"),
+    ("Daniel", "Souto"),
+    ("Uxía", "Fernández"),
+];
 const MARKS: [[&str; 3]; 5] =
     [["8", "4,5", "9"], ["6,5", "3", "7"], ["9,5", "5", "10"], ["4", "2,5", ""], ["7", "4", "8,5"]];
 
@@ -96,14 +103,14 @@ fn fill(connection: &Connection, language: Language) -> Result<()> {
     let notes = columns::add_column(connection, class_id, ColumnType::Info, language)?;
     columns::add_column(connection, class_id, ColumnType::Weighted, language)?;
     columns::add_column(connection, class_id, ColumnType::Round, language)?;
-    for (((name, marks), note), bonus) in PUPILS.into_iter().zip(MARKS).zip(words.notes).zip(EXTRA) {
-        let pupil = pupils::add_new_pupil(connection, class_id, name)?;
+    for ((((first_name, surname), marks), note), bonus) in PUPILS.into_iter().zip(MARKS).zip(words.notes).zip(EXTRA) {
+        let pupil = pupils::add_new_pupil(connection, class_id, first_name, surname)?;
         for (column, value) in [exam, lab, project].into_iter().zip(marks) {
             cells::set_cell(connection, column, pupil, value)?;
         }
         cells::set_cell(connection, notes, pupil, note)?;
         cells::set_cell(connection, extra, pupil, bonus)?;
     }
-    pupils::add_new_pupil(connection, other, "Xoán Rial")?;
+    pupils::add_new_pupil(connection, other, "Xoán", "Rial")?;
     Ok(())
 }

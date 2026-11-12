@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/11/03 08:27:17.807971
+//+ Revised: 	2026/11/11 17:11:01.710054
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -23,7 +23,7 @@ const SECRET: &str = "Ana Pérez secret note";
 fn set_up(fixture: &Fixture) -> AppState {
     let mut state = fixture.state();
     assert_eq!(state.create_database(&fixture.path("data"), &fixture.path("logs")).unwrap(), Opened::Ready);
-    state.connection().unwrap().execute("INSERT INTO pupils (name) VALUES (?1)", [SECRET]).unwrap();
+    state.connection().unwrap().execute("INSERT INTO pupils (first_name) VALUES (?1)", [SECRET]).unwrap();
     state
 }
 
@@ -33,7 +33,7 @@ fn file_contains(path: &Path, text: &str) -> bool {
 }
 
 fn pupil_names(state: &AppState) -> Vec<String> {
-    let mut statement = state.connection().unwrap().prepare("SELECT name FROM pupils").unwrap();
+    let mut statement = state.connection().unwrap().prepare("SELECT first_name FROM pupils").unwrap();
     statement.query_map([], |row| row.get(0)).unwrap().map(Result::unwrap).collect()
 }
 
@@ -279,7 +279,7 @@ fn regression_a_new_file_that_will_not_open_leaves_the_old_database_in_use() {
     let secrets: i64 = state
         .connection()
         .unwrap()
-        .query_row("SELECT count(*) FROM pupils WHERE name = ?1", [SECRET], |row| row.get(0))
+        .query_row("SELECT count(*) FROM pupils WHERE first_name = ?1", [SECRET], |row| row.get(0))
         .unwrap();
     assert_eq!(secrets, 1, "the old data is intact and open");
 }

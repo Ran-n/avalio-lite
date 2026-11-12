@@ -59,6 +59,10 @@ export component ActionButton inherits Rectangle {
         pressed => { root.clicked(); }
     }
     if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+
+    public function focus-button() {
+        keys.focus();
+    }
 }
 
 // Small glyph button for in-sheet actions; dims clearly when disabled.

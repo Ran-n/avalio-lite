@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/11/10 07:42:01.217243
+//+ Revised: 	2026/11/11 23:00:49.024776
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -348,6 +348,23 @@ impl App {
         self.settle();
     }
 
+    /// Presses the `index`th control labelled `label` and drags it `dx` logical pixels sideways,
+    /// keeping the button down (for a snapshot mid-drag); `release` lets go. The point it ended at.
+    pub fn hold_drag_nth(&mut self, label: &str, index: usize, dx: f64) -> (i32, i32) {
+        let target = self.the(label, index);
+        let from = ((target.x + target.width / 2) as i32, (target.y + target.height / 2) as i32);
+        let to = (from.0 + (dx * self.scale).round() as i32, from.1);
+        self.window.press_and_move(from, to);
+        self.settle();
+        to
+    }
+
+    /// Lets go of a drag held by `hold_drag_nth` at `at`.
+    pub fn release(&mut self, at: (i32, i32)) {
+        self.window.release(at);
+        self.settle();
+    }
+
     pub fn press_end(&mut self) {
         const VK_END: u16 = 0x23;
         self.window.press(VK_END);
@@ -409,6 +426,12 @@ impl App {
     /// (animations have finished). It is captured as the active window, as the user sees it while
     /// working in it, whichever window really has the foreground.
     pub fn capture(&mut self) -> Image {
+        self.capture_with(true)
+    }
+
+    /// `capture`, with the mouse left where it is when `leave` is false: a mouse that leaves the
+    /// window lets go of a held drag.
+    fn capture_with(&mut self, leave: bool) -> Image {
         // Slint draws a field focused only while its window is active, and another window brought
         // to the front during the run takes that away; the user's foreground stays where it is.
         // Windows can also deliver a late loss of focus (a window just opened, a dialog just
@@ -416,7 +439,9 @@ impl App {
         // Afterwards the window goes back to how it was, so the clicks and keys that follow reach
         // it as they did before the capture.
         for _ in 0..ACTIVATION_ATTEMPTS {
-            self.window.mouse_away();
+            if leave {
+                self.window.mouse_away();
+            }
             let was = self.send(json!({ "cmd": "activate", "active": true }))["was"] == json!(true);
             self.settle();
             let image = self.settled_capture();
@@ -470,7 +495,16 @@ impl App {
     /// marked diff are written next to the target folder for review. With `AVALIO_UPDATE_BASELINES=1`
     /// the baseline is rewritten instead (open and review each one before committing it).
     pub fn snapshot(&mut self, name: &str) -> Image {
-        let image = self.capture();
+        self.snapshot_with(name, true)
+    }
+
+    /// `snapshot` in the middle of a drag held by `hold_drag_nth`: the mouse stays in the window.
+    pub fn snapshot_holding(&mut self, name: &str) -> Image {
+        self.snapshot_with(name, false)
+    }
+
+    fn snapshot_with(&mut self, name: &str, leave: bool) -> Image {
+        let image = self.capture_with(leave);
         let file = format!("{name}@{}.png", (self.scale * 100.0).round() as u32);
         let baseline = manifest_dir().join("tests").join("desktop").join("baselines").join(&file);
         if std::env::var_os(UPDATE_ENV).is_some_and(|value| value == "1") {

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.470617
-//+ Revised: 	2026/11/03 11:39:46.470617
+//+ Revised: 	2026/11/11 17:11:00.785570
 // -----------------------------------------------------------------------------
 
 //! Reading the workbook's first tab into text cells, as the sheet would show them.
@@ -11,18 +11,21 @@ use std::path::Path;
 
 use calamine::{Data, Reader, open_workbook_auto};
 
-use super::{ImportRow, ImportTable};
+use super::{ImportRow, ImportTable, NameHeaders};
 use crate::error::{AppError, Result};
+use crate::gradebook::model::name_match_key;
 
-/// The first tab of the workbook at `path` (.xlsx, .xls or .ods).
-pub fn read_table(path: &Path) -> Result<ImportTable> {
+/// The first tab of the workbook at `path` (.xlsx, .xls or .ods), its name columns found by their
+/// headers: the first-name and surname columns wherever their headers are, else the whole name in
+/// column A.
+pub fn read_table(path: &Path, names: &NameHeaders) -> Result<ImportTable> {
     // a malformed file could make the reader panic; that is a file it can't read, not a crash
-    panic::catch_unwind(AssertUnwindSafe(|| read_first_tab(path))).unwrap_or_else(|_| {
+    panic::catch_unwind(AssertUnwindSafe(|| read_first_tab(path, names))).unwrap_or_else(|_| {
         Err(AppError::SpreadsheetRead { path: path.to_path_buf(), reason: "the reader panicked".to_owned() })
     })
 }
 
-fn read_first_tab(path: &Path) -> Result<ImportTable> {
+fn read_first_tab(path: &Path, names: &NameHeaders) -> Result<ImportTable> {
     let read_error = |reason: String| AppError::SpreadsheetRead { path: path.to_path_buf(), reason };
     let mut workbook = open_workbook_auto(path).map_err(|error| read_error(error.to_string()))?;
     let no_pupils = || AppError::NoPupilsInFile(path.to_path_buf());
@@ -37,17 +40,51 @@ fn read_first_tab(path: &Path) -> Result<ImportTable> {
         }
         cell_text(data)
     };
-    let headers = (1..=last_column).map(|column| text(0, column).unwrap_or_default()).collect();
+    let first_row: Vec<String> = (0..=last_column).map(|column| text(0, column).unwrap_or_default()).collect();
+    let found = NameColumns::find(&first_row, names);
+    let header_columns: Vec<u32> = (0..=last_column).filter(|column| !found.holds(*column)).collect();
+    let headers = header_columns.iter().map(|column| first_row[*column as usize].clone()).collect();
     let mut rows = Vec::new();
     for row in 1..=last_row {
-        if let Some(name) = text(row, 0) {
-            rows.push(ImportRow { name, values: (1..=last_column).map(|column| text(row, column)).collect() });
-        }
+        // a row with no first name isn't a pupil, even with a surname
+        let Some(first_name) = text(row, found.first_name) else { continue };
+        let surname = found.surname.and_then(|column| text(row, column)).unwrap_or_default();
+        let values = header_columns.iter().map(|column| text(row, *column)).collect();
+        rows.push(ImportRow { first_name, surname, values });
     }
     if rows.is_empty() {
         return Err(no_pupils());
     }
-    Ok(ImportTable { headers, rows, error_cells })
+    let header_columns = header_columns.into_iter().map(|column| column as usize).collect();
+    Ok(ImportTable { header_columns, headers, rows, error_cells })
+}
+
+/// Where a file keeps its pupils' names, from the headers of its first row (compared as names are,
+/// in any language): the column headed by a first-name label and the one headed by a surname label,
+/// wherever they are. With no first-name header, column A holds the first name (or the whole name,
+/// when there is no surname header either), or column B when column A is the surname.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NameColumns {
+    first_name: u32,
+    surname: Option<u32>,
+}
+
+impl NameColumns {
+    fn find(first_row: &[String], names: &NameHeaders) -> Self {
+        let headed = |labels: &[&str]| {
+            let keys: Vec<String> = labels.iter().map(|label| name_match_key(label)).collect();
+            first_row.iter().position(|header| keys.contains(&name_match_key(header))).map(|index| index as u32)
+        };
+        let surname = headed(names.surname);
+        let first_name = headed(names.first_name)
+            .filter(|column| Some(*column) != surname)
+            .unwrap_or(if surname == Some(0) { 1 } else { 0 });
+        Self { first_name, surname }
+    }
+
+    fn holds(&self, column: u32) -> bool {
+        column == self.first_name || Some(column) == self.surname
+    }
 }
 
 /// A cell as the text typing it would store: numbers without a locale (`7.5`, Rust's shortest

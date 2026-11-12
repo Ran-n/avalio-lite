@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/11/09 10:42:02.323274
+//+ Revised: 	2026/11/11 23:00:49.593570
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
@@ -86,7 +86,8 @@ pub fn sample_class(connection: &rusqlite::Connection) -> i64 {
     use avalio_lite::gradebook::model::ColumnType;
     use avalio_lite::gradebook::{cells, classes, columns, pupils};
     let class = classes::create_class(connection, "2º ESO A").unwrap();
-    let names = ["Ana Pérez", "Brais Otero", "Carla Iglesias", "Daniel Souto", "Uxía Fernández"];
+    let names =
+        [("Ana", "Pérez"), ("Brais", "Otero"), ("Carla", "Iglesias"), ("Daniel", "Souto"), ("Uxía", "Fernández")];
     let marks = [["8", "4,5", "1"], ["6,5", "1", ""], ["9,5", "5", "1"], ["4", "2,5", ""], ["3", "", "0,5"]];
     let add = |kind, title: &str| {
         let id = columns::add_column(connection, class, kind, Language::English).unwrap();
@@ -105,8 +106,8 @@ pub fn sample_class(connection: &rusqlite::Connection) -> i64 {
     add(ColumnType::Weighted, "Final grade");
     add(ColumnType::Round, "Report card");
     let notes = add(ColumnType::Info, "Notes");
-    for (name, row) in names.iter().zip(marks) {
-        let pupil = pupils::add_new_pupil(connection, class, name).unwrap();
+    for ((first_name, surname), row) in names.into_iter().zip(marks) {
+        let pupil = pupils::add_new_pupil(connection, class, first_name, surname).unwrap();
         for (column, mark) in [exam, lab, project].into_iter().zip(row) {
             cells::set_cell(connection, column, pupil, mark).unwrap();
         }
@@ -114,6 +115,32 @@ pub fn sample_class(connection: &rusqlite::Connection) -> i64 {
     let daniel = pupils::list_class_pupils(connection, class).unwrap()[3].id;
     cells::set_cell(connection, notes, daniel, "Resit in June").unwrap();
     class
+}
+
+/// The ids of class `class`'s first-name and surname columns.
+pub fn name_columns(connection: &rusqlite::Connection, class: i64) -> (i64, i64) {
+    use avalio_lite::gradebook::columns;
+    use avalio_lite::gradebook::model::ColumnKind;
+    let listed = columns::list_columns(connection, class).unwrap();
+    let id = |kind: ColumnKind| listed.iter().find(|column| column.kind == kind).unwrap().id;
+    (id(ColumnKind::FirstName), id(ColumnKind::Surname))
+}
+
+/// The widths of class `class`'s first-name and surname columns (`None` for the default).
+pub fn name_widths(connection: &rusqlite::Connection, class: i64) -> (Option<u16>, Option<u16>) {
+    use avalio_lite::gradebook::columns;
+    let (first_name, surname) = name_columns(connection, class);
+    let listed = columns::list_columns(connection, class).unwrap();
+    let width = |id: i64| listed.iter().find(|column| column.id == id).unwrap().width;
+    (width(first_name), width(surname))
+}
+
+/// Resizes class `class`'s first-name and surname columns.
+pub fn set_name_widths(connection: &rusqlite::Connection, class: i64, first_name: u16, surname: u16) {
+    use avalio_lite::gradebook::columns;
+    let (first_name_column, surname_column) = name_columns(connection, class);
+    columns::set_column_width(connection, first_name_column, Some(first_name)).unwrap();
+    columns::set_column_width(connection, surname_column, Some(surname)).unwrap();
 }
 
 /// The Galician translation of a UI string, from the bundled `.po` file, so a test measures

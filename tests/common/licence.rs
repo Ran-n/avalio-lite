@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.164721
-//+ Revised: 	2026/11/07 20:25:35.164721
+//+ Revised: 	2026/11/11 08:54:25.176949
 // -----------------------------------------------------------------------------
 
 //! A Clavren licence server in memory, for the tests and the desktop test driver: it answers the

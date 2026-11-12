@@ -46,7 +46,13 @@ CREATE TABLE classes (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL UNIQUE,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-, name_width INTEGER CHECK (name_width IS NULL OR name_width BETWEEN 120 AND 640));
+);
+
+CREATE TRIGGER classes_get_their_name_columns AFTER INSERT ON classes
+BEGIN
+    INSERT INTO sheet_columns (class_id, position, title, kind) VALUES (NEW.id, 1, '', 'first_name');
+    INSERT INTO sheet_columns (class_id, position, title, kind) VALUES (NEW.id, 2, '', 'surname');
+END;
 
 CREATE INDEX idx_cells_pupil ON cells (pupil_id);
 
@@ -56,11 +62,14 @@ CREATE INDEX idx_sheet_columns_class ON sheet_columns (class_id, position);
 
 CREATE INDEX idx_sheet_columns_source ON sheet_columns (source_column_id);
 
+CREATE UNIQUE INDEX one_name_column_of_each_kind ON sheet_columns (class_id, kind)
+    WHERE kind IN ('first_name', 'surname');
+
 CREATE TABLE pupils (
     id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL,
+    first_name        TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-);
+, surname TEXT NOT NULL DEFAULT '');
 
 CREATE TRIGGER remove_cells_when_pupil_leaves_class AFTER DELETE ON class_pupils
 BEGIN
@@ -87,18 +96,24 @@ BEGIN
     SELECT RAISE(ABORT, 'a rounded column must round a test, final grade or average of its own class');
 END;
 
-CREATE TABLE sheet_columns (
+CREATE TABLE "sheet_columns" (
     id                INTEGER PRIMARY KEY,
     class_id          INTEGER NOT NULL REFERENCES classes (id) ON DELETE CASCADE,
     position          INTEGER NOT NULL,
     title             TEXT NOT NULL,
-    kind              TEXT NOT NULL CHECK (kind IN ('info', 'test', 'weighted', 'average', 'round')),
+    kind              TEXT NOT NULL
+        CHECK (kind IN ('first_name', 'surname', 'info', 'test', 'weighted', 'average', 'round')),
     weight            REAL,
     max_score         REAL,
     source_column_id  INTEGER REFERENCES sheet_columns (id) ON DELETE SET NULL,
-    decimals          INTEGER, bonus INTEGER NOT NULL DEFAULT 0
-    CHECK (bonus IN (0, 1) AND (bonus = 0 OR kind = 'test')), width INTEGER CHECK (width IS NULL OR width BETWEEN 72 AND 640),
+    decimals          INTEGER,
+    bonus             INTEGER NOT NULL DEFAULT 0 CHECK (bonus IN (0, 1) AND (bonus = 0 OR kind = 'test')),
+    width             INTEGER CHECK (width IS NULL OR width BETWEEN 72 AND 640),
     CHECK (CASE kind
+        WHEN 'first_name' THEN title = '' AND weight IS NULL AND max_score IS NULL
+            AND source_column_id IS NULL AND decimals IS NULL
+        WHEN 'surname' THEN title = '' AND weight IS NULL AND max_score IS NULL
+            AND source_column_id IS NULL AND decimals IS NULL
         WHEN 'info' THEN weight IS NULL AND max_score IS NULL
             AND source_column_id IS NULL AND decimals IS NULL
         WHEN 'test' THEN weight IS NOT NULL AND weight >= 0

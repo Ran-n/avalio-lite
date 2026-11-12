@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.747058
-//+ Revised: 	2026/11/09 21:54:03.651611
+//+ Revised: 	2026/11/11 17:11:01.175671
 // -----------------------------------------------------------------------------
 
 use avalio_lite::gradebook::compute::{
@@ -332,4 +332,24 @@ proptest! {
         let text = format!("{}{whole}{}{fraction}", if negative { "-" } else { "" }, if comma { "," } else { "." });
         prop_assert!(parse_number(&text).is_some(), "{}", text);
     }
+}
+
+#[test]
+fn name_columns_in_the_middle_change_no_grade() {
+    let plain = [test(2, 60.0, 10.0), test(3, 40.0, 5.0), column(4, ColumnKind::Weighted { max_score: 10.0 })];
+    let with_names = [
+        column(10, ColumnKind::FirstName),
+        test(2, 60.0, 10.0),
+        column(11, ColumnKind::Surname),
+        test(3, 40.0, 5.0),
+        column(4, ColumnKind::Weighted { max_score: 10.0 }),
+    ];
+    assert_eq!(texts(&plain, &["7", "4", ""]), ["7", "4", "7.4"]);
+    // a name that looks like a number is still a name: shown as it is, never counted
+    assert_eq!(texts(&with_names, &["10", "7", "Pérez", "4", ""]), ["10", "7", "Pérez", "4", "7.4"]);
+    let shown = evaluate_row(&with_names, &["10", "7", "Pérez", "4", ""].map(str::to_owned));
+    assert!(shown[0].tone == Tone::Neutral && !shown[0].is_invalid, "a name is neither passed nor flagged");
+    assert_eq!(weight_total(&with_names), weight_total(&plain));
+    let rows = [vec!["Ana".to_owned(), "7".to_owned(), "Pérez".to_owned(), "4".to_owned(), String::new()]];
+    assert_eq!(grade_summary(&with_names, &rows).map(|summary| summary.passing), Some(1));
 }

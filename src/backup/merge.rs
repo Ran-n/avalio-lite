@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.853714
-//+ Revised: 	2026/11/09 21:54:00.186061
+//+ Revised: 	2026/11/11 17:10:57.889217
 // -----------------------------------------------------------------------------
 
 //! Adding a backup's classes to the open database, keeping all that is there.
@@ -30,14 +30,13 @@ pub struct AddSummary {
 
 /// Copies every class of `source` (columns, pupils and typed marks) into `target`, keeping all
 /// that is there. A taken class name gets the lowest free " (n)". A backup pupil joins the one
-/// pupil already here with the same name; with none or several, a new pupil is made. A pupil the
+/// pupil already here with the same full name; with none or several, a new pupil is made. A pupil the
 /// backup shares between classes stays one pupil. All or nothing: one transaction.
 pub fn add_classes(target: &Connection, source: &Connection) -> Result<AddSummary> {
     let transaction = target.unchecked_transaction()?;
     let mut adding = Adding::default();
     for class in classes::list_classes(source)? {
-        let class_id = adding.add_class(&transaction, &class.name, &sheet::load_sheet(source, class.id)?)?;
-        classes::copy_name_width(source, class.id, &transaction, class_id)?;
+        adding.add_class(&transaction, &class.name, &sheet::load_sheet(source, class.id)?)?;
     }
     transaction.commit()?;
     let summary = adding.summary;
@@ -68,7 +67,7 @@ impl Adding {
         for row in &sheet.rows {
             let pupil_id = self.pupil(connection, class_id, &row.pupil)?;
             for (column, value) in sheet.columns.iter().zip(&row.values) {
-                if !column.kind.is_computed() && !value.is_empty() {
+                if column.kind.holds_cells() && !value.is_empty() {
                     cells::set_cell(connection, columns[&column.id], pupil_id, value)?;
                 }
             }
@@ -85,7 +84,7 @@ impl Adding {
         self.summary.pupils += 1;
         // a pupil here already stands for another backup pupil (one made during this add, or
         // the namesake joined for an earlier one), so two backup pupils never become one
-        let here: Vec<Pupil> = pupils::pupils_named(connection, &pupil.name)?
+        let here: Vec<Pupil> = pupils::pupils_named(connection, &pupil.full_name())?
             .into_iter()
             .filter(|found| !self.claimed.contains(&found.id))
             .collect();
@@ -95,7 +94,7 @@ impl Adding {
                 self.summary.existing_pupils += 1;
                 only.id
             }
-            _ => pupils::insert_new_pupil(connection, class_id, &pupil.name)?,
+            _ => pupils::insert_new_pupil(connection, class_id, &pupil.first_name, &pupil.surname)?,
         };
         self.pupils.insert(pupil.id, id);
         self.claimed.insert(id);

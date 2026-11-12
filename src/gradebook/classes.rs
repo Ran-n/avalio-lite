@@ -1,12 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/11/09 21:54:00.535454
+//+ Revised: 	2026/11/11 17:10:57.982962
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, ErrorCode, params};
 
-use super::model::{ClassSummary, DuplicateContents, MIN_NAME_WIDTH, clamp_width, clean_name, name_sort_key};
+use super::model::{ClassSummary, DuplicateContents, clean_name, name_sort_key};
 use super::{cells, columns, pupils, sheet, update_one};
 use crate::error::{AppError, Result};
 
@@ -29,28 +29,7 @@ pub fn class_name(connection: &Connection, class_id: i64) -> Result<String> {
     Ok(connection.query_row("SELECT name FROM classes WHERE id = ?1", [class_id], |row| row.get(0))?)
 }
 
-/// The width the pupil column of the class is shown at; `None` for the default.
-pub fn class_name_width(connection: &Connection, class_id: i64) -> Result<Option<u16>> {
-    Ok(connection.query_row("SELECT name_width FROM classes WHERE id = ?1", [class_id], |row| row.get(0))?)
-}
-
-/// Sets the width of the pupil column of the class, clamped to the limits; `None` puts it back to
-/// the default.
-pub fn set_name_width(connection: &Connection, class_id: i64, width: Option<u16>) -> Result<()> {
-    let width = clamp_width(width, MIN_NAME_WIDTH);
-    update_one(connection, "UPDATE classes SET name_width = ?2 WHERE id = ?1", params![class_id, width])?;
-    log::info!("set the width of the pupil column of class {class_id} to {width:?}");
-    Ok(())
-}
-
-/// Gives class `to_class` (in `to`) the pupil column width of class `from_class` (in `from`).
-pub fn copy_name_width(from: &Connection, from_class: i64, to: &Connection, to_class: i64) -> Result<()> {
-    match class_name_width(from, from_class)? {
-        Some(width) => set_name_width(to, to_class, Some(width)),
-        None => Ok(()),
-    }
-}
-
+/// Makes a class with its first-name and surname columns, which the database adds to every class.
 pub fn create_class(connection: &Connection, name: &str) -> Result<i64> {
     let name = clean_name(name)?;
     connection
@@ -92,7 +71,6 @@ pub fn duplicate_class(connection: &Connection, class_id: i64, contents: Duplica
     let original = sheet::load_sheet(&transaction, class_id)?;
 
     let column_ids = columns::copy_columns(&transaction, new_id, &original.columns)?;
-    copy_name_width(&transaction, class_id, &transaction, new_id)?;
 
     if contents != DuplicateContents::Columns {
         // enrolling appends, so this keeps the row order
@@ -103,7 +81,7 @@ pub fn duplicate_class(connection: &Connection, class_id: i64, contents: Duplica
     if contents == DuplicateContents::Everything {
         for row in &original.rows {
             for (column, value) in original.columns.iter().zip(&row.values) {
-                if !column.kind.is_computed() && !value.is_empty() {
+                if column.kind.holds_cells() && !value.is_empty() {
                     cells::set_cell(&transaction, column_ids[&column.id], row.pupil.id, value)?;
                 }
             }

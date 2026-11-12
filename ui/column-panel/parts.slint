@@ -62,10 +62,19 @@ export component MoveButtons inherits VerticalLayout {
     in property <bool> is-last;
     callback moved(int);
 
+    // the keyboard starts on whichever button can be pressed
+    public function focus-first() {
+        if (root.is-first) {
+            right.focus-button();
+        } else {
+            left.focus-button();
+        }
+    }
+
     spacing: 6px;
     HorizontalLayout {
         spacing: 8px;
-        ActionButton {
+        left := ActionButton {
             horizontal-stretch: 1;
             text: @tr("‹ Move left");
             spoken-label: @tr("Move left (Ctrl+←)");
@@ -74,7 +83,7 @@ export component MoveButtons inherits VerticalLayout {
                 root.moved(-1);
             }
         }
-        ActionButton {
+        right := ActionButton {
             horizontal-stretch: 1;
             text: @tr("Move right ›");
             spoken-label: @tr("Move right (Ctrl+→)");

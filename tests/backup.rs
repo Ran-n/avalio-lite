@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.935204
-//+ Revised: 	2026/11/09 21:54:03.223151
+//+ Revised: 	2026/11/11 17:11:00.952129
 // -----------------------------------------------------------------------------
 
 //! `.avalio` backups: exporting everything to one file, read back from the real file on disk.
@@ -267,10 +267,11 @@ fn an_older_backup_is_upgraded_and_the_file_is_untouched() {
     assert_eq!(migrations::schema_version(connection).unwrap(), migrations::latest_version());
     let class = classes::list_classes(connection).unwrap()[0].id;
     let loaded = sheet::load_sheet(connection, class).unwrap();
-    let titles: Vec<&str> = loaded.columns.iter().map(|column| column.title.as_str()).collect();
+    let titles: Vec<&str> =
+        loaded.columns.iter().filter(|column| !column.kind.is_name()).map(|column| column.title.as_str()).collect();
     assert_eq!(titles, ["Exam", "Final grade"]);
-    assert_eq!(loaded.rows[0].pupil.name, "Ana");
-    assert_eq!(loaded.rows[0].values, ["7,5", ""]);
+    assert_eq!(loaded.rows[0].pupil.first_name, "Ana");
+    assert_eq!(loaded.rows[0].values, ["Ana", "", "7,5", ""], "the names first, then the marks");
 }
 
 #[test]
@@ -418,7 +419,9 @@ fn shape(connection: &Connection, class: i64) -> String {
     let rows: Vec<String> = sheet
         .rows
         .iter()
-        .map(|row| format!("{} {:?} {:?}", row.pupil.name, row.values, evaluate_row(&sheet.columns, &row.values)))
+        .map(|row| {
+            format!("{} {:?} {:?}", row.pupil.full_name(), row.values, evaluate_row(&sheet.columns, &row.values))
+        })
         .collect();
     format!("{columns:#?}\n{rows:#?}")
 }
@@ -465,25 +468,25 @@ fn pupils_match_by_unique_name_and_shared_pupils_stay_shared() {
     let fixture = Fixture::new();
     let target = database(&fixture, "target.db");
     let here = classes::create_class(&target, "Here").unwrap();
-    let ana = pupils::add_new_pupil(&target, here, "Ana").unwrap();
-    pupils::add_new_pupil(&target, here, "Brais").unwrap();
-    pupils::add_new_pupil(&target, here, "Brais").unwrap();
+    let ana = pupils::add_new_pupil(&target, here, "Ana", "").unwrap();
+    pupils::add_new_pupil(&target, here, "Brais", "").unwrap();
+    pupils::add_new_pupil(&target, here, "Brais", "").unwrap();
 
     let source = database(&fixture, "source.db");
     let x = classes::create_class(&source, "X").unwrap();
     let y = classes::create_class(&source, "Y").unwrap();
-    let shared = pupils::add_new_pupil(&source, x, " ANA ").unwrap();
+    let shared = pupils::add_new_pupil(&source, x, " ANA ", "").unwrap();
     pupils::add_existing_pupil(&source, y, shared).unwrap();
-    pupils::add_new_pupil(&source, x, "Brais").unwrap();
+    pupils::add_new_pupil(&source, x, "Brais", "").unwrap();
     // two different pupils of the same name, neither of them here: two new pupils
-    pupils::add_new_pupil(&source, x, "Dani").unwrap();
-    pupils::add_new_pupil(&source, y, "Dani").unwrap();
+    pupils::add_new_pupil(&source, x, "Dani", "").unwrap();
+    pupils::add_new_pupil(&source, y, "Dani", "").unwrap();
 
     let summary = backup::add_classes(&target, &source).unwrap();
     assert_eq!((summary.pupils, summary.existing_pupils), (4, 1));
     let names = |class: &str| -> Vec<(i64, String)> {
         let pupils = pupils::list_class_pupils(&target, class_id(&target, class)).unwrap();
-        pupils.into_iter().map(|pupil| (pupil.id, pupil.name)).collect()
+        pupils.into_iter().map(|pupil| (pupil.id, pupil.full_name())).collect()
     };
     let (in_x, in_y) = (names("X"), names("Y"));
     assert_eq!(in_x[0], (ana, "Ana".to_owned()), "the one Ana here joins, under her name here");
@@ -506,7 +509,8 @@ fn rounded_columns_keep_their_source_even_to_the_right() {
 
     let target = database(&fixture, "target.db");
     let summary = backup::add_classes(&target, &source).unwrap();
-    let added = columns::list_columns(&target, summary.class_ids[0]).unwrap();
+    // after the first-name and surname columns
+    let added = &columns::list_columns(&target, summary.class_ids[0]).unwrap()[2..];
     assert_eq!(added[0].kind, ColumnKind::Round { source: Some(added[1].id), decimals: 1 });
 }
 
@@ -517,7 +521,7 @@ fn a_failure_adds_nothing() {
     common::sample_class(&source);
     let target = database(&fixture, "target.db");
     let here = classes::create_class(&target, "Here").unwrap();
-    pupils::add_new_pupil(&target, here, "Ana Pérez").unwrap();
+    pupils::add_new_pupil(&target, here, "Ana Pérez", "").unwrap();
     let before = ["classes", "pupils", "class_pupils", "sheet_columns", "cells"].map(|table| count(&target, table));
     // the add fails half way through the marks
     target
@@ -551,10 +555,11 @@ fn an_older_backup_adds_its_classes() {
     assert!(!restore_copy(&fixture).exists(), "the backup's copy is deleted afterwards");
     let connection = state.connection().unwrap();
     let loaded = sheet::load_sheet(connection, summary.class_ids[0]).unwrap();
-    let titles: Vec<&str> = loaded.columns.iter().map(|column| column.title.as_str()).collect();
+    let titles: Vec<&str> =
+        loaded.columns.iter().filter(|column| !column.kind.is_name()).map(|column| column.title.as_str()).collect();
     assert_eq!(titles, ["Exam", "Final grade"]);
-    assert_eq!(loaded.rows[0].pupil.name, "Ana");
-    assert_eq!(loaded.rows[0].values, ["7,5", ""]);
+    assert_eq!(loaded.rows[0].pupil.first_name, "Ana");
+    assert_eq!(loaded.rows[0].values, ["Ana", "", "7,5", ""], "the names first, then the marks");
     state.set_pin(PIN, PIN).unwrap();
     assert!(state.is_protected(), "adding classes leaves the database usable as before");
 }
@@ -588,7 +593,7 @@ proptest::proptest! {
         let pool: Vec<i64> = POOL
             .iter()
             .map(|name| {
-                target.execute("INSERT INTO pupils (name) VALUES (?1)", [name]).unwrap();
+                target.execute("INSERT INTO pupils (first_name) VALUES (?1)", [name]).unwrap();
                 target.last_insert_rowid()
             })
             .collect();
@@ -625,14 +630,14 @@ fn regression_two_backup_pupils_never_join_the_same_pupil_here() {
     let fixture = Fixture::new();
     let target = database(&fixture, "target.db");
     let here = classes::create_class(&target, "Here").unwrap();
-    let ana = pupils::add_new_pupil(&target, here, "Ana García").unwrap();
+    let ana = pupils::add_new_pupil(&target, here, "Ana García", "").unwrap();
 
     let source = database(&fixture, "source.db");
     let x = classes::create_class(&source, "X").unwrap();
     let y = classes::create_class(&source, "Y").unwrap();
-    pupils::add_new_pupil(&source, x, "Ana García").unwrap();
-    pupils::add_new_pupil(&source, x, "Ana García").unwrap();
-    pupils::add_new_pupil(&source, y, "Ana García").unwrap();
+    pupils::add_new_pupil(&source, x, "Ana García", "").unwrap();
+    pupils::add_new_pupil(&source, x, "Ana García", "").unwrap();
+    pupils::add_new_pupil(&source, y, "Ana García", "").unwrap();
 
     let summary = backup::add_classes(&target, &source).unwrap();
     assert_eq!((summary.pupils, summary.existing_pupils), (3, 1));
@@ -667,7 +672,7 @@ fn added_classes_keep_their_column_widths() {
     let class = common::sample_class(&source);
     let notes = columns::list_columns(&source, class).unwrap().last().unwrap().id;
     columns::set_column_width(&source, notes, Some(400)).unwrap();
-    classes::set_name_width(&source, class, Some(300)).unwrap();
+    common::set_name_widths(&source, class, 300, 180);
     let target = database(&fixture, "target.db");
 
     let summary = backup::add_classes(&target, &source).unwrap();
@@ -676,5 +681,71 @@ fn added_classes_keep_their_column_widths() {
     let expected: Vec<Option<u16>> = columns::list_columns(&source, class).unwrap().iter().map(|c| c.width).collect();
     assert_eq!(widths, expected);
     assert_eq!(widths.last(), Some(&Some(400)));
-    assert_eq!(classes::class_name_width(&target, added).unwrap(), Some(300));
+    assert_eq!(common::name_widths(&target, added), (Some(300), Some(180)), "the name columns' too");
+}
+
+#[test]
+fn a_backup_pupil_joins_the_pupil_here_by_full_name() {
+    let fixture = Fixture::new();
+    let target = database(&fixture, "target.db");
+    let here = classes::create_class(&target, "Here").unwrap();
+    let ana = pupils::add_new_pupil(&target, here, "Ana", "Pérez").unwrap();
+    let brais = pupils::add_new_pupil(&target, here, "Brais", "Otero").unwrap();
+
+    let source = database(&fixture, "source.db");
+    let x = classes::create_class(&source, "X").unwrap();
+    pupils::add_new_pupil(&source, x, "ana", "PÉREZ").unwrap();
+    // a backup pupil whose whole name is still in the first name is the same pupil
+    pupils::add_new_pupil(&source, x, "Brais Otero", "").unwrap();
+    pupils::add_new_pupil(&source, x, "Carla", "Iglesias").unwrap();
+
+    let summary = backup::add_classes(&target, &source).unwrap();
+    assert_eq!((summary.pupils, summary.existing_pupils), (3, 2));
+    let added: Vec<(i64, String, String)> = pupils::list_class_pupils(&target, class_id(&target, "X"))
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.id, pupil.first_name, pupil.surname))
+        .collect();
+    assert_eq!(added[0], (ana, "Ana".to_owned(), "Pérez".to_owned()), "joined, under the names here");
+    assert_eq!(added[1].0, brais);
+    assert_eq!((added[2].1.as_str(), added[2].2.as_str()), ("Carla", "Iglesias"), "a new pupil keeps both names");
+}
+
+#[test]
+fn a_version_5_backup_opens_with_its_names_as_first_names() {
+    let golden = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/db-v5.db");
+    let fixture = Fixture::new();
+    let state = fixture.set_up();
+    let opened = state.open_backup(&golden, None).unwrap();
+    let summary = state.add_backup_classes(opened).unwrap();
+    let connection = state.connection().unwrap();
+    let names: Vec<(String, String)> = pupils::list_class_pupils(connection, summary.class_ids[0])
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.first_name, pupil.surname))
+        .collect();
+    assert_eq!(names, [("Ana".to_owned(), String::new()), ("Bea".to_owned(), String::new())]);
+    assert_eq!(common::name_widths(connection, summary.class_ids[0]), (Some(260), None), "its width too");
+}
+
+#[test]
+fn an_added_class_keeps_its_column_order_with_the_names() {
+    let fixture = Fixture::new();
+    let source = database(&fixture, "source.db");
+    let class = common::sample_class(&source);
+    let (_, surname) = common::name_columns(&source, class);
+    columns::move_column_to(&source, surname, 3).unwrap();
+    common::set_name_widths(&source, class, 200, 120);
+    let target = database(&fixture, "target.db");
+    let added = backup::add_classes(&target, &source).unwrap().class_ids[0];
+    let kinds = |connection: &Connection, class: i64| -> Vec<String> {
+        columns::list_columns(connection, class)
+            .unwrap()
+            .iter()
+            .map(|column| format!("{:?}", column.kind.column_type()))
+            .collect()
+    };
+    assert_eq!(kinds(&target, added), kinds(&source, class));
+    assert_eq!(kinds(&target, added)[3], "Surname");
+    assert_eq!(common::name_widths(&target, added), (Some(200), Some(120)));
 }

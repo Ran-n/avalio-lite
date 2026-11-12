@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.393948
-//+ Revised: 	2026/11/09 21:54:02.394996
+//+ Revised: 	2026/11/11 17:10:59.633780
 // -----------------------------------------------------------------------------
 
 use rusqlite::Connection;
@@ -13,7 +13,7 @@ use crate::error::Result;
 use crate::gradebook::compute::{bonus_weight_total, grade_summary, grades_are_provisional, round_to, weight_total};
 use crate::gradebook::model::{ClassSummary, Column, Sheet};
 use crate::gradebook::{classes, columns, pupils, sheet};
-use crate::ui::{AddablePupil, AppWindow, ClassItem, Gradebook};
+use crate::ui::{AddablePupil, AppWindow, ClassItem, Gradebook, RowItem};
 use crate::window::view::model;
 
 const NO_CLASS: i32 = -1;
@@ -24,12 +24,12 @@ pub enum Refresh {
     Nothing,
     /// the open class was renamed: the sidebar, and the name confirmations quote
     ClassName,
-    /// a pupil was renamed: their row's name, which confirmations and screen readers use
+    /// a pupil was renamed: their row's names, and the full name confirmations and screen readers use
     PupilName(i64),
     Row(usize),
     /// column settings changed: recalculate cells and update the headers' tags in place
     Columns,
-    /// a column (or the pupil column) was resized: only the widths change, no cell is touched
+    /// a column was resized: only the widths change, no cell is touched
     Widths,
     Sheet,
     All {
@@ -101,12 +101,11 @@ fn show_sheet(window: &AppWindow, connection: &Connection, class_id: i64) -> Res
     let no_class: Vec<i64> = pupils::pupils_in_no_class(connection)?.into_iter().map(|pupil| pupil.id).collect();
     let addable: Vec<AddablePupil> = pupils::pupils_not_in_class(connection, class_id)?
         .into_iter()
-        .map(|pupil| AddablePupil { no_class: no_class.contains(&pupil.id), name: pupil.name.into() })
+        .map(|pupil| AddablePupil { no_class: no_class.contains(&pupil.id), name: pupil.listed_name().into() })
         .collect();
     let gradebook = window.global::<Gradebook>();
     gradebook.set_current_class_id(ui_id(class_id));
     gradebook.set_class_name(classes::class_name(connection, class_id)?.into());
-    gradebook.set_name_width(ui_width(classes::class_name_width(connection, class_id)?));
     gradebook.set_columns(model(loaded.columns.iter().map(|column| column_item(column, &loaded.columns)).collect()));
     gradebook.set_rows(model(loaded.rows.iter().map(|row| row_item(row, &loaded.columns)).collect()));
     gradebook.set_addable_pupils(model(addable));
@@ -126,15 +125,22 @@ fn show_class_name(window: &AppWindow, connection: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// The typed-in field already shows the new name; this updates the row's names (as stored, so
+/// trimmed) and its full name. (Typing broke the field's binding, so this never moves its caret.)
 fn show_pupil_name(window: &AppWindow, connection: &Connection, pupil_id: i64) -> Result<()> {
-    let name: SharedString = pupils::pupil_name(connection, pupil_id)?.into();
+    let pupil = pupils::pupil_name(connection, pupil_id)?;
     let rows = window.global::<Gradebook>().get_rows();
     let found = rows.iter().enumerate().find(|(_, row)| i64::from(row.pupil_id) == pupil_id);
-    if let Some((index, mut row)) = found
-        && row.name != name
-    {
-        row.name = name;
-        rows.set_row_data(index, row);
+    if let Some((index, row)) = found {
+        let named = RowItem {
+            first_name: pupil.first_name.as_str().into(),
+            surname: pupil.surname.as_str().into(),
+            full_name: pupil.full_name().into(),
+            ..row.clone()
+        };
+        if named != row {
+            rows.set_row_data(index, named);
+        }
     }
     Ok(())
 }
@@ -176,10 +182,8 @@ fn refresh_columns(window: &AppWindow, connection: &Connection) -> Result<()> {
     refresh_rows(window, connection, None)
 }
 
-/// Updates the headers' widths, and the pupil column's, in place; the rows aren't rebuilt.
+/// Updates the headers' widths in place; the rows aren't rebuilt.
 fn refresh_widths(window: &AppWindow, connection: &Connection) -> Result<()> {
-    let class_id = current_class_id(window);
-    window.global::<Gradebook>().set_name_width(ui_width(classes::class_name_width(connection, class_id)?));
     refresh_headers(window, connection).map(|_| ())
 }
 

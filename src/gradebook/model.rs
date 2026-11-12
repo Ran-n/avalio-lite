@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.337118
-//+ Revised: 	2026/11/09 21:54:01.339742
+//+ Revised: 	2026/11/11 17:10:58.416291
 // -----------------------------------------------------------------------------
 
 use crate::error::{AppError, Result};
@@ -13,15 +13,36 @@ pub struct ClassSummary {
     pub pupil_count: i64,
 }
 
+/// A pupil, shared by every class they are in. The first name is never empty; the surname may be
+/// (some pupils have one name, and pupils from before surnames existed have none).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pupil {
     pub id: i64,
-    pub name: String,
+    pub first_name: String,
+    pub surname: String,
 }
 
-/// The kind of column to add; settings get sensible defaults (see `columns::add_column`).
+impl Pupil {
+    /// The name as one string, for confirmations and screen readers: "Ana Pérez López", or just
+    /// "Ana" without a surname.
+    pub fn full_name(&self) -> String {
+        if self.surname.is_empty() { self.first_name.clone() } else { format!("{} {}", self.first_name, self.surname) }
+    }
+
+    /// The name as lists show and sort it, surname first: "Pérez López, Ana", or just "Ana"
+    /// without a surname, which then sorts by the first name among the surnames.
+    pub fn listed_name(&self) -> String {
+        if self.surname.is_empty() { self.first_name.clone() } else { format!("{}, {}", self.surname, self.first_name) }
+    }
+}
+
+/// A column's kind without its settings. Every kind but the name columns can be added (see
+/// `columns::add_column`, which gives the settings sensible defaults); a class gets its one first-name
+/// and one surname column when it is created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColumnType {
+    FirstName,
+    Surname,
     Info,
     Test,
     Weighted,
@@ -37,6 +58,10 @@ pub trait ColumnTitles {
 /// A column's kind together with the settings that kind uses.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ColumnKind {
+    /// The pupil's first name or surname: stored with the pupil (shared by their classes), so the
+    /// column holds no cells and no settings, only its place and width in this class.
+    FirstName,
+    Surname,
     Info,
     /// `bonus` tests are extra credit: their weight counts on top of the normal tests' 100 %.
     Test {
@@ -59,6 +84,8 @@ pub enum ColumnKind {
 impl ColumnKind {
     pub fn column_type(&self) -> ColumnType {
         match self {
+            Self::FirstName => ColumnType::FirstName,
+            Self::Surname => ColumnType::Surname,
             Self::Info => ColumnType::Info,
             Self::Test { .. } => ColumnType::Test,
             Self::Weighted { .. } => ColumnType::Weighted,
@@ -67,9 +94,20 @@ impl ColumnKind {
         }
     }
 
-    /// Info and test cells are typed in; the others are calculated.
+    /// Final grades, averages and roundings are calculated; names and typed cells are not.
     pub fn is_computed(&self) -> bool {
         matches!(self, Self::Weighted { .. } | Self::Average { .. } | Self::Round { .. })
+    }
+
+    /// Info and test columns hold the cells typed into them; names live with the pupil, and the
+    /// rest are calculated.
+    pub fn holds_cells(&self) -> bool {
+        matches!(self, Self::Info | Self::Test { .. })
+    }
+
+    /// The first-name and surname columns.
+    pub fn is_name(&self) -> bool {
+        matches!(self, Self::FirstName | Self::Surname)
     }
 
     /// A rounded column may round any numeric column except another rounded one, which rules out cycles.
@@ -81,6 +119,8 @@ impl ColumnKind {
 impl ColumnType {
     pub fn code(self) -> &'static str {
         match self {
+            Self::FirstName => "first_name",
+            Self::Surname => "surname",
             Self::Info => "info",
             Self::Test => "test",
             Self::Weighted => "weighted",
@@ -102,11 +142,8 @@ pub enum DuplicateContents {
     Everything,
 }
 
-/// The narrowest a test, calculated or text column can be set to, in logical pixels: it still fits a
-/// "10.00" pill.
+/// The narrowest any column can be set to, in logical pixels: it still fits a "10.00" pill.
 pub const MIN_COLUMN_WIDTH: u16 = 72;
-/// The narrowest the pupil column can be set to: it still fits the "×" button and a few letters.
-pub const MIN_NAME_WIDTH: u16 = 120;
 /// The widest any column can be set to.
 pub const MAX_COLUMN_WIDTH: u16 = 640;
 
@@ -124,7 +161,8 @@ pub fn clamp_width(width: Option<u16>, min: u16) -> Option<u16> {
     width.map(|width| width.clamp(min, MAX_COLUMN_WIDTH))
 }
 
-/// One pupil's row: the stored value per column, in column order ("" when empty or computed).
+/// One pupil's row: the value per column, in column order: the pupil's first name or surname in the
+/// name columns, the typed text in the others ("" when empty or computed).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SheetRow {
     pub pupil: Pupil,
@@ -143,6 +181,11 @@ pub fn clean_name(text: &str) -> Result<String> {
         return Err(AppError::EmptyName);
     }
     Ok(name.to_owned())
+}
+
+/// A surname as stored: trimmed, and unlike a first name it may be empty.
+pub fn clean_surname(text: &str) -> String {
+    text.trim().to_owned()
 }
 
 /// Names (and titles) are the same name ignoring case and spaces at either end, in any
@@ -219,4 +262,31 @@ pub fn name_sort_key(name: &str) -> String {
         key.push(base);
     }
     key
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Pupil, clean_surname};
+
+    fn pupil(first_name: &str, surname: &str) -> Pupil {
+        Pupil { id: 1, first_name: first_name.to_owned(), surname: surname.to_owned() }
+    }
+
+    #[test]
+    fn a_full_name_joins_with_one_space_and_drops_an_empty_surname() {
+        assert_eq!(pupil("Ana", "Pérez López").full_name(), "Ana Pérez López");
+        assert_eq!(pupil("Ana", "").full_name(), "Ana");
+    }
+
+    #[test]
+    fn a_listed_name_puts_the_surname_first() {
+        assert_eq!(pupil("Ana", "Pérez López").listed_name(), "Pérez López, Ana");
+        assert_eq!(pupil("Ana", "").listed_name(), "Ana");
+    }
+
+    #[test]
+    fn a_surname_is_trimmed_and_may_be_empty() {
+        assert_eq!(clean_surname("  Pérez "), "Pérez");
+        assert_eq!(clean_surname("   "), "");
+    }
 }

@@ -100,6 +100,9 @@ export component TextField inherits Rectangle {
     // value), so the field never stays out of step with what was kept.
     in property <bool> restores: false;
     in property <string> saved;
+    // Enter ends the editing: what every field edited in place does, also one that may be emptied
+    // and so has nothing to restore
+    in property <bool> leaves-on-enter: root.restores;
     out property <bool> has-focus: input.has-focus;
     callback edited(string);
     callback accepted(string);
@@ -142,8 +145,8 @@ export component TextField inherits Rectangle {
             root.restore();
             root.accepted(self.text);
             // a field edited in place saves as you type, so Enter ends the editing where it can be
-            // seen to; fields that add something (Add pupil…, New class) stay focused for the next one
-            if (root.restores) {
+            // seen to; fields that add something (First name…, New class) stay focused for the next one
+            if (root.leaves-on-enter) {
                 self.leave();
             }
         }

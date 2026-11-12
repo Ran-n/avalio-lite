@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.047841
-//+ Revised: 	2026/11/03 11:39:47.004157
+//+ Revised: 	2026/11/11 17:10:58.258816
 // -----------------------------------------------------------------------------
 
 mod numbers;
@@ -77,7 +77,7 @@ pub fn evaluate_row(columns: &[Column], values: &[String]) -> Vec<Evaluated> {
 /// The maximum a column's numbers are measured against; a rounded column uses its source's.
 fn scale(columns: &[Column], column: &Column) -> Option<f64> {
     match column.kind {
-        ColumnKind::Info => None,
+        ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info => None,
         ColumnKind::Test { max_score, .. } | ColumnKind::Weighted { max_score } | ColumnKind::Average { max_score } => {
             Some(max_score)
         }
@@ -131,7 +131,7 @@ fn row_numbers(columns: &[Column], values: &[String]) -> Vec<Option<f64>> {
             ColumnKind::Test { .. } => *score,
             ColumnKind::Weighted { max_score } => weighted(&marks, max_score),
             ColumnKind::Average { max_score } => average(&marks, max_score),
-            ColumnKind::Info | ColumnKind::Round { .. } => None,
+            ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info | ColumnKind::Round { .. } => None,
         })
         .collect();
     columns
@@ -186,7 +186,8 @@ fn source_number(columns: &[Column], numbers: &[Option<f64>], source: Option<i64
 
 fn display(kind: ColumnKind, raw: &str, number: Option<f64>, tone: Tone) -> Evaluated {
     let (text, is_invalid) = match kind {
-        ColumnKind::Info => (raw.to_owned(), false),
+        // names and notes show as they are, never read as numbers
+        ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info => (raw.to_owned(), false),
         ColumnKind::Test { .. } => (raw.to_owned(), !raw.trim().is_empty() && number.is_none()),
         ColumnKind::Round { decimals, .. } => {
             (number.map(|value| format!("{value:.*}", usize::from(decimals))).unwrap_or_default(), false)

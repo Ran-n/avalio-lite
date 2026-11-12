@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:31.148480
-//+ Revised: 	2026/11/09 21:54:02.053567
+//+ Revised: 	2026/11/11 17:10:59.465131
 // -----------------------------------------------------------------------------
 
 //! Turns the gradebook's values into the structs the Slint sheet shows, and the sheet's choices back.
@@ -22,7 +22,9 @@ pub fn round_sources(columns: &[Column]) -> impl Iterator<Item = &Column> {
 
 pub fn column_item(column: &Column, columns: &[Column]) -> ColumnItem {
     let (weight, max_score, source_index, decimals) = match column.kind {
-        ColumnKind::Info => (String::new(), String::new(), NO_SOURCE, String::new()),
+        ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info => {
+            (String::new(), String::new(), NO_SOURCE, String::new())
+        }
         ColumnKind::Test { weight, max_score, .. } => (number(weight), number(max_score), NO_SOURCE, String::new()),
         ColumnKind::Weighted { max_score } | ColumnKind::Average { max_score } => {
             (String::new(), number(max_score), NO_SOURCE, String::new())
@@ -35,7 +37,7 @@ pub fn column_item(column: &Column, columns: &[Column]) -> ColumnItem {
     ColumnItem {
         id: ui_id(column.id),
         kind: to_ui_type(column.kind.column_type()),
-        title: column.title.as_str().into(),
+        title: column_title(column).into(),
         weight: weight.into(),
         max_score: max_score.into(),
         source_index,
@@ -45,10 +47,18 @@ pub fn column_item(column: &Column, columns: &[Column]) -> ColumnItem {
     }
 }
 
+/// A column's title as the sheet shows it: a name column's follows the interface language.
+pub fn column_title(column: &Column) -> String {
+    i18n::name_column_title(i18n::current(), column.kind.column_type())
+        .map_or_else(|| column.title.clone(), str::to_owned)
+}
+
 pub fn row_item(row: &SheetRow, columns: &[Column]) -> RowItem {
     RowItem {
         pupil_id: ui_id(row.pupil.id),
-        name: row.pupil.name.as_str().into(),
+        first_name: row.pupil.first_name.as_str().into(),
+        surname: row.pupil.surname.as_str().into(),
+        full_name: row.pupil.full_name().into(),
         cells: model(cell_items(row, columns)),
     }
 }
@@ -87,6 +97,8 @@ pub fn to_ui_tone(tone: Tone) -> ui::Tone {
 
 pub fn to_ui_type(column_type: ColumnType) -> ui::ColumnType {
     match column_type {
+        ColumnType::FirstName => ui::ColumnType::FirstName,
+        ColumnType::Surname => ui::ColumnType::Surname,
         ColumnType::Info => ui::ColumnType::Info,
         ColumnType::Test => ui::ColumnType::Test,
         ColumnType::Weighted => ui::ColumnType::Weighted,
@@ -103,6 +115,8 @@ pub fn short_class_name(name: &str) -> String {
 
 pub fn from_ui_type(column_type: ui::ColumnType) -> ColumnType {
     match column_type {
+        ui::ColumnType::FirstName => ColumnType::FirstName,
+        ui::ColumnType::Surname => ColumnType::Surname,
         ui::ColumnType::Info => ColumnType::Info,
         ui::ColumnType::Test => ColumnType::Test,
         ui::ColumnType::Weighted => ColumnType::Weighted,

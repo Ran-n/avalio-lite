@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.728640 )
-[//]: # (+ Revised: 	2026/11/09 10:42:02.617690 )
+[//]: # (+ Revised: 	2026/11/11 17:10:57.552253 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Developing avalio-lite
@@ -120,7 +120,7 @@ tests/          integration tests, one file per module
 
 Any text added to the UI with `@tr("…")` needs an entry in every `lang/*/…/avalio-lite.po`, and any text built in Rust needs a translation in every `src/i18n/<language>.rs`. `tests/i18n.rs` fails until both are complete.
 
-Schema changes go in a new `migrations/NNN_*.sql` file, added to the list in `src/platform/db/migrations.rs`. Shipped migrations are never edited. Before rewriting the golden samples for a new migration, copy `tests/golden/db-current.db` to `db-v<previous version>.db` and add an upgrade test for that sample in `tests/golden.rs`, so files users already have stay covered.
+Schema changes go in a new `migrations/NNN_*.sql` file, added to the list in `src/platform/db/migrations.rs`. Shipped migrations are never edited. Migrations run with foreign keys off (a table rebuild would otherwise cascade-delete the rows pointing at it), each in its own transaction, which is committed only once `PRAGMA foreign_key_check` finds no dangling reference; the runner turns foreign keys back on afterwards, also when a migration fails. Before rewriting the golden samples for a new migration, copy `tests/golden/db-current.db` to `db-v<previous version>.db` and add an upgrade test for that sample in `tests/golden.rs`, so files users already have stay covered.
 
 ## Release
 

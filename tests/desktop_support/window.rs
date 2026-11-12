@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.640367
-//+ Revised: 	2026/11/10 07:42:01.522072
+//+ Revised: 	2026/11/11 17:11:01.551053
 // -----------------------------------------------------------------------------
 
 //! The app's real window, through Win32: found by its process, captured with `PrintWindow`, and
@@ -136,6 +136,12 @@ impl AppWindow {
     /// Presses the left button at `from`, moves to `to` a few pixels at a time with it held, and
     /// lets go there, in physical pixels inside the client area, as Windows delivers a drag.
     pub fn drag(&self, from: (i32, i32), to: (i32, i32)) {
+        self.press_and_move(from, to);
+        self.release(to);
+    }
+
+    /// The first half of `drag`: the button pressed at `from` and held, the pointer moved to `to`.
+    pub fn press_and_move(&self, from: (i32, i32), to: (i32, i32)) {
         const STEP: i32 = 4;
         self.post(WM_MOUSEMOVE, 0, point(from.0, from.1));
         self.post(WM_LBUTTONDOWN, MK_LBUTTON, point(from.0, from.1));
@@ -146,8 +152,12 @@ impl AppWindow {
             std::thread::sleep(Duration::from_millis(8));
             self.post(WM_MOUSEMOVE, MK_LBUTTON, point(x, y));
         }
+    }
+
+    /// The second half of `drag`: the held button let go at `at`.
+    pub fn release(&self, at: (i32, i32)) {
         std::thread::sleep(Duration::from_millis(40));
-        self.post(WM_LBUTTONUP, 0, point(to.0, to.1));
+        self.post(WM_LBUTTONUP, 0, point(at.0, at.1));
     }
 
     /// The mouse leaves the window, so no control is left showing its hover colour.

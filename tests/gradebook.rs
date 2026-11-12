@@ -1,14 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/11/09 21:54:06.954322
+//+ Revised: 	2026/11/11 23:00:49.335269
 // -----------------------------------------------------------------------------
 
 use avalio_lite::error::AppError;
 use avalio_lite::gradebook::columns::{self, Direction};
-use avalio_lite::gradebook::model::{
-    ColumnKind, ColumnTitles, ColumnType, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MIN_NAME_WIDTH,
-};
+use avalio_lite::gradebook::model::{ColumnKind, ColumnTitles, ColumnType, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH};
 use avalio_lite::gradebook::{cells, classes, pupils, sheet};
 use avalio_lite::i18n::Language;
 use avalio_lite::platform::db;
@@ -21,8 +19,50 @@ fn open() -> (TempDir, Connection) {
     (dir, connection)
 }
 
+/// The mark columns' titles in order, without the first-name and surname columns.
 fn titles(connection: &Connection, class_id: i64) -> Vec<String> {
-    columns::list_columns(connection, class_id).unwrap().into_iter().map(|column| column.title).collect()
+    columns::list_columns(connection, class_id)
+        .unwrap()
+        .into_iter()
+        .filter(|column| !column.kind.is_name())
+        .map(|column| column.title)
+        .collect()
+}
+
+/// Every column in order, the names as "<first name>" and "<surname>".
+fn order(connection: &Connection, class_id: i64) -> Vec<String> {
+    columns::list_columns(connection, class_id)
+        .unwrap()
+        .into_iter()
+        .map(|column| match column.kind {
+            ColumnKind::FirstName => "<first name>".to_owned(),
+            ColumnKind::Surname => "<surname>".to_owned(),
+            _ => column.title,
+        })
+        .collect()
+}
+
+/// The class's columns without the first-name and surname columns.
+fn mark_columns(connection: &Connection, class_id: i64) -> Vec<avalio_lite::gradebook::model::Column> {
+    columns::list_columns(connection, class_id).unwrap().into_iter().filter(|column| !column.kind.is_name()).collect()
+}
+
+/// The ids of the class's first-name and surname columns.
+fn name_ids(connection: &Connection, class_id: i64) -> (i64, i64) {
+    let listed = columns::list_columns(connection, class_id).unwrap();
+    let id = |kind: ColumnKind| listed.iter().find(|column| column.kind == kind).unwrap().id;
+    (id(ColumnKind::FirstName), id(ColumnKind::Surname))
+}
+
+/// A row's values in the mark columns only.
+fn marks(sheet: &avalio_lite::gradebook::model::Sheet, row: usize) -> Vec<String> {
+    sheet
+        .columns
+        .iter()
+        .zip(&sheet.rows[row].values)
+        .filter(|(column, _)| !column.kind.is_name())
+        .map(|(_, value)| value.clone())
+        .collect()
 }
 
 #[test]
@@ -30,7 +70,7 @@ fn classes_are_listed_by_name_with_pupil_counts() {
     let (_dir, connection) = open();
     let b = classes::create_class(&connection, " 2B ").unwrap();
     let a = classes::create_class(&connection, "1A").unwrap();
-    pupils::add_new_pupil(&connection, b, "Ana").unwrap();
+    pupils::add_new_pupil(&connection, b, "Ana", "").unwrap();
     let listed = classes::list_classes(&connection).unwrap();
     assert_eq!(
         listed.iter().map(|class| (class.id, class.name.as_str(), class.pupil_count)).collect::<Vec<_>>(),
@@ -69,24 +109,24 @@ fn adjacent_class_wraps_around() {
 fn deleting_a_class_keeps_its_pupils_in_other_classes() {
     let (_dir, connection) = open();
     let (a, b) = (classes::create_class(&connection, "1A").unwrap(), classes::create_class(&connection, "2B").unwrap());
-    let ana = pupils::add_new_pupil(&connection, a, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(&connection, a, "Ana", "").unwrap();
     pupils::add_existing_pupil(&connection, b, ana).unwrap();
     classes::delete_class(&connection, a).unwrap();
-    assert_eq!(pupils::list_class_pupils(&connection, b).unwrap()[0].name, "Ana");
+    assert_eq!(pupils::list_class_pupils(&connection, b).unwrap()[0].first_name, "Ana");
 }
 
 #[test]
 fn pupils_are_shared_and_renamed_everywhere() {
     let (_dir, connection) = open();
     let (a, b) = (classes::create_class(&connection, "1A").unwrap(), classes::create_class(&connection, "2B").unwrap());
-    let ana = pupils::add_new_pupil(&connection, a, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(&connection, a, "Ana", "").unwrap();
     assert_eq!(pupils::pupils_not_in_class(&connection, b).unwrap()[0].id, ana);
     pupils::add_existing_pupil(&connection, b, ana).unwrap();
     assert!(pupils::pupils_not_in_class(&connection, b).unwrap().is_empty());
     assert!(pupils::add_existing_pupil(&connection, b, ana).is_err(), "can't be added twice");
-    pupils::rename_pupil(&connection, ana, "Ana Pérez").unwrap();
-    assert_eq!(pupils::list_class_pupils(&connection, a).unwrap()[0].name, "Ana Pérez");
-    assert!(matches!(pupils::rename_pupil(&connection, ana, " "), Err(AppError::EmptyName)));
+    pupils::set_first_name(&connection, ana, "Ana Pérez").unwrap();
+    assert_eq!(pupils::list_class_pupils(&connection, a).unwrap()[0].first_name, "Ana Pérez");
+    assert!(matches!(pupils::set_first_name(&connection, ana, " "), Err(AppError::EmptyName)));
 }
 
 #[test]
@@ -94,10 +134,10 @@ fn pupils_keep_the_order_they_were_added_in() {
     let (_dir, connection) = open();
     let class_id = classes::create_class(&connection, "1A").unwrap();
     for name in ["Xoán", "Ana", "Brais"] {
-        pupils::add_new_pupil(&connection, class_id, name).unwrap();
+        pupils::add_new_pupil(&connection, class_id, name, "").unwrap();
     }
     let names: Vec<String> =
-        pupils::list_class_pupils(&connection, class_id).unwrap().into_iter().map(|pupil| pupil.name).collect();
+        pupils::list_class_pupils(&connection, class_id).unwrap().into_iter().map(|pupil| pupil.first_name).collect();
     assert_eq!(names, ["Xoán", "Ana", "Brais"]);
 }
 
@@ -118,7 +158,7 @@ fn new_columns_get_sensible_defaults() {
     ] {
         columns::add_column(&connection, class_id, column_type, Language::English).unwrap();
     }
-    let listed = columns::list_columns(&connection, class_id).unwrap();
+    let listed = mark_columns(&connection, class_id);
     assert_eq!(titles(&connection, class_id), ["Test 1", "Test 2", "Final grade", "Rounded", "Notes", "Average"]);
     assert_eq!(listed[0].kind, ColumnKind::Test { weight: 100.0, max_score: 10.0, bonus: false });
     assert_eq!(
@@ -132,7 +172,7 @@ fn new_columns_get_sensible_defaults() {
     assert_eq!(listed[5].kind, ColumnKind::Average { max_score: 10.0 });
     // kills the kind_fields mutants that store a field the kind doesn't read back
     let mut statement = connection
-        .prepare("SELECT weight, max_score, source_column_id, decimals FROM sheet_columns ORDER BY position")
+        .prepare("SELECT weight, max_score, source_column_id, decimals FROM sheet_columns \n             WHERE kind NOT IN ('first_name', 'surname') ORDER BY position")
         .unwrap();
     let stored: Vec<StoredFields> = statement
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
@@ -173,7 +213,7 @@ fn tests_can_become_bonus_tests_and_new_tests_ignore_bonus_weight() {
     columns::set_weight(&connection, extra, "10").unwrap();
     columns::add_column(&connection, class_id, ColumnType::Test, Language::English).unwrap();
 
-    let listed = columns::list_columns(&connection, class_id).unwrap();
+    let listed = mark_columns(&connection, class_id);
     assert_eq!(listed[1].kind, ColumnKind::Test { weight: 10.0, max_score: 10.0, bonus: true });
     assert_eq!(
         listed[2].kind,
@@ -183,7 +223,7 @@ fn tests_can_become_bonus_tests_and_new_tests_ignore_bonus_weight() {
 
     columns::set_bonus(&connection, extra, false).unwrap();
     assert_eq!(
-        columns::list_columns(&connection, class_id).unwrap()[1].kind,
+        columns::list_columns(&connection, class_id).unwrap()[3].kind,
         ColumnKind::Test { weight: 10.0, max_score: 10.0, bonus: false }
     );
 }
@@ -207,7 +247,7 @@ fn column_settings_are_validated() {
     columns::set_weight(&connection, test, "40,5").unwrap();
     columns::set_max_score(&connection, test, "5").unwrap();
     assert_eq!(
-        columns::list_columns(&connection, class_id).unwrap()[0].kind,
+        columns::list_columns(&connection, class_id).unwrap()[2].kind,
         ColumnKind::Test { weight: 40.5, max_score: 5.0, bonus: false }
     );
     assert!(matches!(columns::set_weight(&connection, test, "-1"), Err(AppError::InvalidNumber { .. })));
@@ -243,7 +283,7 @@ fn deleting_a_rounded_columns_source_leaves_it_unset() {
     columns::add_column(&connection, class_id, ColumnType::Round, Language::English).unwrap();
     columns::delete_column(&connection, test).unwrap();
     assert_eq!(
-        columns::list_columns(&connection, class_id).unwrap()[0].kind,
+        columns::list_columns(&connection, class_id).unwrap()[2].kind,
         ColumnKind::Round { source: None, decimals: 0 }
     );
 }
@@ -254,34 +294,182 @@ fn columns_move_left_and_right_and_stop_at_the_ends() {
     let class_id = classes::create_class(&connection, "1A").unwrap();
     let first = columns::add_column(&connection, class_id, ColumnType::Test, Language::English).unwrap();
     columns::add_column(&connection, class_id, ColumnType::Info, Language::English).unwrap();
-    columns::move_column(&connection, first, Direction::Left).unwrap();
-    assert_eq!(titles(&connection, class_id), ["Test 1", "Notes"]);
     columns::move_column(&connection, first, Direction::Right).unwrap();
     assert_eq!(titles(&connection, class_id), ["Notes", "Test 1"]);
     columns::move_column(&connection, first, Direction::Right).unwrap();
-    assert_eq!(titles(&connection, class_id), ["Notes", "Test 1"]);
+    assert_eq!(titles(&connection, class_id), ["Notes", "Test 1"], "nothing past the last");
+    let (first_name, _) = name_ids(&connection, class_id);
+    columns::move_column(&connection, first_name, Direction::Left).unwrap();
+    assert_eq!(order(&connection, class_id), ["<first name>", "<surname>", "Notes", "Test 1"], "nor before the first");
+}
+
+#[test]
+fn name_columns_move_left_and_right_like_others() {
+    let (_dir, connection) = open();
+    let class_id = classes::create_class(&connection, "1A").unwrap();
+    columns::add_column(&connection, class_id, ColumnType::Test, Language::English).unwrap();
+    let (first_name, surname) = name_ids(&connection, class_id);
+    columns::move_column(&connection, surname, Direction::Left).unwrap();
+    assert_eq!(order(&connection, class_id), ["<surname>", "<first name>", "Test 1"]);
+    columns::move_column(&connection, first_name, Direction::Right).unwrap();
+    assert_eq!(order(&connection, class_id), ["<surname>", "Test 1", "<first name>"]);
+}
+
+#[test]
+fn name_columns_cannot_be_deleted_renamed_or_added() {
+    let (_dir, connection) = open();
+    let class_id = classes::create_class(&connection, "1A").unwrap();
+    let (first_name, surname) = name_ids(&connection, class_id);
+    assert!(matches!(columns::delete_column(&connection, first_name), Err(AppError::NotEditable)));
+    assert!(matches!(columns::rename_column(&connection, surname, "Apelidos"), Err(AppError::NotEditable)));
+    for column_type in [ColumnType::FirstName, ColumnType::Surname] {
+        let added = columns::add_column(&connection, class_id, column_type, Language::English);
+        assert!(matches!(added, Err(AppError::NotEditable)), "{column_type:?}");
+    }
+    assert_eq!(order(&connection, class_id), ["<first name>", "<surname>"], "still exactly one of each");
+}
+
+#[test]
+fn the_column_order_is_per_class() {
+    let (_dir, connection) = open();
+    let a = classes::create_class(&connection, "1A").unwrap();
+    let b = classes::create_class(&connection, "1B").unwrap();
+    for class in [a, b] {
+        columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
+    }
+    let (_, surname) = name_ids(&connection, a);
+    columns::move_column(&connection, surname, Direction::Right).unwrap();
+    assert_eq!(order(&connection, a), ["<first name>", "Test 1", "<surname>"]);
+    assert_eq!(order(&connection, b), ["<first name>", "<surname>", "Test 1"], "1B is unchanged");
+}
+
+#[test]
+fn round_sources_and_weights_ignore_name_columns() {
+    let (_dir, connection) = open();
+    let class_id = classes::create_class(&connection, "1A").unwrap();
+    let (first_name, _) = name_ids(&connection, class_id);
+    let rounded = columns::add_column(&connection, class_id, ColumnType::Round, Language::English).unwrap();
+    let round_source = |connection: &Connection| match columns::list_columns(connection, class_id)
+        .unwrap()
+        .into_iter()
+        .find(|column| column.id == rounded)
+        .unwrap()
+        .kind
+    {
+        ColumnKind::Round { source, .. } => source,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(round_source(&connection), None, "with no numeric column, a new rounding has no source");
+    assert!(matches!(
+        columns::set_round_source(&connection, rounded, Some(first_name)),
+        Err(AppError::InvalidRoundSource)
+    ));
+    let test = columns::add_column(&connection, class_id, ColumnType::Test, Language::English).unwrap();
+    let weight =
+        match columns::list_columns(&connection, class_id).unwrap().into_iter().find(|c| c.id == test).unwrap().kind {
+            ColumnKind::Test { weight, .. } => weight,
+            other => panic!("{other:?}"),
+        };
+    assert_eq!(weight, 100.0, "the names take no share of the weights");
+}
+
+#[test]
+fn a_column_moves_to_any_place_in_one_step() {
+    let (_dir, connection) = open();
+    let class_id = classes::create_class(&connection, "1A").unwrap();
+    let ids: Vec<i64> = ["Notes", "Exam", "Quiz"]
+        .iter()
+        .map(|title| {
+            let id = columns::add_column(&connection, class_id, ColumnType::Info, Language::English).unwrap();
+            columns::rename_column(&connection, id, title).unwrap();
+            id
+        })
+        .collect();
+    let (first_name, _) = name_ids(&connection, class_id);
+    columns::move_column_to(&connection, first_name, 4).unwrap();
+    assert_eq!(order(&connection, class_id), ["<surname>", "Notes", "Exam", "Quiz", "<first name>"], "first to last");
+    columns::move_column_to(&connection, first_name, 0).unwrap();
+    assert_eq!(order(&connection, class_id), ["<first name>", "<surname>", "Notes", "Exam", "Quiz"], "last to first");
+    columns::move_column_to(&connection, ids[2], 2).unwrap();
+    assert_eq!(order(&connection, class_id), ["<first name>", "<surname>", "Quiz", "Notes", "Exam"], "to the middle");
+    let positions: Vec<i64> = connection
+        .prepare("SELECT position FROM sheet_columns WHERE class_id = ?1 ORDER BY position")
+        .unwrap()
+        .query_map([class_id], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(positions, [1, 2, 3, 4, 5], "numbered 1..n with no gaps");
+}
+
+#[test]
+fn moving_a_column_to_its_own_place_changes_nothing() {
+    let (_dir, connection) = open();
+    let class_id = classes::create_class(&connection, "1A").unwrap();
+    let exam = columns::add_column(&connection, class_id, ColumnType::Test, Language::English).unwrap();
+    // a trigger counts writes: moving in place must make none
+    connection
+        .execute_batch(
+            "CREATE TEMP TABLE writes (n INTEGER);
+             CREATE TEMP TRIGGER count_writes AFTER UPDATE OF position ON sheet_columns
+             BEGIN INSERT INTO writes VALUES (1); END;",
+        )
+        .unwrap();
+    columns::move_column_to(&connection, exam, 2).unwrap();
+    let writes: i64 = connection.query_row("SELECT COUNT(*) FROM writes", [], |row| row.get(0)).unwrap();
+    assert_eq!(writes, 0);
+    assert_eq!(order(&connection, class_id), ["<first name>", "<surname>", "Test 1"]);
+}
+
+#[test]
+fn an_index_past_the_end_puts_it_last() {
+    let (_dir, connection) = open();
+    let class_id = classes::create_class(&connection, "1A").unwrap();
+    columns::add_column(&connection, class_id, ColumnType::Test, Language::English).unwrap();
+    let (first_name, _) = name_ids(&connection, class_id);
+    columns::move_column_to(&connection, first_name, 99).unwrap();
+    assert_eq!(order(&connection, class_id), ["<surname>", "Test 1", "<first name>"]);
+}
+
+#[test]
+fn moving_a_column_that_is_gone_is_refused() {
+    let (_dir, connection) = open();
+    assert!(matches!(columns::move_column_to(&connection, 9999, 0), Err(AppError::NotEditable)));
+    assert!(matches!(columns::move_column(&connection, 9999, Direction::Left), Err(AppError::NotEditable)));
+}
+
+#[test]
+fn moving_in_one_class_leaves_the_other_alone() {
+    let (_dir, connection) = open();
+    let a = classes::create_class(&connection, "1A").unwrap();
+    let b = classes::create_class(&connection, "1B").unwrap();
+    let exam = columns::add_column(&connection, a, ColumnType::Test, Language::English).unwrap();
+    columns::add_column(&connection, b, ColumnType::Test, Language::English).unwrap();
+    columns::move_column_to(&connection, exam, 0).unwrap();
+    assert_eq!(order(&connection, a), ["Test 1", "<first name>", "<surname>"]);
+    assert_eq!(order(&connection, b), ["<first name>", "<surname>", "Test 1"]);
 }
 
 #[test]
 fn cells_store_typed_values_and_clear_when_emptied() {
     let (_dir, connection) = open();
     let class_id = classes::create_class(&connection, "1A").unwrap();
-    let ana = pupils::add_new_pupil(&connection, class_id, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(&connection, class_id, "Ana", "").unwrap();
     let test = columns::add_column(&connection, class_id, ColumnType::Test, Language::English).unwrap();
     let notes = columns::add_column(&connection, class_id, ColumnType::Info, Language::English).unwrap();
     cells::set_cell(&connection, test, ana, "7,5").unwrap();
     cells::set_cell(&connection, notes, ana, "shy").unwrap();
     cells::set_cell(&connection, notes, ana, "very shy").unwrap();
-    assert_eq!(sheet::load_sheet(&connection, class_id).unwrap().rows[0].values, ["7,5", "very shy"]);
+    assert_eq!(marks(&sheet::load_sheet(&connection, class_id).unwrap(), 0), ["7,5", "very shy"]);
     cells::set_cell(&connection, test, ana, "  ").unwrap();
-    assert_eq!(sheet::load_sheet(&connection, class_id).unwrap().rows[0].values, ["", "very shy"]);
+    assert_eq!(marks(&sheet::load_sheet(&connection, class_id).unwrap(), 0), ["", "very shy"]);
 }
 
 #[test]
 fn calculated_columns_cannot_be_typed_into() {
     let (_dir, connection) = open();
     let class_id = classes::create_class(&connection, "1A").unwrap();
-    let ana = pupils::add_new_pupil(&connection, class_id, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(&connection, class_id, "Ana", "").unwrap();
     let final_grade = columns::add_column(&connection, class_id, ColumnType::Weighted, Language::English).unwrap();
     assert!(matches!(cells::set_cell(&connection, final_grade, ana, "10"), Err(AppError::NotEditable)));
     assert!(matches!(cells::set_cell(&connection, 9999, ana, "10"), Err(AppError::NotEditable)));
@@ -291,15 +479,15 @@ fn calculated_columns_cannot_be_typed_into() {
 fn sheets_only_show_their_own_class() {
     let (_dir, connection) = open();
     let (a, b) = (classes::create_class(&connection, "1A").unwrap(), classes::create_class(&connection, "2B").unwrap());
-    let ana = pupils::add_new_pupil(&connection, a, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(&connection, a, "Ana", "").unwrap();
     pupils::add_existing_pupil(&connection, b, ana).unwrap();
     let in_a = columns::add_column(&connection, a, ColumnType::Info, Language::English).unwrap();
     let in_b = columns::add_column(&connection, b, ColumnType::Info, Language::English).unwrap();
     cells::set_cell(&connection, in_a, ana, "A note").unwrap();
     cells::set_cell(&connection, in_b, ana, "B note").unwrap();
     let sheet_b = sheet::load_sheet(&connection, b).unwrap();
-    assert_eq!(sheet_b.columns.len(), 1);
-    assert_eq!(sheet_b.rows[0].values, ["B note"]);
+    assert_eq!(sheet_b.columns.len(), 3, "its names and its one column");
+    assert_eq!(marks(&sheet_b, 0), ["B note"]);
 }
 
 #[test]
@@ -307,7 +495,7 @@ fn removing_a_pupil_from_one_class_keeps_them_and_their_other_marks() {
     let (_dir, connection) = open();
     let first = classes::create_class(&connection, "1A").unwrap();
     let second = classes::create_class(&connection, "2B").unwrap();
-    let ana = pupils::add_new_pupil(&connection, first, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(&connection, first, "Ana", "").unwrap();
     pupils::add_existing_pupil(&connection, second, ana).unwrap();
     let exam_1a = columns::add_column(&connection, first, ColumnType::Test, Language::English).unwrap();
     let exam_2b = columns::add_column(&connection, second, ColumnType::Test, Language::English).unwrap();
@@ -317,8 +505,8 @@ fn removing_a_pupil_from_one_class_keeps_them_and_their_other_marks() {
     pupils::remove_from_class(&connection, first, ana).unwrap();
     assert!(pupils::list_class_pupils(&connection, first).unwrap().is_empty());
     let other = sheet::load_sheet(&connection, second).unwrap();
-    assert_eq!(other.rows[0].pupil.name, "Ana");
-    assert_eq!(other.rows[0].values, ["9"]);
+    assert_eq!(other.rows[0].pupil.first_name, "Ana");
+    assert_eq!(marks(&other, 0), ["9"]);
     let marks_left: i64 = connection.query_row("SELECT COUNT(*) FROM cells", [], |row| row.get(0)).unwrap();
     assert_eq!(marks_left, 1, "only the 1A mark went");
 }
@@ -349,7 +537,7 @@ fn a_column_for_a_class_that_is_gone_is_refused_and_nothing_is_added() {
 fn a_sheet_whose_cells_table_is_damaged_is_a_database_error() {
     let (_dir, connection) = open();
     let class = classes::create_class(&connection, "1A").unwrap();
-    pupils::add_new_pupil(&connection, class, "Ana").unwrap();
+    pupils::add_new_pupil(&connection, class, "Ana", "").unwrap();
     connection.execute_batch("DROP TABLE cells").unwrap();
     assert!(matches!(sheet::load_sheet(&connection, class), Err(AppError::Database(_))));
 }
@@ -384,25 +572,25 @@ fn regression_a_cell_for_a_pupil_outside_the_class_is_refused() {
     let (_dir, connection) = open();
     let (a, b) = (classes::create_class(&connection, "1A").unwrap(), classes::create_class(&connection, "2B").unwrap());
     let test = columns::add_column(&connection, a, ColumnType::Test, Language::English).unwrap();
-    let outsider = pupils::add_new_pupil(&connection, b, "Bea").unwrap();
+    let outsider = pupils::add_new_pupil(&connection, b, "Bea", "").unwrap();
     assert!(matches!(cells::set_cell(&connection, test, outsider, "7"), Err(AppError::NotEditable)));
     // had the cell been stored, it would surface as soon as the pupil joined the class
     pupils::add_existing_pupil(&connection, a, outsider).unwrap();
-    assert_eq!(sheet::load_sheet(&connection, a).unwrap().rows[0].values, [""]);
+    assert_eq!(marks(&sheet::load_sheet(&connection, a).unwrap(), 0), [""]);
     cells::set_cell(&connection, test, outsider, "7").unwrap();
     cells::set_cell(&connection, test, outsider, "8").unwrap();
-    assert_eq!(sheet::load_sheet(&connection, a).unwrap().rows[0].values, ["8"]);
+    assert_eq!(marks(&sheet::load_sheet(&connection, a).unwrap(), 0), ["8"]);
 }
 
 #[test]
 fn regression_renaming_something_that_no_longer_exists_is_reported() {
     let (_dir, connection) = open();
     let class = classes::create_class(&connection, "1A").unwrap();
-    let pupil = pupils::add_new_pupil(&connection, class, "Ana").unwrap();
+    let pupil = pupils::add_new_pupil(&connection, class, "Ana", "").unwrap();
     classes::delete_class(&connection, class).unwrap();
     connection.execute("DELETE FROM pupils WHERE id = ?1", [pupil]).unwrap();
     assert!(matches!(classes::rename_class(&connection, class, "2B"), Err(AppError::NotEditable)));
-    assert!(matches!(pupils::rename_pupil(&connection, pupil, "Bea"), Err(AppError::NotEditable)));
+    assert!(matches!(pupils::set_first_name(&connection, pupil, "Bea"), Err(AppError::NotEditable)));
 }
 
 proptest::proptest! {
@@ -472,7 +660,7 @@ fn weights_and_maximums_have_an_upper_bound() {
         let result = columns::set_max_score(&connection, exam, max);
         assert!(matches!(&result, Err(AppError::InvalidNumber { value, .. }) if value == max), "{max}");
     }
-    let kind = columns::list_columns(&connection, class).unwrap()[0].kind;
+    let kind = columns::list_columns(&connection, class).unwrap()[2].kind;
     assert_eq!(
         kind,
         ColumnKind::Test { weight: columns::MAX_WEIGHT, max_score: columns::MAX_SCORE_LIMIT, bonus: false }
@@ -509,10 +697,10 @@ fn regression_accented_names_sort_with_their_letter() {
     let other = classes::create_class(&connection, "Other").unwrap();
     let here = classes::create_class(&connection, "Here").unwrap();
     for name in ["Zoe", "Ánxela", "brais", "Álvaro"] {
-        pupils::add_new_pupil(&connection, other, name).unwrap();
+        pupils::add_new_pupil(&connection, other, name, "").unwrap();
     }
     let candidates: Vec<String> =
-        pupils::pupils_not_in_class(&connection, here).unwrap().into_iter().map(|pupil| pupil.name).collect();
+        pupils::pupils_not_in_class(&connection, here).unwrap().into_iter().map(|pupil| pupil.first_name).collect();
     assert_eq!(candidates, ["Álvaro", "Ánxela", "brais", "Zoe"]);
 }
 
@@ -521,8 +709,8 @@ fn regression_names_match_ignoring_case_in_any_alphabet() {
     // "álvaro" didn't find "Álvaro": NOCASE leaves Á and á apart
     let (_dir, connection) = open();
     let class = classes::create_class(&connection, "1A").unwrap();
-    let alvaro = pupils::add_new_pupil(&connection, class, "Álvaro Núñez").unwrap();
-    pupils::add_new_pupil(&connection, class, "Alvaro Nunez").unwrap();
+    let alvaro = pupils::add_new_pupil(&connection, class, "Álvaro Núñez", "").unwrap();
+    pupils::add_new_pupil(&connection, class, "Alvaro Nunez", "").unwrap();
     let found: Vec<i64> =
         pupils::pupils_named(&connection, "  ÁLVARO NÚÑEZ ").unwrap().into_iter().map(|pupil| pupil.id).collect();
     assert_eq!(found, [alvaro], "case is ignored, accents are not");
@@ -533,7 +721,7 @@ fn deleting_what_is_gone_is_reported() {
     let (_dir, connection) = open();
     let class = classes::create_class(&connection, "1A").unwrap();
     let column = columns::add_column(&connection, class, ColumnType::Info, Language::English).unwrap();
-    let pupil = pupils::add_new_pupil(&connection, class, "Ana").unwrap();
+    let pupil = pupils::add_new_pupil(&connection, class, "Ana", "").unwrap();
     pupils::remove_from_class(&connection, class, pupil).unwrap();
     assert!(matches!(pupils::remove_from_class(&connection, class, pupil), Err(AppError::NotEditable)));
     columns::delete_column(&connection, column).unwrap();
@@ -570,9 +758,9 @@ fn a_pupil_in_no_class_can_be_deleted_and_only_then() {
     let (_dir, connection) = open();
     let a = classes::create_class(&connection, "1A").unwrap();
     let b = classes::create_class(&connection, "1B").unwrap();
-    let ana = pupils::add_new_pupil(&connection, a, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(&connection, a, "Ana", "").unwrap();
     pupils::add_existing_pupil(&connection, b, ana).unwrap();
-    let brais = pupils::add_new_pupil(&connection, b, "Brais").unwrap();
+    let brais = pupils::add_new_pupil(&connection, b, "Brais", "").unwrap();
     assert!(pupils::pupils_in_no_class(&connection).unwrap().is_empty());
 
     pupils::remove_from_class(&connection, a, ana).unwrap();
@@ -580,7 +768,7 @@ fn a_pupil_in_no_class_can_be_deleted_and_only_then() {
     // deleting a class leaves its pupils in no class, but kept
     classes::delete_class(&connection, b).unwrap();
     let left: Vec<String> =
-        pupils::pupils_in_no_class(&connection).unwrap().into_iter().map(|pupil| pupil.name).collect();
+        pupils::pupils_in_no_class(&connection).unwrap().into_iter().map(|pupil| pupil.first_name).collect();
     assert_eq!(left, ["Ana", "Brais"]);
 
     pupils::delete_pupil_in_no_class(&connection, ana).unwrap();
@@ -651,7 +839,7 @@ fn a_column_width_is_stored_clamped_and_reset() {
     let (_dir, connection) = open();
     let class = classes::create_class(&connection, "1A").unwrap();
     let exam = columns::add_column(&connection, class, ColumnType::Test, Language::English).unwrap();
-    let width = |connection: &Connection| columns::list_columns(connection, class).unwrap()[0].width;
+    let width = |connection: &Connection| columns::list_columns(connection, class).unwrap()[2].width;
     assert_eq!(width(&connection), None, "a new column has its kind's default width");
     columns::set_column_width(&connection, exam, Some(200)).unwrap();
     assert_eq!(width(&connection), Some(200));
@@ -665,21 +853,94 @@ fn a_column_width_is_stored_clamped_and_reset() {
 }
 
 #[test]
-fn the_pupil_column_width_is_stored_clamped_and_reset_per_class() {
+fn a_name_column_width_is_stored_clamped_and_reset() {
     let (_dir, connection) = open();
     let class = classes::create_class(&connection, "1A").unwrap();
     let other = classes::create_class(&connection, "2B").unwrap();
-    assert_eq!(classes::class_name_width(&connection, class).unwrap(), None);
-    classes::set_name_width(&connection, class, Some(300)).unwrap();
-    assert_eq!(classes::class_name_width(&connection, class).unwrap(), Some(300));
-    assert_eq!(classes::class_name_width(&connection, other).unwrap(), None, "each class has its own");
-    classes::set_name_width(&connection, class, Some(10)).unwrap();
-    assert_eq!(classes::class_name_width(&connection, class).unwrap(), Some(MIN_NAME_WIDTH));
-    classes::set_name_width(&connection, class, Some(900)).unwrap();
-    assert_eq!(classes::class_name_width(&connection, class).unwrap(), Some(MAX_COLUMN_WIDTH));
-    classes::set_name_width(&connection, class, None).unwrap();
-    assert_eq!(classes::class_name_width(&connection, class).unwrap(), None);
-    assert!(matches!(classes::set_name_width(&connection, 9999, Some(200)), Err(AppError::NotEditable)));
+    let (first_name, surname) = name_ids(&connection, class);
+    let width =
+        |id: i64| columns::list_columns(&connection, class).unwrap().into_iter().find(|c| c.id == id).unwrap().width;
+    assert_eq!((width(first_name), width(surname)), (None, None), "a new class's names have their defaults");
+    columns::set_column_width(&connection, first_name, Some(300)).unwrap();
+    assert_eq!((width(first_name), width(surname)), (Some(300), None), "each name column has its own");
+    let other_widths: Vec<Option<u16>> =
+        columns::list_columns(&connection, other).unwrap().iter().map(|c| c.width).collect();
+    assert_eq!(other_widths, [None, None], "and each class");
+    columns::set_column_width(&connection, surname, Some(10)).unwrap();
+    assert_eq!(width(surname), Some(MIN_COLUMN_WIDTH), "the same limits as any column");
+    columns::set_column_width(&connection, surname, Some(900)).unwrap();
+    assert_eq!(width(surname), Some(MAX_COLUMN_WIDTH));
+    columns::set_column_width(&connection, first_name, None).unwrap();
+    assert_eq!(width(first_name), None);
+}
+
+#[test]
+fn pupils_have_a_first_name_and_an_optional_surname() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    pupils::add_new_pupil(&connection, class, "  Ana ", " Pérez López  ").unwrap();
+    pupils::add_new_pupil(&connection, class, "Brais", "").unwrap();
+    assert!(matches!(pupils::add_new_pupil(&connection, class, "", "Otero"), Err(AppError::EmptyName)));
+    assert!(matches!(pupils::add_new_pupil(&connection, class, "   ", "Otero"), Err(AppError::EmptyName)));
+    let stored: Vec<(String, String)> = pupils::list_class_pupils(&connection, class)
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.first_name, pupil.surname))
+        .collect();
+    assert_eq!(
+        stored,
+        [("Ana".to_owned(), "Pérez López".to_owned()), ("Brais".to_owned(), String::new())],
+        "both trimmed, and nothing added when the first name is missing"
+    );
+}
+
+#[test]
+fn first_name_and_surname_are_renamed_separately_everywhere() {
+    let (_dir, connection) = open();
+    let (a, b) = (classes::create_class(&connection, "1A").unwrap(), classes::create_class(&connection, "2B").unwrap());
+    let ana = pupils::add_new_pupil(&connection, a, "Ana", "Pérez").unwrap();
+    pupils::add_existing_pupil(&connection, b, ana).unwrap();
+    pupils::set_first_name(&connection, ana, " Ana María ").unwrap();
+    pupils::set_surname(&connection, ana, " Pérez López ").unwrap();
+    for class in [a, b] {
+        let pupil = &pupils::list_class_pupils(&connection, class).unwrap()[0];
+        assert_eq!((pupil.first_name.as_str(), pupil.surname.as_str()), ("Ana María", "Pérez López"));
+    }
+    assert!(matches!(pupils::set_first_name(&connection, ana, "  "), Err(AppError::EmptyName)));
+    pupils::set_surname(&connection, ana, "  ").unwrap();
+    let pupil = pupils::pupil_name(&connection, ana).unwrap();
+    assert_eq!((pupil.first_name.as_str(), pupil.surname.as_str()), ("Ana María", ""), "a blank surname clears it");
+    assert!(matches!(pupils::set_surname(&connection, 9999, "x"), Err(AppError::NotEditable)));
+}
+
+#[test]
+fn pupil_menus_sort_by_surname_then_first_name() {
+    let (_dir, connection) = open();
+    let other = classes::create_class(&connection, "Other").unwrap();
+    let here = classes::create_class(&connection, "Here").unwrap();
+    for (first_name, surname) in
+        [("Ana", "Rodríguez"), ("Bea", "Pérez"), ("Álvaro", ""), ("Ana", "Pérez"), ("Xoán", "Alonso")]
+    {
+        pupils::add_new_pupil(&connection, other, first_name, surname).unwrap();
+    }
+    let listed: Vec<String> =
+        pupils::pupils_not_in_class(&connection, here).unwrap().iter().map(|pupil| pupil.listed_name()).collect();
+    assert_eq!(listed, ["Alonso, Xoán", "Álvaro", "Pérez, Ana", "Pérez, Bea", "Rodríguez, Ana"]);
+    classes::delete_class(&connection, other).unwrap();
+    let in_no_class: Vec<String> =
+        pupils::pupils_in_no_class(&connection).unwrap().iter().map(|pupil| pupil.listed_name()).collect();
+    assert_eq!(in_no_class, listed, "pupils in no class are listed the same way");
+}
+
+#[test]
+fn full_names_match_whichever_field_holds_the_words() {
+    let (_dir, connection) = open();
+    let class = classes::create_class(&connection, "1A").unwrap();
+    let split = pupils::add_new_pupil(&connection, class, "Álvaro", "Núñez").unwrap();
+    let whole = pupils::add_new_pupil(&connection, class, "Álvaro Núñez", "").unwrap();
+    let found: Vec<i64> =
+        pupils::pupils_named(&connection, " álvaro NÚÑEZ ").unwrap().into_iter().map(|pupil| pupil.id).collect();
+    assert_eq!(found, [split, whole], "the full name is compared, ignoring case");
 }
 
 #[test]
@@ -687,7 +948,6 @@ fn widths_are_clamped_to_their_own_minimum() {
     use avalio_lite::gradebook::model::clamp_width;
     assert_eq!(clamp_width(None, MIN_COLUMN_WIDTH), None);
     assert_eq!(clamp_width(Some(0), MIN_COLUMN_WIDTH), Some(MIN_COLUMN_WIDTH));
-    assert_eq!(clamp_width(Some(100), MIN_NAME_WIDTH), Some(MIN_NAME_WIDTH));
     assert_eq!(clamp_width(Some(100), MIN_COLUMN_WIDTH), Some(100));
     assert_eq!(clamp_width(Some(u16::MAX), MIN_COLUMN_WIDTH), Some(MAX_COLUMN_WIDTH));
 }

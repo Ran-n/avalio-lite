@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/11/07 20:25:35.547687 )
+[//]: # (+ Revised: 	2026/11/11 17:10:57.321681 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 <p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
@@ -30,7 +30,7 @@ A gradebook for teachers that works like a spreadsheet, does the maths for you, 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/sheet-dark-1280x800@100.png">
-  <img src="tests/desktop/baselines/sheet-light-1280x800@100.png" alt="A class sheet: pupils as rows; test, final-grade, rounded and notes columns; passing and failing marks in green and rose">
+  <img src="tests/desktop/baselines/sheet-light-1280x800@100.png" alt="A class sheet: pupils as rows, with first-name and surname columns, test and final-grade columns; passing and failing marks in green and rose">
 </picture>
 
 <p align="center">

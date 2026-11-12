@@ -11,10 +11,18 @@ export component ColumnPanel inherits Rectangle {
     in property <int> index;
     property <bool> is-first: root.index == 0;
     property <bool> is-last: root.index == Gradebook.columns.length - 1;
+    // a first-name or surname column: its title follows the language and it can't be deleted, so
+    // only the Move buttons are left
+    property <bool> is-name: root.column.kind == ColumnType.first-name || root.column.kind == ColumnType.surname;
 
     width: Theme.panel-width;
-    // the title is the first thing to change, so the keyboard starts there
-    init => { title-field.focus-input(); }
+    // the title is the first thing to change, so the keyboard starts there (the field focuses itself
+    // when made); a name column has none, so its Move buttons
+    init => {
+        if (root.is-name) {
+            move-buttons.focus-first();
+        }
+    }
     background: Theme.surface;
     drop-shadow-blur: 40px;
     drop-shadow-offset-x: -12px;
@@ -80,10 +88,11 @@ export component ColumnPanel inherits Rectangle {
                     previous => { root.show-column(root.index - 1); }
                     next => { root.show-column(root.index + 1); }
                 }
-                VerticalLayout {
+                if !root.is-name: VerticalLayout {
                     spacing: 6px;
                     FieldLabel { text: @tr("Title"); }
-                    title-field := TextField {
+                    TextField {
+                        init => { self.focus-input(); }
                         text: root.column.title;
                         spoken-label: @tr("Title");
                         restores: true;
@@ -98,7 +107,9 @@ export component ColumnPanel inherits Rectangle {
                     Text {
                         wrap: word-wrap;
                         color: Theme.muted;
-                        text: root.column.kind == ColumnType.info ? @tr("Info: free text, such as notes")
+                        text: root.column.kind == ColumnType.first-name ? @tr("First name: the same in every class the pupil is in")
+                            : root.column.kind == ColumnType.surname ? @tr("Surname: the same in every class the pupil is in")
+                            : root.column.kind == ColumnType.info ? @tr("Info: free text, such as notes")
                             : root.column.kind == ColumnType.test ? @tr("Test: a mark out of a maximum that counts towards the final grade")
                             : root.column.kind == ColumnType.weighted ? @tr("Final grade: adds up the tests by their weights")
                             : root.column.kind == ColumnType.average ? @tr("Average: the mean of the marked tests")
@@ -175,7 +186,7 @@ export component ColumnPanel inherits Rectangle {
             // the move buttons share the panel's width; Delete gets a row of its own, so all three
             // fit even with Galician's longer labels. Their keys are said by screen readers and shown
             // in the faint line below, the same in every language.
-            MoveButtons {
+            move-buttons := MoveButtons {
                 is-first: root.is-first;
                 is-last: root.is-last;
                 moved(step) => {
@@ -183,7 +194,7 @@ export component ColumnPanel inherits Rectangle {
                     scope.focus();
                 }
             }
-            HorizontalLayout {
+            if !root.is-name: HorizontalLayout {
                 alignment: end;
                 ActionButton {
                     text: @tr("Delete");

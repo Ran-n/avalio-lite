@@ -1,8 +1,8 @@
 import { Theme } from "../theme.slint";
 import { Gradebook, RowItem } from "../gradebook.slint";
-import { IconButton } from "../components/buttons.slint";
 import { TextField } from "../components/fields.slint";
 
+// A pupil's first name, edited in place. A first name can't be emptied: a refused one is put back.
 export component NameCell inherits Rectangle {
     in property <RowItem> pupil;
     // while the name is being edited, so the sheet can scroll the whole cell into view
@@ -11,31 +11,42 @@ export component NameCell inherits Rectangle {
     height: Theme.row-height;
     background: Theme.surface;
     HorizontalLayout {
-        padding-left: 6px;
+        padding-left: 10px;
         padding-right: 10px;
-        spacing: 4px;
-        VerticalLayout {
-            alignment: center;
-            IconButton {
-                glyph: "×";
-                tooltip: @tr("Remove from this class");
-                destructive: true;
-                clicked => { Gradebook.remove-pupil(root.pupil.pupil-id); }
-            }
-        }
         VerticalLayout {
             alignment: center;
             name := TextField {
                 boxed: false;
-                text: root.pupil.name;
-                spoken-label: @tr("Pupil");
+                text: root.pupil.first-name;
+                spoken-label: @tr("First name");
                 restores: true;
-                saved: root.pupil.name;
+                saved: root.pupil.first-name;
                 restored => { Gradebook.field-restored(); }
-                edited(text) => { Gradebook.rename-pupil(root.pupil.pupil-id, text); }
+                edited(text) => { Gradebook.set-first-name(root.pupil.pupil-id, text); }
             }
         }
     }
 }
 
-// "5 pupils   Class average 7.4   4 passing   1 failing", plus weight warnings.
+// A pupil's surname, edited in place. It may be emptied, so nothing is ever put back.
+export component SurnameCell inherits Rectangle {
+    in property <RowItem> pupil;
+    out property <bool> has-focus: surname.has-focus;
+
+    height: Theme.row-height;
+    background: Theme.surface;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        VerticalLayout {
+            alignment: center;
+            surname := TextField {
+                boxed: false;
+                text: root.pupil.surname;
+                spoken-label: @tr("Surname");
+                leaves-on-enter: true;
+                edited(text) => { Gradebook.set-surname(root.pupil.pupil-id, text); }
+            }
+        }
+    }
+}

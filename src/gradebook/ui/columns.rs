@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.012344
-//+ Revised: 	2026/11/09 21:54:01.690167
+//+ Revised: 	2026/11/11 17:10:59.325790
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model, SharedString};
@@ -10,7 +10,6 @@ use super::items::{from_ui_type, round_sources};
 use super::view::{Refresh, current_class_id};
 use super::{SharedState, run};
 use crate::error::AppError;
-use crate::gradebook::classes;
 use crate::gradebook::columns::{self, Direction};
 use crate::i18n::{self, Message};
 use crate::ui::{AppWindow, Gradebook};
@@ -38,6 +37,14 @@ fn wire_structure(window: &AppWindow, state: &SharedState, dialogs: &SharedDialo
         let direction = if step < 0 { Direction::Left } else { Direction::Right };
         run(window, &shared, "move column", |connection| {
             columns::move_column(connection, i64::from(column_id), direction)?;
+            Ok(Refresh::Sheet)
+        });
+    }));
+
+    let shared = state.clone();
+    gradebook.on_move_column_to(with_window2(window, move |window, column_id, index| {
+        run(window, &shared, "move column", |connection| {
+            columns::move_column_to(connection, i64::from(column_id), usize::try_from(index).unwrap_or(0))?;
             Ok(Refresh::Sheet)
         });
     }));
@@ -135,15 +142,6 @@ fn wire_widths(window: &AppWindow, state: &SharedState) {
         run(window, &shared, "set column width", |connection| {
             let Some(column_id) = column_id else { return Err(AppError::NotEditable) };
             columns::set_column_width(connection, i64::from(column_id), stored_width(width))?;
-            Ok(Refresh::Widths)
-        });
-    }));
-
-    let shared = state.clone();
-    gradebook.on_set_name_width(with_window1(window, move |window, width| {
-        let class_id = current_class_id(window);
-        run(window, &shared, "set pupil column width", |connection| {
-            classes::set_name_width(connection, class_id, stored_width(width))?;
             Ok(Refresh::Widths)
         });
     }));

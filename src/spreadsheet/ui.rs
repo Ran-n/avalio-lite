@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.870291
-//+ Revised: 	2026/11/02 22:53:32.926800
+//+ Revised: 	2026/11/11 17:11:00.872714
 // -----------------------------------------------------------------------------
 
 //! The sheet's Excel menu entries: export the open class to a workbook, and import pupils and
@@ -59,7 +59,10 @@ fn wire_import(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs)
         let class_id = current_class_id(window);
         let mut plan = None;
         run(window, &shared, "read import", |connection| {
-            let table = import::read_table(&path)?;
+            let (first_name, surname): (Vec<&str>, Vec<&str>) =
+                (i18n::first_name_headers().collect(), i18n::surname_headers().collect());
+            let names = import::NameHeaders { first_name: &first_name, surname: &surname };
+            let table = import::read_table(&path, &names)?;
             plan = Some(import::plan_import(connection, class_id, &table)?);
             Ok(Refresh::Nothing)
         });
