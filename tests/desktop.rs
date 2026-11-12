@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/11/10 07:42:00.919316
+//+ Revised: 	2026/11/11 23:00:48.764100
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -136,7 +136,7 @@ fn with_a_pupil_in_no_class() -> Fixture {
         let connection = state.connection().unwrap();
         common::sample_class(connection);
         let spare = classes::create_class(connection, "Spare").unwrap();
-        let pupil = pupils::add_new_pupil(connection, spare, "Xoán Vidal").unwrap();
+        let pupil = pupils::add_new_pupil(connection, spare, "Xoán Vidal", "").unwrap();
         pupils::remove_from_class(connection, spare, pupil).unwrap();
         classes::delete_class(connection, spare).unwrap();
     }
@@ -149,8 +149,17 @@ fn config(fixture: &Fixture) -> PathBuf {
     fixture.path("config")
 }
 
+/// Where the mark columns start in the sample class: after the first-name and surname columns.
+const FIRST_MARK: usize = 2;
+
+/// The mark cells of a row of the sheet, the names left out.
 fn cells(state: &Value, row: usize) -> Vec<Value> {
-    state["rows"][row]["cells"].as_array().unwrap().clone()
+    state["rows"][row]["cells"].as_array().unwrap()[FIRST_MARK..].to_vec()
+}
+
+/// The sheet's column titles, the names included, in sheet order.
+fn column_titles(state: &Value) -> Vec<String> {
+    state["columns"].as_array().unwrap().iter().map(|title| title.as_str().unwrap().to_owned()).collect()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -238,8 +247,9 @@ fn the_sheet() {
     let fixture = with_sample_class();
     let mut app = App::start(&config(&fixture), "en");
     let state = app.state();
-    // the final grade and its rounding are pills; a rounding can pass where the grade doesn't
-    let pills: Vec<Value> = (0..5).flat_map(|row| cells(&state, row)[3..5].to_vec()).collect();
+    // the final grades are pills (the rounding's pills are past the window's right edge, behind the
+    // two name columns)
+    let pills: Vec<Value> = (0..5).map(|row| cells(&state, row)[3].clone()).collect();
     let passing = pills.iter().filter(|cell| cell["tone"] == "pass").count();
     let failing = pills.iter().filter(|cell| cell["tone"] == "fail").count();
     assert!(passing > 0 && failing > 0, "the sample has both: {pills:?}");
@@ -248,7 +258,7 @@ fn the_sheet() {
         assert_on_screen(image, located(app, "+ Add column"), "+ Add column");
         assert_on_screen(image, located(app, "More actions"), "More actions");
         if size == NORMAL {
-            // every final grade and its rounding is a pill: pass pills green, fail pills rose
+            // every final grade is a pill: pass pills green, fail pills rose
             let green = image.blobs(colours.get("pass-soft", dark), 4, app.area(300.0));
             let rose = image.blobs(colours.get("fail-soft", dark), 4, app.area(300.0));
             assert_eq!(green.len(), passing, "pass pills: {green:?}");
@@ -277,16 +287,17 @@ fn the_sheet() {
     assert_on_screen(&image, located(&mut app, "+ Engadir columna"), "+ Engadir columna");
     app.quit();
 
-    a_wide_pupil_column();
+    wide_name_columns();
     a_long_note();
     enter_moves_down_a_column();
 }
 
-/// The longest name in the sample, given to Uxía so the pupil column is too narrow for it.
-const LONG_PUPIL_NAME: &str = "Uxía Fernández de la Iglesia Castelao";
+/// The longest surname in the sample, given to Uxía so the surname column is too narrow for it.
+const LONG_SURNAME: &str = "Fernández de la Iglesia Castelao";
 
-/// The pupil column dragged to 400px by its edge, with real mouse messages: the long name shows whole.
-fn a_wide_pupil_column() {
+/// The name columns dragged wider by their edges, with real mouse messages: the long surname shows
+/// whole, and both widths are kept after a restart.
+fn wide_name_columns() {
     let fixture = Fixture::new();
     let mut state = fixture.set_up();
     {
@@ -294,33 +305,48 @@ fn a_wide_pupil_column() {
         let connection = state.connection().unwrap();
         let class = common::sample_class(connection);
         let uxia = pupils::list_class_pupils(connection, class).unwrap()[4].id;
-        pupils::rename_pupil(connection, uxia, LONG_PUPIL_NAME).unwrap();
+        pupils::set_surname(connection, uxia, LONG_SURNAME).unwrap();
     }
     state.shutdown();
     relative_paths(&fixture);
     let mut app = App::start(&config(&fixture), "en");
-    // the edges in sheet order: the pupil column's is the first
-    app.drag_nth("Column width", 0, 400.0 - 210.0);
+    // the edges in sheet order: the first name's, then the surname's
+    app.drag_nth("Column width", 0, 200.0 - 160.0);
+    app.drag_nth("Column width", 1, 400.0 - 210.0);
     let state = app.state();
-    assert_eq!(state["name_width"], 400, "{state}");
+    assert_eq!(state["column_widths"][0], 200, "{state}");
+    assert_eq!(state["column_widths"][1], 400, "{state}");
     every_look(&mut app, "sheet-wide-names", |app, image, _, _| {
-        let edge = app.locate("Column width")[0];
-        let names = app.locate("Pupil");
-        let uxia = names.iter().max_by_key(|name| name.y).copied().unwrap();
-        assert_on_screen(image, uxia, "the long name");
+        let edge = app.locate("Column width")[1];
+        // the header first, then the pupils' surname fields
+        let surnames = app.locate("Surname");
+        let uxia = surnames.iter().max_by_key(|name| name.y).copied().unwrap();
+        assert_on_screen(image, uxia, "the long surname");
         // a field is only wider than its column when its text doesn't fit
-        assert!(uxia.right() <= edge.right(), "the whole name fits: {uxia:?}, edge {edge:?}");
+        assert!(uxia.right() <= edge.right(), "the whole surname fits: {uxia:?}, edge {edge:?}");
     });
     app.quit();
     let mut reopened = App::start(&config(&fixture), "en");
     let state = reopened.state();
-    assert_eq!(state["name_width"], 400, "the width is kept after a restart: {state}");
+    assert_eq!(state["column_widths"][0], 200, "the widths are kept after a restart: {state}");
+    assert_eq!(state["column_widths"][1], 400, "the widths are kept after a restart: {state}");
     reopened.quit();
 }
 
-/// A note longer than its cell, typed for real and with End pressed: the end of it shows.
+/// A note longer than its cell, typed for real and with End pressed: the end of it shows. Notes is
+/// moved next to the names, since at the window's size the marks fill the sheet before it.
 fn a_long_note() {
-    let fixture = with_sample_class();
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        use avalio_lite::gradebook::columns;
+        let connection = state.connection().unwrap();
+        let class = common::sample_class(connection);
+        let notes = columns::list_columns(connection, class).unwrap().last().unwrap().id;
+        columns::move_column_to(connection, notes, FIRST_MARK).unwrap();
+    }
+    state.shutdown();
+    relative_paths(&fixture);
     let mut app = App::start(&config(&fixture), "en");
     app.type_into("Ana Pérez, Notes", "Brings a note from home about missing the trip to Santiago");
     app.press_end();
@@ -365,22 +391,22 @@ fn the_column_panel_and_menus() {
     let fixture = with_sample_class();
     let mut app = App::start(&config(&fixture), "en");
     app.click("Exam 1");
-    assert_eq!(app.state()["panel_index"], 0);
+    assert_eq!(app.state()["panel_index"], FIRST_MARK);
     every_look(&mut app, "column-panel", |app, image, _, _| {
         for control in PANEL_CONTROLS.iter().chain(&["Bonus test"]) {
             assert_on_screen(image, located(app, control), control);
         }
     });
     app.click("Next column (Alt+→)");
-    assert_eq!(app.state()["panel_index"], 1, "a real click on › showed the next column");
+    assert_eq!(app.state()["panel_index"], FIRST_MARK + 1, "a real click on › showed the next column");
     app.click("Previous column (Alt+←)");
-    assert_eq!(app.state()["panel_index"], 0);
+    assert_eq!(app.state()["panel_index"], FIRST_MARK);
     app.click("Move right (Ctrl+→)");
     let state = app.state();
-    assert_eq!(state["columns"][1], "Exam 1", "a real click moved the column: {state}");
+    assert_eq!(state["columns"][FIRST_MARK + 1], "Exam 1", "a real click moved the column: {state}");
     app.press_with_control(VK_LEFT);
     let state = app.state();
-    assert_eq!(state["columns"][0], "Exam 1", "Ctrl+← moved it back: {state}");
+    assert_eq!(state["columns"][FIRST_MARK], "Exam 1", "Ctrl+← moved it back: {state}");
     // Escape closes the panel after a click in it, from the real window too
     app.press_escape();
     assert_eq!(app.state()["panel_index"], -1, "Escape closed the panel");
@@ -399,7 +425,7 @@ fn the_column_panel_and_menus() {
         },
     );
     app.click_in_menu("Info");
-    assert_eq!(app.state()["columns"].as_array().unwrap().len(), 7, "a real click added a column");
+    assert_eq!(app.state()["columns"].as_array().unwrap().len(), FIRST_MARK + 7, "a real click added a column");
     app.quit();
 
     let mut app = App::start(&config(&fixture), "gl");
@@ -417,6 +443,63 @@ fn the_column_panel_and_menus() {
         let found = app.locate_in_menu(&label);
         assert_eq!(found.len(), 1, "{label}");
         assert_on_screen(&image, found[0], &label);
+    }
+    app.quit();
+}
+
+/// The sample's columns once Surname moved past Exam 1.
+const MOVED: [&str; 8] =
+    ["First name", "Exam 1", "Surname", "Lab report", "Project", "Final grade", "Report card", "Notes"];
+
+/// Surname dragged by its header past Exam 1, with real mouse messages: while it is held the header
+/// is dimmed and a line shows where it will land; let go, Exam 1 sits between the names, at every
+/// look and after a restart.
+#[test]
+#[ignore = "desktop: opens the real window; run with --ignored"]
+fn dragging_a_header() {
+    let _turn = desktop_support::turn();
+    // a drop moves the column for good, so each held look starts from a fresh class
+    for dark in [false, true] {
+        let fixture = with_sample_class();
+        let mut app = App::start(&config(&fixture), "en");
+        app.resize(NORMAL.0, NORMAL.1);
+        app.theme(dark);
+        // from the middle of Surname (210px wide) to past the middle of Exam 1 (128px), just after it
+        let at = app.hold_drag_nth("Surname", 0, 105.0 + 100.0);
+        let theme = if dark { "dark" } else { "light" };
+        app.snapshot_holding(&format!("sheet-drag-{theme}-{}x{}", NORMAL.0, NORMAL.1));
+        assert_eq!(column_titles(&app.state())[1], "Surname", "nothing moves before the drop");
+        app.release(at);
+        let titles = column_titles(&app.state());
+        assert_eq!(titles[..3], MOVED[..3], "the drop moved Surname after Exam 1");
+        app.quit();
+    }
+
+    let fixture = with_sample_class();
+    let mut app = App::start(&config(&fixture), "en");
+    let at = app.hold_drag_nth("Surname", 0, 105.0 + 100.0);
+    app.release(at);
+    assert_eq!(column_titles(&app.state()), MOVED, "a real drag moved Surname");
+    every_look(&mut app, "sheet-moved-names", |app, image, _, _| {
+        for header in ["First name", "Exam 1", "Surname"] {
+            assert_on_screen(image, app.locate(header)[0], header);
+        }
+        let first = app.locate("First name")[0];
+        let exam = app.locate("Exam 1")[0];
+        let surname = app.locate("Surname")[0];
+        assert!(first.x < exam.x && exam.x < surname.x, "drawn in their new order: {first:?} {exam:?} {surname:?}");
+    });
+    app.quit();
+    let mut reopened = App::start(&config(&fixture), "en");
+    assert_eq!(column_titles(&reopened.state()), MOVED, "the order is kept after a restart");
+    reopened.quit();
+
+    let mut app = App::start(&config(&fixture), "gl");
+    let image = galician_look(&mut app, "sheet-moved-names");
+    for header in ["Nome", "Apelidos", "Nome…", "Apelidos…"] {
+        let found = app.locate(header);
+        assert!(!found.is_empty(), "{header}");
+        assert_on_screen(&image, found[0], header);
     }
     app.quit();
 }
@@ -837,7 +920,7 @@ fn the_licence_screen() {
     });
     // the longest message, in the least room
     app.send(json!({ "cmd": "licence", "refuse": "already_activated", "status": 409 }));
-    app.type_into("Licence key", "BRN-79YN-44XQ-W025-377Z");
+    app.type_into("Licence key", "BRN-EYZE-C1AE-CR2G-MTJK");
     app.click("Activate");
     app.resize(MINIMUM.0, MINIMUM.1);
     app.theme(false);
@@ -858,7 +941,7 @@ fn the_licence_screen() {
         assert_on_screen(&image, located(&mut app, control), control);
     }
     app.send(json!({ "cmd": "licence", "refuse": "already_activated", "status": 409 }));
-    app.type_into("Clave de licenza", "BRN-79YN-44XQ-W025-377Z");
+    app.type_into("Clave de licenza", "BRN-EYZE-C1AE-CR2G-MTJK");
     app.click("Activar");
     let image = galician_look(&mut app, "licence-in-use-elsewhere");
     assert_on_screen(&image, located(&mut app, "Facer copia dos meus datos"), "Facer copia dos meus datos");

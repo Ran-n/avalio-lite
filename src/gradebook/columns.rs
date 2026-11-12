@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.917995
-//+ Revised: 	2026/11/09 21:54:00.926804
+//+ Revised: 	2026/11/11 17:10:58.120730
 // -----------------------------------------------------------------------------
 
 use std::collections::HashMap;
@@ -39,12 +39,16 @@ pub fn list_columns(connection: &Connection, class_id: i64) -> Result<Vec<Column
 
 /// Adds a column at the end with defaults: a test takes the weight still missing to reach 100 %,
 /// a rounded column rounds the last numeric column. `titles` words the title, which can be renamed.
+/// Name columns can't be added (`NotEditable`): every class has its two from the start.
 pub fn add_column(
     connection: &Connection,
     class_id: i64,
     column_type: ColumnType,
     titles: impl ColumnTitles,
 ) -> Result<i64> {
+    if matches!(column_type, ColumnType::FirstName | ColumnType::Surname) {
+        return Err(AppError::NotEditable);
+    }
     let existing = list_columns(connection, class_id)?;
     insert_column(
         connection,
@@ -54,8 +58,12 @@ pub fn add_column(
     )
 }
 
-/// Adds a column at the end with exactly these title and settings.
+/// Adds a column at the end with exactly these title and settings. Not a name column: those come
+/// with the class (`NotEditable`).
 pub fn insert_column(connection: &Connection, class_id: i64, title: &str, kind: ColumnKind) -> Result<i64> {
+    if kind.is_name() {
+        return Err(AppError::NotEditable);
+    }
     let title = clean_name(title)?;
     let (weight, max_score, source, decimals) = kind_fields(kind);
     let bonus = matches!(kind, ColumnKind::Test { bonus: true, .. });
@@ -72,34 +80,59 @@ pub fn insert_column(connection: &Connection, class_id: i64, title: &str, kind: 
     Ok(id)
 }
 
+/// Renames a column; a name column's title follows the interface language, so it is refused
+/// (`NotEditable`).
 pub fn rename_column(connection: &Connection, column_id: i64, title: &str) -> Result<()> {
     let title = clean_name(title)?;
-    update_one(connection, "UPDATE sheet_columns SET title = ?2 WHERE id = ?1", params![column_id, title])
+    update_one(
+        connection,
+        "UPDATE sheet_columns SET title = ?2 WHERE id = ?1 AND kind NOT IN ('first_name', 'surname')",
+        params![column_id, title],
+    )
 }
 
-/// Adds copies of `columns` (from this class or another database) to the end of class `class_id`,
-/// in order, with every setting and width. A rounded column may round a column to its right, so
-/// sources are set once every copy exists; a source that isn't among `columns` is left unset.
-/// Returns original column id -> copy id.
+/// Gives class `class_id`, newly made (so it has only its two name columns), copies of `columns`
+/// (from another class or another database) in their order, with every setting and width: its own
+/// name columns take the place and width of the originals', the rest are added. A rounded column
+/// may round a column to its right, so sources are set once every copy exists; a source that isn't
+/// among `columns` is left unset. Callers hold a transaction. Returns original column id -> copy id.
 pub fn copy_columns(connection: &Connection, class_id: i64, columns: &[Column]) -> Result<HashMap<i64, i64>> {
+    let own_names = list_columns(connection, class_id)?;
+    let own_name = |kind: ColumnKind| {
+        own_names.iter().find(|column| column.kind == kind).map(|column| column.id).ok_or(AppError::NotEditable)
+    };
     let mut ids = HashMap::new();
     for column in columns {
-        let kind = match column.kind {
-            ColumnKind::Round { decimals, .. } => ColumnKind::Round { source: None, decimals },
-            kind => kind,
+        let copy = match column.kind {
+            ColumnKind::FirstName | ColumnKind::Surname => own_name(column.kind)?,
+            ColumnKind::Round { decimals, .. } => {
+                insert_column(connection, class_id, &column.title, ColumnKind::Round { source: None, decimals })?
+            }
+            kind => insert_column(connection, class_id, &column.title, kind)?,
         };
-        let copy = insert_column(connection, class_id, &column.title, kind)?;
         if column.width.is_some() {
             set_column_width(connection, copy, column.width)?;
         }
         ids.insert(column.id, copy);
     }
+    let order: Vec<i64> = columns.iter().map(|column| ids[&column.id]).collect();
+    // a source missing its name columns (none should be) keeps the class's own at the end
+    let rest = own_names.iter().map(|column| column.id).filter(|id| !order.contains(id));
+    renumber(connection, &order.iter().copied().chain(rest).collect::<Vec<_>>())?;
     for column in columns {
         if let ColumnKind::Round { source: Some(source), .. } = column.kind {
             set_round_source(connection, ids[&column.id], ids.get(&source).copied())?;
         }
     }
     Ok(ids)
+}
+
+/// Gives the columns positions 1..n in the order of `ids`.
+fn renumber(connection: &Connection, ids: &[i64]) -> Result<()> {
+    for (position, id) in (1_i64..).zip(ids) {
+        connection.execute("UPDATE sheet_columns SET position = ?2 WHERE id = ?1", params![id, position])?;
+    }
+    Ok(())
 }
 
 /// Sets the width the column is shown at, clamped to the limits; `None` puts it back to the
@@ -172,41 +205,62 @@ pub fn set_round_source(connection: &Connection, column_id: i64, source: Option<
     Ok(())
 }
 
+/// Deletes a column and its cells. Name columns can't be deleted (`NotEditable`).
 pub fn delete_column(connection: &Connection, column_id: i64) -> Result<()> {
-    update_one(connection, "DELETE FROM sheet_columns WHERE id = ?1", [column_id])?;
+    update_one(
+        connection,
+        "DELETE FROM sheet_columns WHERE id = ?1 AND kind NOT IN ('first_name', 'surname')",
+        [column_id],
+    )?;
     log::info!("deleted column {column_id}");
     Ok(())
 }
 
-/// Swaps the column with its neighbour; does nothing at either end.
+/// Moves the column one place left or right; does nothing at either end.
 pub fn move_column(connection: &Connection, column_id: i64, direction: Direction) -> Result<()> {
-    let (comparison, order) = match direction {
-        Direction::Left => ("<", "DESC"),
-        Direction::Right => (">", "ASC"),
+    let (_, index) = class_order(connection, column_id)?;
+    let target = match direction {
+        Direction::Left => index.saturating_sub(1),
+        Direction::Right => index + 1,
     };
-    let neighbour: Option<(i64, i64, i64)> = connection
-        .query_row(
-            &format!(
-                "SELECT n.id, n.position, c.position
-                 FROM sheet_columns c JOIN sheet_columns n ON n.class_id = c.class_id
-                 WHERE c.id = ?1 AND n.position {comparison} c.position
-                 ORDER BY n.position {order} LIMIT 1"
-            ),
-            [column_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .optional()?;
-    let Some((neighbour_id, neighbour_position, own_position)) = neighbour else { return Ok(()) };
+    move_column_to(connection, column_id, target)
+}
+
+/// Moves the column to place `index` of its class's columns (counting from 0, with the column
+/// taken out first), past the end meaning last, and numbers the positions 1..n again; all in one
+/// transaction. A column that doesn't exist is `NotEditable`. Moving it to where it is writes
+/// nothing.
+pub fn move_column_to(connection: &Connection, column_id: i64, index: usize) -> Result<()> {
+    let (mut order, current) = class_order(connection, column_id)?;
+    let target = index.min(order.len() - 1);
+    if target == current {
+        return Ok(());
+    }
+    order.remove(current);
+    order.insert(target, column_id);
     let transaction = connection.unchecked_transaction()?;
-    transaction
-        .execute("UPDATE sheet_columns SET position = ?2 WHERE id = ?1", params![column_id, neighbour_position])?;
-    transaction.execute("UPDATE sheet_columns SET position = ?2 WHERE id = ?1", params![neighbour_id, own_position])?;
+    renumber(&transaction, &order)?;
     transaction.commit()?;
+    log::info!("moved column {column_id} to {target}");
     Ok(())
+}
+
+/// The ids of the column's class's columns in order, and where the column is among them.
+fn class_order(connection: &Connection, column_id: i64) -> Result<(Vec<i64>, usize)> {
+    let class_id: i64 = connection
+        .query_row("SELECT class_id FROM sheet_columns WHERE id = ?1", [column_id], |row| row.get(0))
+        .optional()?
+        .ok_or(AppError::NotEditable)?;
+    let mut statement = connection.prepare("SELECT id FROM sheet_columns WHERE class_id = ?1 ORDER BY position")?;
+    let order: Vec<i64> = statement.query_map([class_id], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?;
+    let index = order.iter().position(|id| *id == column_id).ok_or(AppError::NotEditable)?;
+    Ok((order, index))
 }
 
 fn default_kind(column_type: ColumnType, existing: &[Column]) -> ColumnKind {
     match column_type {
+        ColumnType::FirstName => ColumnKind::FirstName,
+        ColumnType::Surname => ColumnKind::Surname,
         ColumnType::Info => ColumnKind::Info,
         ColumnType::Test => ColumnKind::Test {
             weight: (FULL_WEIGHT - weight_total(existing)).max(0.0),
@@ -235,7 +289,7 @@ fn default_title(column_type: ColumnType, existing: &[Column], titles: &impl Col
 
 fn kind_fields(kind: ColumnKind) -> (Option<f64>, Option<f64>, Option<i64>, Option<u8>) {
     match kind {
-        ColumnKind::Info => (None, None, None, None),
+        ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info => (None, None, None, None),
         ColumnKind::Test { weight, max_score, .. } => (Some(weight), Some(max_score), None, None),
         ColumnKind::Weighted { max_score } | ColumnKind::Average { max_score } => (None, Some(max_score), None, None),
         ColumnKind::Round { source, decimals } => (None, None, source, Some(decimals)),
@@ -245,6 +299,8 @@ fn kind_fields(kind: ColumnKind) -> (Option<f64>, Option<f64>, Option<i64>, Opti
 fn column_from_row(row: &Row) -> rusqlite::Result<Column> {
     let code: String = row.get(2)?;
     let kind = match code.as_str() {
+        "first_name" => ColumnKind::FirstName,
+        "surname" => ColumnKind::Surname,
         "info" => ColumnKind::Info,
         "test" => ColumnKind::Test { weight: row.get(3)?, max_score: row.get(4)?, bonus: row.get(7)? },
         "weighted" => ColumnKind::Weighted { max_score: row.get(4)? },

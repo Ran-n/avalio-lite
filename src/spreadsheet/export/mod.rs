@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.700090
-//+ Revised: 	2026/11/03 11:39:47.183723
+//+ Revised: 	2026/11/11 17:11:00.036326
 // -----------------------------------------------------------------------------
 
 //! Saves a class sheet as an .xlsx workbook: the sheet as it shows on screen, then a tab listing
@@ -46,7 +46,7 @@ pub fn sheet_workbook(class_name: &str, sheet: &Sheet, language: Language) -> st
         marks_tab.push_str(TAKEN_SUFFIX);
     }
     let mut workbook = Workbook::new();
-    write_marks(workbook.add_worksheet().set_name(marks_tab)?, sheet, &labels, language)?;
+    write_marks(workbook.add_worksheet().set_name(marks_tab)?, sheet, language)?;
     write_settings(workbook.add_worksheet().set_name(labels.columns_tab)?, &sheet.columns, &labels, language)?;
     Ok(workbook)
 }
@@ -62,8 +62,8 @@ enum Value<'a> {
 /// with the computer's decimal separator; a score that isn't valid stays the text that was typed.
 fn exported_value<'a>(kind: ColumnKind, raw: &'a str, shown: &Evaluated) -> Value<'a> {
     match kind {
-        ColumnKind::Info if raw.is_empty() => Value::Empty,
-        ColumnKind::Info => Value::Text(raw),
+        ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info if raw.is_empty() => Value::Empty,
+        ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info => Value::Text(raw),
         ColumnKind::Test { .. } if shown.is_invalid => Value::Text(raw),
         ColumnKind::Test { .. } => parse_number(raw).map_or(Value::Empty, Value::Number),
         ColumnKind::Weighted { .. } | ColumnKind::Average { .. } | ColumnKind::Round { .. } => {
@@ -72,20 +72,13 @@ fn exported_value<'a>(kind: ColumnKind, raw: &'a str, shown: &Evaluated) -> Valu
     }
 }
 
-fn write_marks(
-    tab: &mut Worksheet,
-    sheet: &Sheet,
-    labels: &ExportLabels,
-    language: Language,
-) -> std::result::Result<(), XlsxError> {
-    let titles = sheet.columns.iter().map(|column| column.title.as_str());
-    write_header(tab, std::iter::once(labels.pupil).chain(titles))?;
+fn write_marks(tab: &mut Worksheet, sheet: &Sheet, language: Language) -> std::result::Result<(), XlsxError> {
+    write_header(tab, sheet.columns.iter().map(|column| export_title(column, language)))?;
     for (index, row) in sheet.rows.iter().enumerate() {
         let excel_row = row_number(index + 1)?;
-        tab.write_string(excel_row, 0, &row.pupil.name)?;
         let shown = evaluate_row(&sheet.columns, &row.values);
         for (index, ((column, raw), shown)) in sheet.columns.iter().zip(&row.values).zip(&shown).enumerate() {
-            let excel_column = column_number(index + 1)?;
+            let excel_column = column_number(index)?;
             match exported_value(column.kind, raw, shown) {
                 Value::Empty => {}
                 Value::Number(number) => {
@@ -97,7 +90,7 @@ fn write_marks(
             }
         }
     }
-    tab.set_freeze_panes(1, 1)?;
+    tab.set_freeze_panes(1, frozen_columns(&sheet.columns))?;
     // before the note, which would otherwise widen the names column to its whole length
     tab.autofit();
     if grades_are_provisional(&sheet.columns) {
@@ -106,6 +99,19 @@ fn write_marks(
         tab.write_string_with_format(row_number(sheet.rows.len() + 2)?, 0, note, &Format::new().set_italic())?;
     }
     Ok(())
+}
+
+/// A column's header in the workbook: a name column's in `language`, the others' their title.
+fn export_title(column: &Column, language: Language) -> &str {
+    i18n::name_column_title(language, column.kind.column_type()).unwrap_or(&column.title)
+}
+
+/// The columns kept in view while scrolling sideways: the leading ones up to the rightmost name
+/// column when both names are among the first two, none otherwise, since freezing marks in front
+/// of the names would keep the names that scroll away out of view.
+fn frozen_columns(columns: &[Column]) -> ColNum {
+    let names_lead = columns.len() >= 2 && columns[..2].iter().all(|column| column.kind.is_name());
+    if names_lead { 2 } else { 0 }
 }
 
 /// One row per column: its kind, and the settings that kind has.
@@ -124,10 +130,10 @@ fn write_settings(
     write_header(tab, labels.column_headers.into_iter())?;
     for (index, column) in columns.iter().enumerate() {
         let excel_row = row_number(index + 1)?;
-        tab.write_string(excel_row, 0, &column.title)?;
+        tab.write_string(excel_row, 0, export_title(column, language))?;
         tab.write_string(excel_row, KIND, i18n::column_type_name(language, column.kind.column_type()))?;
         match column.kind {
-            ColumnKind::Info => {}
+            ColumnKind::FirstName | ColumnKind::Surname | ColumnKind::Info => {}
             ColumnKind::Test { weight, max_score, bonus } => {
                 tab.write_number(excel_row, WEIGHT, weight)?;
                 tab.write_number(excel_row, MAXIMUM, max_score)?;
@@ -186,4 +192,23 @@ fn save(workbook: &mut Workbook, path: &Path) -> Result<()> {
 
 fn write_error(path: &Path, error: impl Display) -> AppError {
     AppError::SpreadsheetWrite { path: path.to_path_buf(), reason: error.to_string() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::frozen_columns;
+    use crate::gradebook::model::{Column, ColumnKind};
+
+    fn columns(kinds: &[ColumnKind]) -> Vec<Column> {
+        (1..).zip(kinds).map(|(id, kind)| Column { id, title: String::new(), kind: *kind, width: None }).collect()
+    }
+
+    #[test]
+    fn the_names_stay_in_view_only_when_they_lead() {
+        use ColumnKind::{FirstName, Info, Surname};
+        assert_eq!(frozen_columns(&columns(&[FirstName, Surname, Info])), 2);
+        assert_eq!(frozen_columns(&columns(&[Surname, FirstName, Info])), 2, "in either order");
+        assert_eq!(frozen_columns(&columns(&[FirstName, Info, Surname])), 0, "a mark between them: only the header");
+        assert_eq!(frozen_columns(&columns(&[Info, FirstName, Surname])), 0);
+    }
 }

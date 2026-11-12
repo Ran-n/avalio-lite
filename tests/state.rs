@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/11/03 10:00:19.111205
+//+ Revised: 	2026/11/11 17:11:02.084860
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -21,7 +21,7 @@ fn pupil_count(state: &AppState) -> i64 {
 }
 
 fn add_pupil(state: &AppState) {
-    state.connection().unwrap().execute("INSERT INTO pupils (name) VALUES ('Ana Pérez')", []).unwrap();
+    state.connection().unwrap().execute("INSERT INTO pupils (first_name) VALUES ('Ana Pérez')", []).unwrap();
 }
 
 #[test]

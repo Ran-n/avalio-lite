@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.959439
-//+ Revised: 	2026/11/03 08:27:18.728695
+//+ Revised: 	2026/11/11 17:11:02.007439
 // -----------------------------------------------------------------------------
 
 //! The Excel export, read back with calamine as Excel would read it, and the import, from
@@ -19,12 +19,12 @@ use avalio_lite::error::AppError;
 use avalio_lite::gradebook::compute::{evaluate_row, parse_number};
 use avalio_lite::gradebook::model::ColumnType;
 use avalio_lite::gradebook::{cells, classes, columns, pupils, sheet};
-use avalio_lite::i18n::Language;
+use avalio_lite::i18n::{self, Language};
 use avalio_lite::platform::db;
 use avalio_lite::platform::storage::partial_path;
 use avalio_lite::spreadsheet::export::{export_sheet, file_name, tab_name};
 use avalio_lite::spreadsheet::import::{
-    ImportRow, ImportSummary, ImportTable, LeftOut, apply_import, plan_import, read_table,
+    ImportRow, ImportSummary, ImportTable, LeftOut, NameHeaders, apply_import, plan_import, read_table,
 };
 
 /// A database in a scratch folder, where the exports go too.
@@ -82,7 +82,8 @@ fn text(value: &str) -> Data {
 }
 
 /// Class "1A": notes, an exam (60 %) and a lab (40 %, out of 5), a final grade, an average and
-/// the final grade rounded to whole marks. Ana has every mark, Bea only the exam, Carla none.
+/// the final grade rounded to whole marks. Ana Pérez López has every mark, Bea only the exam,
+/// Carla none; only Ana has a surname.
 fn full_class(scratch: &Scratch) -> i64 {
     let connection = &scratch.connection;
     let class = classes::create_class(connection, "1A").unwrap();
@@ -97,9 +98,9 @@ fn full_class(scratch: &Scratch) -> i64 {
     let rounded = scratch.column(class, ColumnType::Round, "Report card");
     columns::set_round_source(connection, rounded, Some(final_grade)).unwrap();
     columns::set_decimals(connection, rounded, "0").unwrap();
-    let ana = pupils::add_new_pupil(connection, class, "Ana Pérez").unwrap();
-    let bea = pupils::add_new_pupil(connection, class, "Bea").unwrap();
-    pupils::add_new_pupil(connection, class, "Carla").unwrap();
+    let ana = pupils::add_new_pupil(connection, class, "Ana", "Pérez López").unwrap();
+    let bea = pupils::add_new_pupil(connection, class, "Bea", "").unwrap();
+    pupils::add_new_pupil(connection, class, "Carla", "").unwrap();
     cells::set_cell(connection, notes, ana, "Moved from 1B").unwrap();
     cells::set_cell(connection, exam, ana, "7,5").unwrap();
     cells::set_cell(connection, lab, ana, "4").unwrap();
@@ -114,27 +115,34 @@ fn exported_sheet_matches_the_screen() {
     let exported = scratch.export(class, Language::English);
     let loaded = sheet::load_sheet(&scratch.connection, class).unwrap();
 
-    let header: Vec<Data> =
-        std::iter::once(text("Pupil")).chain(loaded.columns.iter().map(|column| text(&column.title))).collect();
+    let header: Vec<Data> = loaded
+        .columns
+        .iter()
+        .map(|column| match column.kind.column_type() {
+            ColumnType::FirstName => text("First name"),
+            ColumnType::Surname => text("Surname"),
+            _ => text(&column.title),
+        })
+        .collect();
     assert_eq!(exported.marks[0], header);
     assert_eq!(exported.marks.len(), 1 + loaded.rows.len(), "no note: the weights add up");
     for (row, cells) in loaded.rows.iter().zip(&exported.marks[1..]) {
-        assert_eq!(cells[0], text(&row.pupil.name));
         let shown = evaluate_row(&loaded.columns, &row.values);
-        for ((column, shown), cell) in loaded.columns.iter().zip(&shown).zip(&cells[1..]) {
+        for ((column, shown), cell) in loaded.columns.iter().zip(&shown).zip(cells) {
             let expected = match column.kind.column_type() {
-                ColumnType::Info if shown.text.is_empty() => Data::Empty,
-                ColumnType::Info => text(&shown.text),
+                ColumnType::FirstName | ColumnType::Surname | ColumnType::Info if shown.text.is_empty() => Data::Empty,
+                ColumnType::FirstName | ColumnType::Surname | ColumnType::Info => text(&shown.text),
                 _ => parse_number(&shown.text).map_or(Data::Empty, Data::Float),
             };
-            assert_eq!(*cell, expected, "{} of {}", column.title, row.pupil.name);
+            assert_eq!(*cell, expected, "{} of {}", column.title, row.pupil.full_name());
         }
     }
     // Ana: 7.5 × 60 % + 4/5 × 40 % = 7.7, the mean of 75 % and 80 % = 7.75, rounded 8
     assert_eq!(
         exported.marks[1],
         [
-            text("Ana Pérez"),
+            text("Ana"),
+            text("Pérez López"),
             text("Moved from 1B"),
             Data::Float(7.5),
             Data::Float(4.0),
@@ -154,11 +162,11 @@ fn invalid_scores_are_kept_as_text() {
     let class = classes::create_class(connection, "1A").unwrap();
     let exam = scratch.column(class, ColumnType::Test, "Exam");
     for (name, mark) in [("Ana", "12"), ("Bea", "abc"), ("Carla", "9,25")] {
-        let pupil = pupils::add_new_pupil(connection, class, name).unwrap();
+        let pupil = pupils::add_new_pupil(connection, class, name, "").unwrap();
         cells::set_cell(connection, exam, pupil, mark).unwrap();
     }
     let marks: Vec<Data> =
-        scratch.export(class, Language::English).marks[1..].iter().map(|row| row[1].clone()).collect();
+        scratch.export(class, Language::English).marks[1..].iter().map(|row| row[2].clone()).collect();
     assert_eq!(marks, [text("12"), text("abc"), Data::Float(9.25)]);
 }
 
@@ -183,6 +191,8 @@ fn the_columns_tab_lists_every_setting() {
         exported.settings,
         [
             ["Column", "Kind", "Weight %", "Maximum", "Bonus", "Rounds", "Decimals"].map(text).to_vec(),
+            row("First name", "First name", [empty(), empty(), empty(), empty(), empty()]),
+            row("Surname", "Surname", [empty(), empty(), empty(), empty(), empty()]),
             row("Notes", "Info", [empty(), empty(), empty(), empty(), empty()]),
             row("Exam", "Test", [Data::Float(60.0), Data::Float(10.0), empty(), empty(), empty()]),
             row("Lab", "Test", [Data::Float(40.0), Data::Float(5.0), empty(), empty(), empty()]),
@@ -199,7 +209,7 @@ fn the_columns_tab_lists_every_setting() {
 fn incomplete_weights_add_the_provisional_note() {
     let scratch = Scratch::new();
     let class = full_class(&scratch);
-    let lab = columns::list_columns(&scratch.connection, class).unwrap()[2].id;
+    let lab = columns::list_columns(&scratch.connection, class).unwrap()[4].id;
     columns::set_weight(&scratch.connection, lab, "30").unwrap();
     let marks = scratch.export(class, Language::English).marks;
     assert_eq!(marks.len(), 1 + 3 + 2, "the note sits two rows below the last pupil");
@@ -224,7 +234,7 @@ fn incomplete_weights_without_a_final_grade_need_no_note() {
     let connection = &scratch.connection;
     let class = classes::create_class(connection, "1A").unwrap();
     scratch.column(class, ColumnType::Test, "Exam");
-    pupils::add_new_pupil(connection, class, "Ana").unwrap();
+    pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
     assert_eq!(scratch.export(class, Language::English).marks.len(), 2, "like the screen, which shows no warning");
 }
 
@@ -234,18 +244,33 @@ fn empty_class_exports_the_header_only() {
     let class = classes::create_class(&scratch.connection, "1A").unwrap();
     scratch.column(class, ColumnType::Test, "Exam");
     let exported = scratch.export(class, Language::English);
-    assert_eq!(exported.marks, [[text("Pupil"), text("Exam")]]);
+    assert_eq!(exported.marks, [[text("First name"), text("Surname"), text("Exam")]]);
 }
 
 #[test]
 fn class_without_columns_exports_the_names() {
     let scratch = Scratch::new();
     let class = classes::create_class(&scratch.connection, "1A").unwrap();
-    pupils::add_new_pupil(&scratch.connection, class, "Ana").unwrap();
-    pupils::add_new_pupil(&scratch.connection, class, "Bea").unwrap();
+    pupils::add_new_pupil(&scratch.connection, class, "Ana", "").unwrap();
+    pupils::add_new_pupil(&scratch.connection, class, "Bea", "").unwrap();
     let exported = scratch.export(class, Language::English);
-    assert_eq!(exported.marks, [[text("Pupil")], [text("Ana")], [text("Bea")]]);
-    assert_eq!(exported.settings, [["Column", "Kind", "Weight %", "Maximum", "Bonus", "Rounds", "Decimals"].map(text)]);
+    assert_eq!(
+        exported.marks,
+        [[text("First name"), text("Surname")], [text("Ana"), Data::Empty], [text("Bea"), Data::Empty]]
+    );
+    let names_only = |name: &str| {
+        let mut row = vec![text(name), text(name)];
+        row.extend(std::iter::repeat_n(Data::Empty, 5));
+        row
+    };
+    assert_eq!(
+        exported.settings,
+        [
+            ["Column", "Kind", "Weight %", "Maximum", "Bonus", "Rounds", "Decimals"].map(text).to_vec(),
+            names_only("First name"),
+            names_only("Surname"),
+        ]
+    );
 }
 
 #[test]
@@ -254,13 +279,16 @@ fn galician_labels_are_used() {
     let class = full_class(&scratch);
     let exported = scratch.export(class, Language::Galician);
     assert_eq!(exported.names, ["1A", "Columnas"]);
-    assert_eq!(exported.marks[0][0], text("Alumno"));
+    assert_eq!(exported.marks[0][..2], [text("Nome"), text("Apelidos")]);
     assert_eq!(
         exported.settings[0],
         ["Columna", "Tipo", "Peso %", "Máximo", "Extra", "Redondea", "Decimais"].map(text)
     );
     let kinds: Vec<Data> = exported.settings[1..].iter().map(|row| row[1].clone()).collect();
-    assert_eq!(kinds, ["Información", "Proba", "Proba", "Nota final", "Media", "Redondeo"].map(text));
+    assert_eq!(
+        kinds,
+        ["Nome", "Apelidos", "Información", "Proba", "Proba", "Nota final", "Media", "Redondeo"].map(text)
+    );
 }
 
 #[test]
@@ -335,7 +363,7 @@ fn a_cell_too_long_for_excel_is_reported() {
     let connection = &scratch.connection;
     let class = classes::create_class(connection, "1A").unwrap();
     let notes = scratch.column(class, ColumnType::Info, "Notes");
-    let ana = pupils::add_new_pupil(connection, class, "Ana").unwrap();
+    let ana = pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
     cells::set_cell(connection, notes, ana, &"x".repeat(40_000)).unwrap();
     let path = scratch.path("export.xlsx");
     let error = export_sheet(connection, class, Language::English, &path).unwrap_err();
@@ -423,15 +451,15 @@ impl Scratch {
 
     /// Reads, plans and applies `path` into `class`, as if the user said yes to replacing.
     fn import(&self, class: i64, path: &Path) -> ImportSummary {
-        let table = read_table(path).unwrap();
+        let table = read(path).unwrap();
         let plan = plan_import(&self.connection, class, &table).unwrap();
         apply_import(&self.connection, class, &plan).unwrap()
     }
 
-    /// Each pupil of `class` with the values of their row, in sheet order.
+    /// Each pupil of `class` with the values of their row in the mark columns, in sheet order.
     fn rows(&self, class: i64) -> Vec<(String, Vec<String>)> {
         let loaded = sheet::load_sheet(&self.connection, class).unwrap();
-        loaded.rows.into_iter().map(|row| (row.pupil.name, row.values)).collect()
+        loaded.rows.iter().map(|row| (row.pupil.full_name(), mark_values(&loaded.columns, &row.values))).collect()
     }
 
     /// Each pupil of `class` with what each cell of their row shows on screen, numbers as numbers
@@ -440,14 +468,29 @@ impl Scratch {
         let loaded = sheet::load_sheet(&self.connection, class).unwrap();
         let as_number = |text: String| parse_number(&text).map_or(text, |number| number.to_string());
         let shown = |values: &[String]| {
-            evaluate_row(&loaded.columns, values).into_iter().map(|cell| as_number(cell.text)).collect()
+            let all: Vec<String> =
+                evaluate_row(&loaded.columns, values).into_iter().map(|cell| as_number(cell.text)).collect();
+            mark_values(&loaded.columns, &all)
         };
-        loaded.rows.iter().map(|row| (row.pupil.name.clone(), shown(&row.values))).collect()
+        loaded.rows.iter().map(|row| (row.pupil.full_name(), shown(&row.values))).collect()
     }
 
     fn pupil_count(&self) -> i64 {
         self.connection.query_row("SELECT COUNT(*) FROM pupils", [], |row| row.get(0)).unwrap()
     }
+}
+
+/// Reads a workbook as the app does: the name columns are found by the first-name and surname
+/// headers of every language.
+fn read(path: &Path) -> avalio_lite::error::Result<ImportTable> {
+    let (first_name, surname): (Vec<&str>, Vec<&str>) =
+        (i18n::first_name_headers().collect(), i18n::surname_headers().collect());
+    read_table(path, &NameHeaders { first_name: &first_name, surname: &surname })
+}
+
+/// `values` without those of the first-name and surname columns.
+fn mark_values(columns: &[avalio_lite::gradebook::model::Column], values: &[String]) -> Vec<String> {
+    columns.iter().zip(values).filter(|(column, _)| !column.kind.is_name()).map(|(_, value)| value.clone()).collect()
 }
 
 fn strings(values: &[&str]) -> Vec<String> {
@@ -461,8 +504,8 @@ fn small_class(scratch: &Scratch) -> (i64, i64, i64) {
     let notes = scratch.column(class, ColumnType::Info, "Notes");
     let exam = scratch.column(class, ColumnType::Test, "Exam");
     scratch.column(class, ColumnType::Weighted, "Final grade");
-    pupils::add_new_pupil(connection, class, "Ana").unwrap();
-    pupils::add_new_pupil(connection, class, "Bea").unwrap();
+    pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
+    pupils::add_new_pupil(connection, class, "Bea", "").unwrap();
     (class, notes, exam)
 }
 
@@ -478,7 +521,7 @@ fn an_exported_sheet_imports_back_unchanged() {
     let path = scratch.path("1A.xlsx");
     export_sheet(&scratch.connection, class, Language::English, &path).unwrap();
     for column in columns::list_columns(&scratch.connection, class).unwrap() {
-        if !column.kind.is_computed() {
+        if column.kind.holds_cells() {
             for pupil in pupil_ids(&scratch, class) {
                 cells::set_cell(&scratch.connection, column.id, pupil, "").unwrap();
             }
@@ -554,10 +597,10 @@ fn pupils_match_in_class_then_elsewhere_then_new() {
     let connection = &scratch.connection;
     let (class, ..) = small_class(&scratch);
     let other = classes::create_class(connection, "2B").unwrap();
-    let carla = pupils::add_new_pupil(connection, other, "Carla").unwrap();
-    pupils::add_new_pupil(connection, other, "Dani").unwrap();
+    let carla = pupils::add_new_pupil(connection, other, "Carla", "").unwrap();
+    pupils::add_new_pupil(connection, other, "Dani", "").unwrap();
     let third = classes::create_class(connection, "3C").unwrap();
-    pupils::add_new_pupil(connection, third, "dani").unwrap();
+    pupils::add_new_pupil(connection, third, "dani", "").unwrap();
     let path = scratch.workbook(
         "x.xlsx",
         &[
@@ -591,7 +634,7 @@ fn a_name_twice_in_the_file_is_refused_and_changes_nothing() {
         ],
     );
     let before = scratch.rows(class);
-    let error = plan_import(&scratch.connection, class, &read_table(&path).unwrap()).unwrap_err();
+    let error = plan_import(&scratch.connection, class, &read(&path).unwrap()).unwrap_err();
     assert!(matches!(&error, AppError::DuplicatePupilInFile(name) if name == "ana pérez"), "{error:?}");
     assert_eq!(scratch.rows(class), before);
 }
@@ -605,7 +648,7 @@ fn empty_file_cells_keep_existing_values() {
     cells::set_cell(&scratch.connection, exam, ana, "3").unwrap();
     let path = scratch
         .workbook("x.xlsx", &[vec![Text("Pupil"), Text("Notes"), Text("Exam")], vec![Text("Ana"), Empty, Number(9.0)]]);
-    let plan = plan_import(&scratch.connection, class, &read_table(&path).unwrap()).unwrap();
+    let plan = plan_import(&scratch.connection, class, &read(&path).unwrap()).unwrap();
     assert_eq!(plan.overwrites, 1, "only the exam is replaced");
     apply_import(&scratch.connection, class, &plan).unwrap();
     assert_eq!(scratch.rows(class)[0].1, strings(&["Keep me", "9", ""]));
@@ -618,7 +661,7 @@ fn unchanged_values_are_neither_counted_nor_asked_about() {
     let ana = pupil_ids(&scratch, class)[0];
     cells::set_cell(&scratch.connection, exam, ana, "7,5").unwrap();
     let path = scratch.workbook("x.xlsx", &[vec![Text("Pupil"), Text("Exam")], vec![Text("Ana"), Number(7.5)]]);
-    let plan = plan_import(&scratch.connection, class, &read_table(&path).unwrap()).unwrap();
+    let plan = plan_import(&scratch.connection, class, &read(&path).unwrap()).unwrap();
     assert_eq!((plan.overwrites, plan.summary.marks), (0, 0), "7,5 and 7.5 are the same score");
     apply_import(&scratch.connection, class, &plan).unwrap();
     assert_eq!(scratch.rows(class)[0].1[1], "7,5", "kept as the user typed it");
@@ -635,7 +678,7 @@ fn the_same_text_again_is_not_a_change() {
         "x.xlsx",
         &[vec![Text("Pupil"), Text("Notes"), Text("Exam")], vec![Text("Ana"), Text(" Bilingüe "), Text("abc")]],
     );
-    let plan = plan_import(&scratch.connection, class, &read_table(&path).unwrap()).unwrap();
+    let plan = plan_import(&scratch.connection, class, &read(&path).unwrap()).unwrap();
     assert_eq!(
         (plan.overwrites, plan.summary.marks),
         (0, 0),
@@ -705,8 +748,8 @@ fn invalid_scores_are_stored_like_typing() {
     let path = scratch.workbook("x.xlsx", &[vec![Text("Pupil"), Text("Exam")], vec![Text("Ana"), Number(12.0)]]);
     scratch.import(class, &path);
     let loaded = sheet::load_sheet(&scratch.connection, class).unwrap();
-    assert_eq!(loaded.rows[0].values[1], "12");
-    assert!(evaluate_row(&loaded.columns, &loaded.rows[0].values)[1].is_invalid, "shaded red, as if typed");
+    assert_eq!(loaded.rows[0].values[3], "12");
+    assert!(evaluate_row(&loaded.columns, &loaded.rows[0].values)[3].is_invalid, "shaded red, as if typed");
 }
 
 #[test]
@@ -730,10 +773,10 @@ fn rows_without_a_name_are_skipped() {
 fn a_header_only_file_has_no_pupils() {
     let scratch = Scratch::new();
     let path = scratch.workbook("x.xlsx", &[vec![Text("Pupil"), Text("Exam")]]);
-    let error = read_table(&path).unwrap_err();
+    let error = read(&path).unwrap_err();
     assert!(matches!(&error, AppError::NoPupilsInFile(failed) if *failed == path), "{error:?}");
     let empty = scratch.workbook("empty.xlsx", &[]);
-    assert!(matches!(read_table(&empty).unwrap_err(), AppError::NoPupilsInFile(_)));
+    assert!(matches!(read(&empty).unwrap_err(), AppError::NoPupilsInFile(_)));
 }
 
 #[test]
@@ -741,9 +784,9 @@ fn a_text_file_renamed_xlsx_is_a_read_error() {
     let scratch = Scratch::new();
     let path = scratch.path("notes.xlsx");
     std::fs::write(&path, "just some notes").unwrap();
-    let error = read_table(&path).unwrap_err();
+    let error = read(&path).unwrap_err();
     assert!(matches!(&error, AppError::SpreadsheetRead { path: failed, .. } if *failed == path), "{error:?}");
-    assert!(matches!(read_table(&scratch.path("gone.xlsx")).unwrap_err(), AppError::SpreadsheetRead { .. }));
+    assert!(matches!(read(&scratch.path("gone.xlsx")).unwrap_err(), AppError::SpreadsheetRead { .. }));
 }
 
 #[test]
@@ -758,7 +801,7 @@ fn a_failure_mid_import_rolls_everything_back() {
             vec![Text("Ana"), Number(6.0), Text("Late")],
         ],
     );
-    let plan = plan_import(&scratch.connection, class, &read_table(&path).unwrap()).unwrap();
+    let plan = plan_import(&scratch.connection, class, &read(&path).unwrap()).unwrap();
     // the column of the last write goes between planning and applying
     columns::delete_column(&scratch.connection, notes).unwrap();
     let (before, pupils_before) = (scratch.rows(class), scratch.pupil_count());
@@ -800,7 +843,7 @@ fn the_table_lists_headers_and_named_rows() {
     let scratch = Scratch::new();
     let path = scratch
         .workbook("x.xlsx", &[vec![Text("Pupil"), Text("Exam"), Empty], vec![Text("Ana"), Number(1.5), Text("x")]]);
-    let table = read_table(&path).unwrap();
+    let table = read(&path).unwrap();
     assert_eq!(table.headers, ["Exam", ""]);
     assert_eq!(table.rows[0].values, [Some("1.5".to_owned()), Some("x".to_owned())]);
 }
@@ -822,11 +865,12 @@ proptest::proptest! {
         cells::set_cell(&scratch.connection, notes, ana, "a").unwrap();
         let mut seen = std::collections::HashSet::new();
         let table = ImportTable {
+            header_columns: vec![1, 2],
             headers: strings(&["Exam", "Notes"]),
             rows: rows
                 .into_iter()
                 .filter(|(name, ..)| seen.insert(name.to_lowercase()))
-                .map(|(name, exam, notes)| ImportRow { name, values: vec![exam, notes] })
+                .map(|(first_name, exam, notes)| ImportRow { first_name, surname: String::new(), values: vec![exam, notes] })
                 .collect(),
             error_cells: 0,
         };
@@ -936,4 +980,187 @@ fn a_column_left_out_twice_is_named_once() {
     );
     let summary = scratch.import(class, &path);
     assert_eq!(summary.left_out, [LeftOut::Header("Phone".into()), LeftOut::Header("EXAM".into())]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// First names and surnames
+
+fn pupil_names(scratch: &Scratch, class: i64) -> Vec<(String, String)> {
+    pupils::list_class_pupils(&scratch.connection, class)
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.first_name, pupil.surname))
+        .collect()
+}
+
+fn named(first_name: &str, surname: &str) -> (String, String) {
+    (first_name.to_owned(), surname.to_owned())
+}
+
+#[test]
+fn a_one_name_column_file_matches_pupils_by_full_name() {
+    let scratch = Scratch::new();
+    let connection = &scratch.connection;
+    let class = classes::create_class(connection, "1A").unwrap();
+    scratch.column(class, ColumnType::Test, "Exam");
+    pupils::add_new_pupil(connection, class, "Ana", "Pérez").unwrap();
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[
+            vec![Text("Pupil"), Text("Exam")],
+            vec![Text("ana PÉREZ"), Number(7.0)],
+            vec![Text("Xoán Rial"), Number(5.0)],
+        ],
+    );
+    let summary = scratch.import(class, &path);
+    assert_eq!((summary.pupils, summary.new_pupils), (2, 1));
+    assert_eq!(
+        pupil_names(&scratch, class),
+        [named("Ana", "Pérez"), named("Xoán Rial", "")],
+        "the whole name of a new pupil is their first name"
+    );
+    assert_eq!(scratch.rows(class)[0].1, strings(&["7"]));
+}
+
+#[test]
+fn a_two_name_column_file_makes_new_pupils_with_both_names() {
+    let scratch = Scratch::new();
+    let connection = &scratch.connection;
+    let class = classes::create_class(connection, "1A").unwrap();
+    scratch.column(class, ColumnType::Test, "Exam");
+    // a pupil whose whole name is still in the first name is the same pupil
+    pupils::add_new_pupil(connection, class, "Brais Otero", "").unwrap();
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[
+            vec![Text("First name"), Text("Surname"), Text("Exam")],
+            vec![Text("Ana"), Text("Pérez López"), Number(7.0)],
+            vec![Text("Brais"), Text("Otero"), Number(6.0)],
+            vec![Text("Carla"), Empty, Number(9.0)],
+        ],
+    );
+    let table = read(&path).unwrap();
+    assert_eq!((table.header_columns.clone(), table.headers.clone()), (vec![2], strings(&["Exam"])));
+    let summary = scratch.import(class, &path);
+    assert_eq!((summary.pupils, summary.new_pupils, summary.marks), (3, 2, 3));
+    assert_eq!(
+        pupil_names(&scratch, class),
+        [named("Brais Otero", ""), named("Ana", "Pérez López"), named("Carla", "")]
+    );
+    assert_eq!(scratch.rows(class)[0].1, strings(&["6"]), "the marks start at column C");
+}
+
+#[test]
+fn a_galician_surname_header_is_recognised_in_english() {
+    let scratch = Scratch::new();
+    let class = classes::create_class(&scratch.connection, "1A").unwrap();
+    scratch.column(class, ColumnType::Test, "Exam");
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[vec![Text("Nome"), Text(" APELIDOS "), Text("Exam")], vec![Text("Ana"), Text("Pérez"), Number(7.0)]],
+    );
+    // whatever the interface language is: the reader knows every language's surname header
+    scratch.import(class, &path);
+    assert_eq!(pupil_names(&scratch, class), [named("Ana", "Pérez")]);
+}
+
+#[test]
+fn a_row_with_a_surname_but_no_first_name_is_skipped() {
+    let scratch = Scratch::new();
+    let class = classes::create_class(&scratch.connection, "1A").unwrap();
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[vec![Text("First name"), Text("Surname")], vec![Empty, Text("Pérez")], vec![Text("Bea"), Text("Otero")]],
+    );
+    let summary = scratch.import(class, &path);
+    assert_eq!(summary.pupils, 1);
+    assert_eq!(pupil_names(&scratch, class), [named("Bea", "Otero")]);
+}
+
+#[test]
+fn an_untitled_column_after_the_surname_is_named_column_d() {
+    let scratch = Scratch::new();
+    let class = classes::create_class(&scratch.connection, "1A").unwrap();
+    scratch.column(class, ColumnType::Test, "Exam");
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[
+            vec![Text("First name"), Text("Surname"), Text("Exam"), Empty],
+            vec![Text("Ana"), Text("Pérez"), Number(7.0), Text("stray")],
+        ],
+    );
+    let summary = scratch.import(class, &path);
+    assert_eq!(summary.left_out, [LeftOut::Untitled("D".into())], "the letter counts both name columns");
+}
+
+#[test]
+fn a_repeated_full_name_in_the_file_is_refused() {
+    let scratch = Scratch::new();
+    let class = classes::create_class(&scratch.connection, "1A").unwrap();
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[
+            vec![Text("First name"), Text("Surname")],
+            vec![Text("Ana"), Text("Pérez")],
+            vec![Text("ana"), Text("pérez")],
+        ],
+    );
+    let error = plan_import(&scratch.connection, class, &read(&path).unwrap()).unwrap_err();
+    assert!(matches!(&error, AppError::DuplicatePupilInFile(name) if name == "ana pérez"), "{error:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Name columns anywhere in the sheet
+
+#[test]
+fn the_export_follows_the_sheet_order_with_the_names_in_the_middle() {
+    let scratch = Scratch::new();
+    let connection = &scratch.connection;
+    let class = classes::create_class(connection, "1A").unwrap();
+    let exam = scratch.column(class, ColumnType::Test, "Exam");
+    let ana = pupils::add_new_pupil(connection, class, "Ana", "Pérez").unwrap();
+    cells::set_cell(connection, exam, ana, "7").unwrap();
+    let listed = columns::list_columns(connection, class).unwrap();
+    // Surname, Exam, First name
+    columns::move_column_to(connection, listed[0].id, 2).unwrap();
+    let exported = scratch.export(class, Language::Galician);
+    assert_eq!(exported.marks[0], [text("Apelidos"), text("Exam"), text("Nome")]);
+    assert_eq!(exported.marks[1], [text("Pérez"), Data::Float(7.0), text("Ana")]);
+    let kinds: Vec<Data> = exported.settings[1..].iter().map(|row| row[1].clone()).collect();
+    assert_eq!(kinds, [text("Apelidos"), text("Proba"), text("Nome")], "the columns tab lists the names too");
+}
+
+#[test]
+fn an_import_finds_the_name_columns_by_their_headers_anywhere() {
+    let scratch = Scratch::new();
+    let class = classes::create_class(&scratch.connection, "1A").unwrap();
+    scratch.column(class, ColumnType::Test, "Exam");
+    scratch.column(class, ColumnType::Info, "Notes");
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[
+            vec![Text("Exam"), Text("Notes"), Text("Apelidos"), Empty, Text("Nome")],
+            vec![Number(7.0), Text("shy"), Text("Pérez"), Text("stray"), Text("Ana")],
+        ],
+    );
+    let table = read(&path).unwrap();
+    assert_eq!(table.header_columns, [0, 1, 3], "every column but the names");
+    let summary = scratch.import(class, &path);
+    assert_eq!(pupil_names(&scratch, class), [named("Ana", "Pérez")]);
+    assert_eq!(scratch.rows(class)[0].1, strings(&["7", "shy"]));
+    assert_eq!(summary.left_out, [LeftOut::Untitled("D".into())], "named by its own letter, names in between");
+}
+
+#[test]
+fn a_surname_header_without_a_first_name_header_takes_the_first_name_from_column_a() {
+    let scratch = Scratch::new();
+    let class = classes::create_class(&scratch.connection, "1A").unwrap();
+    scratch.column(class, ColumnType::Test, "Exam");
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[vec![Text("Pupil"), Text("Exam"), Text("Surname")], vec![Text("Ana"), Number(6.0), Text("Pérez")]],
+    );
+    scratch.import(class, &path);
+    assert_eq!(pupil_names(&scratch, class), [named("Ana", "Pérez")]);
+    assert_eq!(scratch.rows(class)[0].1, strings(&["6"]));
 }

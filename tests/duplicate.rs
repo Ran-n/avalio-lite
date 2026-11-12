@@ -1,10 +1,12 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:10:25.359630
-//+ Revised: 	2026/11/09 21:54:05.613946
+//+ Revised: 	2026/11/11 17:11:01.626342
 // -----------------------------------------------------------------------------
 
 //! Duplicating a class: its columns, and on request its pupils and marks (`classes::duplicate_class`).
+
+mod common;
 
 use std::collections::HashMap;
 
@@ -48,8 +50,8 @@ fn sample_class(connection: &Connection) -> i64 {
     let rounded = add(connection, class, ColumnType::Round);
     columns::set_round_source(connection, rounded, Some(final_grade)).unwrap();
     columns::set_decimals(connection, rounded, "1").unwrap();
-    let ana = pupils::add_new_pupil(connection, class, "Ana").unwrap();
-    let brais = pupils::add_new_pupil(connection, class, "Brais").unwrap();
+    let ana = pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
+    let brais = pupils::add_new_pupil(connection, class, "Brais", "").unwrap();
     for (pupil, mark) in [(ana, "15"), (brais, "8,5")] {
         cells::set_cell(connection, exam, pupil, mark).unwrap();
         cells::set_cell(connection, homework, pupil, "7").unwrap();
@@ -81,7 +83,7 @@ type RowShape = (i64, String, Vec<String>);
 
 /// A sheet without the column ids: column shapes, then each pupil with their values.
 fn sheet_shape(sheet: &Sheet) -> (Vec<(String, ColumnKind)>, Vec<RowShape>) {
-    let rows = sheet.rows.iter().map(|row| (row.pupil.id, row.pupil.name.clone(), row.values.clone())).collect();
+    let rows = sheet.rows.iter().map(|row| (row.pupil.id, row.pupil.full_name(), row.values.clone())).collect();
     (shape(&sheet.columns), rows)
 }
 
@@ -98,7 +100,7 @@ fn duplicating_copies_every_column_setting_in_order() {
     let copied = columns::list_columns(&connection, copy).unwrap();
     assert_eq!(shape(&copied), shape(&original));
     assert!(copied.iter().all(|column| original.iter().all(|old| old.id != column.id)), "new columns");
-    assert!(matches!(copied[3].kind, ColumnKind::Test { bonus: true, .. }), "the bonus flag is copied");
+    assert!(matches!(copied[5].kind, ColumnKind::Test { bonus: true, .. }), "the bonus flag is copied");
 }
 
 #[test]
@@ -114,7 +116,8 @@ fn a_duplicated_rounding_points_at_the_copys_own_column() {
     columns::set_round_source(&connection, right, Some(average)).unwrap();
 
     let copy = classes::duplicate_class(&connection, class, DuplicateContents::Columns).unwrap();
-    let copied = columns::list_columns(&connection, copy).unwrap();
+    // after the first-name and surname columns
+    let copied = &columns::list_columns(&connection, copy).unwrap()[2..];
     assert_eq!(copied[1].kind, ColumnKind::Round { source: Some(copied[0].id), decimals: 0 });
     assert_eq!(copied[2].kind, ColumnKind::Round { source: Some(copied[3].id), decimals: 0 });
 }
@@ -136,10 +139,13 @@ fn duplicating_with_pupils_shares_them_in_order_with_empty_marks() {
     assert_eq!(pupils::list_class_pupils(&connection, copy).unwrap(), original, "the same pupils, in order");
     assert_eq!(count(&connection, "pupils"), 2, "no new pupils");
     let copied = sheet::load_sheet(&connection, copy).unwrap();
-    assert!(copied.rows.iter().all(|row| row.values.iter().all(String::is_empty)), "no marks");
+    let marks_empty = |row: &avalio_lite::gradebook::model::SheetRow| {
+        copied.columns.iter().zip(&row.values).all(|(column, value)| column.kind.is_name() || value.is_empty())
+    };
+    assert!(copied.rows.iter().all(marks_empty), "no marks");
 
-    pupils::rename_pupil(&connection, original[0].id, "Ana María").unwrap();
-    assert_eq!(pupils::list_class_pupils(&connection, copy).unwrap()[0].name, "Ana María");
+    pupils::set_first_name(&connection, original[0].id, "Ana María").unwrap();
+    assert_eq!(pupils::list_class_pupils(&connection, copy).unwrap()[0].first_name, "Ana María");
     pupils::remove_from_class(&connection, copy, original[1].id).unwrap();
     assert_eq!(pupils::list_class_pupils(&connection, class).unwrap().len(), 2, "the original keeps them");
 }
@@ -178,7 +184,8 @@ fn an_empty_class_duplicates_to_an_empty_class() {
     for contents in ALL_CONTENTS {
         let copy = classes::duplicate_class(&connection, class, contents).unwrap();
         let copied = sheet::load_sheet(&connection, copy).unwrap();
-        assert!(copied.columns.is_empty() && copied.rows.is_empty(), "{contents:?}");
+        assert!(copied.columns.iter().all(|column| column.kind.is_name()) && copied.rows.is_empty(), "{contents:?}");
+        assert_eq!(copied.columns.len(), 2, "only its name columns: {contents:?}");
     }
 }
 
@@ -247,9 +254,14 @@ proptest! {
         for kind in &computed {
             add(&connection, class, [ColumnType::Weighted, ColumnType::Average, ColumnType::Round][usize::from(*kind)]);
         }
-        let column_ids: Vec<i64> = columns::list_columns(&connection, class).unwrap().iter().map(|column| column.id).collect();
+        let column_ids: Vec<i64> = columns::list_columns(&connection, class)
+            .unwrap()
+            .iter()
+            .filter(|column| !column.kind.is_name())
+            .map(|column| column.id)
+            .collect();
         for (index, row) in marks.iter().enumerate() {
-            let pupil = pupils::add_new_pupil(&connection, class, &format!("Pupil {index}")).unwrap();
+            let pupil = pupils::add_new_pupil(&connection, class, &format!("Pupil {index}"), "").unwrap();
             for (column, mark) in column_ids.iter().take(typed.len()).zip(row) {
                 if let Some(mark) = mark {
                     cells::set_cell(&connection, *column, pupil, mark).unwrap();
@@ -270,14 +282,14 @@ fn every_kind_of_duplicate_keeps_the_column_widths() {
     let original = columns::list_columns(&connection, class).unwrap();
     columns::set_column_width(&connection, original[0].id, Some(320)).unwrap();
     columns::set_column_width(&connection, original[4].id, Some(90)).unwrap();
-    classes::set_name_width(&connection, class, Some(260)).unwrap();
+    common::set_name_widths(&connection, class, 260, 150);
     let widths = |class: i64| -> Vec<Option<u16>> {
         columns::list_columns(&connection, class).unwrap().iter().map(|column| column.width).collect()
     };
     for contents in ALL_CONTENTS {
         let copy = classes::duplicate_class(&connection, class, contents).unwrap();
         assert_eq!(widths(copy), widths(class), "{contents:?}");
-        assert_eq!(classes::class_name_width(&connection, copy).unwrap(), Some(260), "{contents:?}");
+        assert_eq!(common::name_widths(&connection, copy), (Some(260), Some(150)), "{contents:?}");
     }
 }
 
@@ -287,5 +299,27 @@ fn a_class_never_resized_duplicates_with_default_widths() {
     let class = sample_class(&connection);
     let copy = classes::duplicate_class(&connection, class, DuplicateContents::Columns).unwrap();
     assert!(columns::list_columns(&connection, copy).unwrap().iter().all(|column| column.width.is_none()));
-    assert_eq!(classes::class_name_width(&connection, copy).unwrap(), None);
+    assert_eq!(common::name_widths(&connection, copy), (None, None));
+}
+
+#[test]
+fn a_duplicate_keeps_the_name_columns_where_they_were_moved() {
+    let (_dir, connection) = open();
+    let class = sample_class(&connection);
+    let (_, surname) = common::name_columns(&connection, class);
+    // after the info column and the exam
+    columns::move_column_to(&connection, surname, 3).unwrap();
+    common::set_name_widths(&connection, class, 200, 120);
+    let kinds = |class: i64| -> Vec<String> {
+        columns::list_columns(&connection, class)
+            .unwrap()
+            .iter()
+            .map(|column| format!("{:?}", column.kind.column_type()))
+            .collect()
+    };
+    for contents in ALL_CONTENTS {
+        let copy = classes::duplicate_class(&connection, class, contents).unwrap();
+        assert_eq!(kinds(copy), kinds(class), "{contents:?}");
+        assert_eq!(common::name_widths(&connection, copy), (Some(200), Some(120)), "{contents:?}");
+    }
 }

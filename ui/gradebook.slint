@@ -1,6 +1,7 @@
 // Data and actions of the classes and their sheets, shared by every screen that needs them.
 
-export enum ColumnType { info, test, weighted, average, round }
+// the pupil's names are columns too, which move and resize like the others
+export enum ColumnType { first-name, surname, info, test, weighted, average, round }
 // what a duplicated class brings along (gradebook::model::DuplicateContents)
 export enum DuplicateContents { columns, columns-and-pupils, everything }
 
@@ -27,17 +28,18 @@ export struct ColumnItem {
 }
 
 // How wide the sheet's columns are by default and how far they can be resized, in logical pixels.
-// The limits match gradebook::model (MIN_COLUMN_WIDTH, MIN_NAME_WIDTH, MAX_COLUMN_WIDTH); a test
-// checks they stay the same.
+// The limits match gradebook::model (MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH); a test checks they stay
+// the same.
 export global ColumnWidths {
-    out property <length> name-default: 210px;
+    out property <length> first-name-default: 160px;
+    out property <length> surname-default: 210px;
     out property <length> cell-default: 128px;
     out property <length> wide-default: 176px;
     // still fits a "10.00" pill
     out property <length> column-min: 72px;
-    // still fits the "×" button and a few letters of the name
-    out property <length> name-min: 120px;
     out property <length> max: 640px;
+    // the fixed strip at the start of every row, holding a pupil's "×" and the add row's "+"
+    out property <length> row-strip: 32px;
     // what Shift+← / Shift+→ on a focused header changes the width by
     out property <length> key-step: 16px;
 }
@@ -54,6 +56,7 @@ export struct CellItem {
 
 // A pupil who could be added to the open class from another one
 export struct AddablePupil {
+    // as lists show it: "Pérez López, Ana", or "Ana" without a surname
     name: string,
     // in no class at all: only kept so they can be added somewhere, and the one kind that can be deleted
     no-class: bool,
@@ -61,7 +64,10 @@ export struct AddablePupil {
 
 export struct RowItem {
     pupil-id: int,
-    name: string,
+    first-name: string,
+    surname: string,
+    // "Ana Pérez López", or "Ana": what confirmations and screen readers call the pupil
+    full-name: string,
     cells: [CellItem],
 }
 
@@ -71,8 +77,6 @@ export global Gradebook {
     in property <string> class-name;
     in property <[ColumnItem]> columns;
     in property <[RowItem]> rows;
-    // the width the pupil column of the open class was dragged to, in logical pixels; 0 for the default
-    in property <int> name-width;
     // titles of the columns a rounded column can round, in sheet order
     in property <[string]> round-sources;
     in property <string> weight-total;
@@ -121,19 +125,22 @@ export global Gradebook {
     callback set-max-score(int, string);
     callback set-round-source(int, int);
     callback set-decimals(int, string);
+    // column id, step (-1 left, 1 right)
     callback move-column(int, int);
+    // column id, the place it goes to (from 0, counted with the column taken out): a dropped header
+    callback move-column-to(int, int);
     // column index, width in logical pixels (0 puts it back to the default); saved, then the headers update
     callback set-column-width(int, int);
-    // the pupil column's width in logical pixels, 0 for the default
-    callback set-name-width(int);
     callback delete-column(int);
 
-    // true when the pupil was added, so the field it was typed in can be emptied
-    callback add-new-pupil(string) -> bool;
+    // first name, surname; true when the pupil was added, so the fields can be emptied
+    callback add-new-pupil(string, string) -> bool;
     callback add-existing-pupil(int);
     // asks first, then deletes the pupil at that index of addable-pupils, who is in no class
     callback delete-pupil-in-no-class(int);
-    callback rename-pupil(int, string);
+    // pupil id, typed text: renames the pupil in every class
+    callback set-first-name(int, string);
+    callback set-surname(int, string);
     callback remove-pupil(int);
 
     // row index, column index, typed text

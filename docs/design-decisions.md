@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/02 21:31:24.223445 )
-[//]: # (+ Revised: 	2026/11/07 20:25:35.695351 )
+[//]: # (+ Revised: 	2026/11/11 17:10:57.473621 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Design decisions
@@ -154,5 +154,27 @@ from GitHub only.
 a working update. Losing the private key means existing copies can no longer update themselves (a
 new key needs one manual install); leaking it lets anyone sign updates, so it stays out of the
 repository (`*.key` is ignored), with a second copy kept offline.
+
+**Status:** Done
+
+## D9. Name columns are sheet columns
+
+**Context:** pupils used to have one name, shown in a pupil column fixed at the left of the sheet
+with its width in `classes`. Splitting the name into first name and surname, and letting teachers
+put them anywhere (Surname first, or an info column before the names), needed the names to take
+part in the column order that `sheet_columns.position` already kept for the mark columns.
+
+**Decision:** every class has exactly one `first_name` and one `surname` row in `sheet_columns`
+(migration 007; a trigger adds them to each new class, a partial unique index keeps them single).
+They hold no title, settings or cells: the names themselves stay in `pupils`, because a pupil is
+shared by all their classes and their name is one fact. `SheetRow.values` carries the names in
+those columns, so the sheet, the export and the import line up with `columns` without a special
+case. Migration 007 rebuilds `sheet_columns` to widen its kind CHECK, so the migration runner turns
+foreign keys off around migrations and checks them with `foreign_key_check` before committing.
+
+**Consequences:** one ordered list means one way to move, resize, drag and export every column; the
+× that removes a pupil moved to a fixed strip at the start of each row, so it stays reachable
+wherever the names are. Code that means "typed cells" asks `ColumnKind::holds_cells` rather than
+"not computed", since name columns are neither.
 
 **Status:** Done

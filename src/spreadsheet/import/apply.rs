@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.617467
-//+ Revised: 	2026/11/03 11:39:46.617467
+//+ Revised: 	2026/11/11 17:11:00.131768
 // -----------------------------------------------------------------------------
 
 //! Writing a checked import plan into the class.
@@ -23,7 +23,9 @@ pub fn apply_import(connection: &Connection, class_id: i64, plan: &ImportPlan) -
                 pupils::add_existing_pupil(&transaction, class_id, *pupil_id)?;
                 *pupil_id
             }
-            Target::New(name) => pupils::insert_new_pupil(&transaction, class_id, name)?,
+            Target::New { first_name, surname } => {
+                pupils::insert_new_pupil(&transaction, class_id, first_name, surname)?
+            }
         };
         for (column_id, value) in &pupil.writes {
             cells::set_cell(&transaction, *column_id, pupil_id, value)?;

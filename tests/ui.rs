@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/11/10 18:58:37.060243
+//+ Revised: 	2026/11/11 17:11:02.161710
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -22,7 +22,9 @@ use avalio_lite::i18n::{self, Language, Message};
 use avalio_lite::licence::{Notice, SUPPORT_EMAIL};
 use avalio_lite::platform::config::{DATABASE_FILE_NAME, LOG_FILE_NAME, Preferences, ThemeChoice};
 use avalio_lite::platform::db;
-use avalio_lite::ui::{ColumnWidths, Gradebook, Licence, Section, SetupNotice, Theme, Tone, Update};
+use avalio_lite::ui::{
+    ColumnType as UiColumnType, ColumnWidths, Gradebook, Licence, Section, SetupNotice, Theme, Tone, Update,
+};
 use avalio_lite::update::install::{Copy as InstallCopy, Installation, Pending, new_exe, old_exe};
 use avalio_lite::update::signature;
 use avalio_lite::update::{Asset, Release, UpdateError};
@@ -152,8 +154,8 @@ fn seeded() -> Ui {
     {
         let connection = state.connection().unwrap();
         let class = classes::create_class(connection, "1A").unwrap();
-        pupils::add_new_pupil(connection, class, "Ana").unwrap();
-        pupils::add_new_pupil(connection, class, "Bea").unwrap();
+        pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
+        pupils::add_new_pupil(connection, class, "Bea", "").unwrap();
         let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
         columns::rename_column(connection, exam, "Exam").unwrap();
         columns::add_column(connection, class, ColumnType::Weighted, Language::English).unwrap();
@@ -169,9 +171,9 @@ fn with_second_class() -> Ui {
     {
         let connection = state.connection().unwrap();
         let first = classes::create_class(connection, "1A").unwrap();
-        pupils::add_new_pupil(connection, first, "Ana").unwrap();
+        pupils::add_new_pupil(connection, first, "Ana", "").unwrap();
         let second = classes::create_class(connection, "2B").unwrap();
-        pupils::add_new_pupil(connection, second, "Carla").unwrap();
+        pupils::add_new_pupil(connection, second, "Carla", "").unwrap();
     }
     state.shutdown();
     Ui::open(fixture)
@@ -197,9 +199,29 @@ fn corrupt_database() -> Vec<u8> {
     bytes
 }
 
+/// What row `row` shows in mark column `column` (counted after the first-name and surname columns).
 fn cell_text(ui: &Ui, row: usize, column: usize) -> String {
     let rows = gradebook(ui).get_rows();
-    rows.row_data(row).unwrap().cells.row_data(column).unwrap().text.to_string()
+    rows.row_data(row).unwrap().cells.row_data(FIRST_MARK + column).unwrap().text.to_string()
+}
+
+/// The column header titled `title`, told apart from the name cells labelled the same.
+fn header(ui: &Ui, title: &str) -> ElementHandle {
+    let found: Vec<ElementHandle> = elements(ui, title)
+        .into_iter()
+        .filter(|element| element.accessible_role() == Some(i_slint_backend_testing::AccessibleRole::Button))
+        .collect();
+    assert_eq!(found.len(), 1, "expected one header {title:?}");
+    found.into_iter().next().unwrap()
+}
+
+/// The text fields labelled `label`, without the column header of the same name: the name cells
+/// are labelled like their column ("First name", "Surname").
+fn name_fields(ui: &Ui, label: &str) -> Vec<ElementHandle> {
+    elements(ui, label)
+        .into_iter()
+        .filter(|element| element.accessible_role() != Some(i_slint_backend_testing::AccessibleRole::Button))
+        .collect()
 }
 
 fn type_pin_on_keypad(ui: &Ui, pin: &str) {
@@ -632,7 +654,7 @@ fn with_shortcut_config(fixture: &Fixture, entries: &[(&str, &str)]) {
 fn every_shortcut_works_from_a_focused_cell() {
     let ui = with_second_class();
     let window = &ui.session.window;
-    click(&ui, "Pupil");
+    click_element(&name_fields(&ui, "First name")[0]);
     with_keys(&ui, true, "D");
     assert!(window.global::<Theme>().get_dark(), "Ctrl+Shift+D switches to dark");
     assert_eq!(saved_preferences(&ui.fixture).theme, Some(ThemeChoice::Dark), "and saves it");
@@ -1177,8 +1199,8 @@ fn backup_file(pin: Option<&str>) -> (Fixture, std::path::PathBuf) {
     {
         let connection = state.connection().unwrap();
         let class = classes::create_class(connection, "7A").unwrap();
-        pupils::add_new_pupil(connection, class, "Xoán").unwrap();
-        pupils::add_new_pupil(connection, class, "Iria").unwrap();
+        pupils::add_new_pupil(connection, class, "Xoán", "").unwrap();
+        pupils::add_new_pupil(connection, class, "Iria", "").unwrap();
         classes::create_class(connection, "7B").unwrap();
     }
     if let Some(pin) = pin {
@@ -1370,7 +1392,7 @@ fn add_classes_from_a_backup_lists_them_and_reports() {
         state.start();
         let connection = state.connection().unwrap();
         let class = classes::create_class(connection, "1A").unwrap();
-        pupils::add_new_pupil(connection, class, "Ana").unwrap();
+        pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
         fs::remove_file(&file).unwrap();
         state.export_backup(&file).unwrap();
         state.shutdown();
@@ -1587,7 +1609,7 @@ fn clicking_a_class_opens_its_sheet() {
     let ui = with_second_class();
     click(&ui, "2B");
     assert_eq!(gradebook(&ui).get_class_name(), "2B");
-    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().name, "Carla");
+    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().full_name, "Carla");
 }
 
 #[test]
@@ -1859,25 +1881,26 @@ fn add_pupil_focuses_the_new_pupil_field() {
     click(&ui, "+ Add pupil");
     type_text(&ui, "Carmen");
     press_enter(&ui);
+    press_enter(&ui);
     assert_eq!(gradebook(&ui).get_rows().row_count(), 3);
-    assert!(gradebook(&ui).get_rows().iter().any(|row| row.name == "Carmen"));
+    assert!(gradebook(&ui).get_rows().iter().any(|row| row.full_name == "Carmen"));
 }
 
 #[test]
 fn a_pupil_is_renamed_in_place() {
     let ui = seeded();
-    click_nth(&ui, "Pupil", 0);
+    click_element(&name_fields(&ui, "First name")[0]);
     replace_text(&ui, "Ana María");
-    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils WHERE name = 'Ana María'"), 1);
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils WHERE first_name = 'Ana María'"), 1);
 }
 
 /// Was: the row kept the old name, so the removal question asked about "Ana".
 #[test]
 fn regression_a_renamed_pupil_is_asked_about_by_the_new_name() {
     let ui = seeded();
-    click_nth(&ui, "Pupil", 0);
+    click_element(&name_fields(&ui, "First name")[0]);
     replace_text(&ui, "Ana María");
-    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().name, "Ana María");
+    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().full_name, "Ana María");
     ui.dialogs.answer_next(false);
     click_nth(&ui, "Remove from this class", 0);
     let question = english(&Message::ConfirmRemovePupil { pupil: "Ana María", class: "1A" });
@@ -1917,7 +1940,7 @@ fn a_pupil_from_another_class_is_added_from_the_menu() {
     click(&ui, "More actions");
     click(&ui, "Add from another class…");
     click(&ui, "Carla");
-    let names: Vec<String> = gradebook(&ui).get_rows().iter().map(|row| row.name.to_string()).collect();
+    let names: Vec<String> = gradebook(&ui).get_rows().iter().map(|row| row.full_name.to_string()).collect();
     assert_eq!(names, ["Ana", "Carla"]);
     assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils"), 2, "the same pupil, not a copy");
 }
@@ -1935,14 +1958,14 @@ fn every_column_type_can_be_added_from_the_menu() {
     }
     click(&ui, "+ Add column");
     click_menu_option(&ui, "Final grade");
-    assert_eq!(gradebook(&ui).get_columns().row_count(), 7);
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 9);
 }
 
 #[test]
 fn clicking_a_header_opens_its_settings_panel() {
     let ui = seeded();
     click(&ui, "Exam");
-    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32);
     assert!(shows(&ui, "Weight"));
     click(&ui, "Close");
     assert_eq!(gradebook(&ui).get_panel_index(), -1);
@@ -1957,7 +1980,7 @@ fn the_panel_edits_a_tests_settings() {
     type_into(&ui, "Weight", "60");
     type_into(&ui, "Out of", "5");
     click(&ui, "Bonus test");
-    let exam = gradebook(&ui).get_columns().row_data(0).unwrap();
+    let exam = gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap();
     assert_eq!(exam.title, "Exam 1");
     assert_eq!(exam.weight, "60");
     assert_eq!(exam.max_score, "5");
@@ -1971,7 +1994,7 @@ fn an_invalid_weight_is_reported_in_the_banner() {
     click(&ui, "Exam");
     type_into(&ui, "Weight", "lots");
     assert!(!ui.session.window.get_error_message().is_empty());
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().weight, "100", "the weight is unchanged");
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().weight, "100", "the weight is unchanged");
 }
 
 #[test]
@@ -1982,21 +2005,23 @@ fn weights_that_dont_add_up_warn_and_grey_the_final_grade() {
     type_into(&ui, "Weight", "50");
     assert!(!gradebook(&ui).get_weights_complete());
     assert!(shows_text(&ui, "Test weights add up to 50%, not 100%"));
-    let final_grade = gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(1).unwrap();
+    let final_grade = gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(FIRST_MARK + 1).unwrap();
     assert!(final_grade.provisional);
 }
 
 #[test]
 fn columns_move_and_the_ends_are_disabled() {
     let ui = seeded();
+    click_element(&header(&ui, "First name"));
+    assert_eq!(find(&ui, "Move left (Ctrl+←)").accessible_enabled(), Some(false), "nothing before the first column");
+    click(&ui, "Final grade");
+    assert_eq!(find(&ui, "Move right (Ctrl+→)").accessible_enabled(), Some(false), "nor after the last");
     click(&ui, "Exam");
-    assert_eq!(find(&ui, "Move left (Ctrl+←)").accessible_enabled(), Some(false));
     click(&ui, "Move right (Ctrl+→)");
-    let titles: Vec<String> = gradebook(&ui).get_columns().iter().map(|column| column.title.to_string()).collect();
-    assert_eq!(titles, ["Final grade", "Exam"]);
-    assert_eq!(gradebook(&ui).get_panel_index(), 1, "the panel follows the column");
+    assert_eq!(column_titles(&ui), ["Final grade", "Exam"]);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 1, "the panel follows the column");
     click(&ui, "Move left (Ctrl+←)");
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().title, "Exam");
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().title, "Exam");
 }
 
 /// Class "1A" with Ana and Bea and four columns: tests "Exam" and "Quiz", a final grade, and a
@@ -2007,8 +2032,8 @@ fn four_columns() -> Ui {
     {
         let connection = state.connection().unwrap();
         let class = classes::create_class(connection, "1A").unwrap();
-        pupils::add_new_pupil(connection, class, "Ana").unwrap();
-        pupils::add_new_pupil(connection, class, "Bea").unwrap();
+        pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
+        pupils::add_new_pupil(connection, class, "Bea", "").unwrap();
         for (column_type, title) in
             [(ColumnType::Test, "Exam"), (ColumnType::Test, "Quiz"), (ColumnType::Weighted, "Final grade")]
         {
@@ -2021,8 +2046,14 @@ fn four_columns() -> Ui {
     Ui::open(fixture)
 }
 
+/// The titles of the mark columns in sheet order, without the first-name and surname columns.
 fn column_titles(ui: &Ui) -> Vec<String> {
-    gradebook(ui).get_columns().iter().map(|column| column.title.to_string()).collect()
+    gradebook(ui)
+        .get_columns()
+        .iter()
+        .filter(|column| !matches!(column.kind, UiColumnType::FirstName | UiColumnType::Surname))
+        .map(|column| column.title.to_string())
+        .collect()
 }
 
 /// Presses `text` with `modifier` (Alt, Control or Shift) held.
@@ -2123,7 +2154,7 @@ fn escape_with_a_refused_value_restores_it_and_closes() {
     type_into(&ui, "Weight", "abc");
     key(&ui, Key::Escape);
     assert!(panel_is_closed(&ui));
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().weight, "100", "the saved weight stays");
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().weight, "100", "the saved weight stays");
     assert!(ui.session.window.get_error_message().is_empty(), "no error is left showing");
 }
 
@@ -2133,7 +2164,7 @@ fn escape_in_a_sheet_cell_leaves_the_panel_open() {
     click(&ui, "Exam");
     click(&ui, "Ana, Quiz");
     key(&ui, Key::Escape);
-    assert_eq!(gradebook(&ui).get_panel_index(), 0, "Escape belongs to the cell");
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32, "Escape belongs to the cell");
 }
 
 #[test]
@@ -2141,10 +2172,10 @@ fn the_arrow_buttons_step_the_panel_through_the_columns() {
     let ui = four_columns();
     click(&ui, "Exam");
     click(&ui, "Next column (Alt+→)");
-    assert_eq!(gradebook(&ui).get_panel_index(), 1);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 1);
     assert_eq!(gradebook(&ui).get_panel_column().row_data(0).unwrap().title, "Quiz");
     click(&ui, "Previous column (Alt+←)");
-    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32);
     assert_eq!(gradebook(&ui).get_panel_column().row_data(0).unwrap().title, "Exam");
 }
 
@@ -2154,23 +2185,25 @@ fn alt_arrows_step_the_panel() {
     click(&ui, "Exam");
     click(&ui, "Weight");
     with_modifier(&ui, Key::Alt, Key::RightArrow);
-    assert_eq!(gradebook(&ui).get_panel_index(), 1, "Alt+→ from inside the Weight field");
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 1, "Alt+→ from inside the Weight field");
     with_modifier(&ui, Key::Alt, Key::LeftArrow);
-    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32);
 }
 
 #[test]
 fn the_ends_dim_the_arrow_and_ignore_the_key() {
     let ui = four_columns();
-    click(&ui, "Exam");
+    click_element(&header(&ui, "First name"));
     assert_eq!(find(&ui, "Previous column (Alt+←)").accessible_enabled(), Some(false));
     with_modifier(&ui, Key::Alt, Key::LeftArrow);
     assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    // the open panel covers the last header; Escape closes it
+    key(&ui, Key::Escape);
     click(&ui, "Rounded");
-    assert_eq!(gradebook(&ui).get_panel_index(), 3);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 3);
     assert_eq!(find(&ui, "Next column (Alt+→)").accessible_enabled(), Some(false));
     with_modifier(&ui, Key::Alt, Key::RightArrow);
-    assert_eq!(gradebook(&ui).get_panel_index(), 3);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 3);
 }
 
 #[test]
@@ -2180,8 +2213,8 @@ fn stepping_puts_a_refused_value_back() {
     type_into(&ui, "Weight", "abc");
     with_modifier(&ui, Key::Alt, Key::RightArrow);
     with_modifier(&ui, Key::Alt, Key::LeftArrow);
-    assert_eq!(gradebook(&ui).get_panel_index(), 0);
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().weight, "100");
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32);
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().weight, "100");
     assert!(ui.session.window.get_error_message().is_empty(), "no error is left showing");
 }
 
@@ -2200,12 +2233,16 @@ fn ctrl_arrows_move_the_column_and_keep_the_panel_on_it() {
     with_modifier(&ui, Key::Control, Key::RightArrow);
     with_modifier(&ui, Key::Control, Key::RightArrow);
     assert_eq!(column_titles(&ui), ["Quiz", "Final grade", "Exam", "Rounded"]);
-    assert_eq!(gradebook(&ui).get_panel_index(), 2, "the panel stays on the column");
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 2, "the panel stays on the column");
     let state = ui.session.state.borrow();
     let connection = state.connection().unwrap();
     let class = classes::list_classes(connection).unwrap()[0].id;
-    let saved: Vec<String> =
-        columns::list_columns(connection, class).unwrap().into_iter().map(|column| column.title).collect();
+    let saved: Vec<String> = columns::list_columns(connection, class)
+        .unwrap()
+        .into_iter()
+        .filter(|column| !column.kind.is_name())
+        .map(|column| column.title)
+        .collect();
     assert_eq!(saved, ["Quiz", "Final grade", "Exam", "Rounded"], "the order is saved");
 }
 
@@ -2244,11 +2281,11 @@ fn deleting_a_column_asks_first() {
     click(&ui, "Exam");
     ui.dialogs.answer_next(false);
     click(&ui, "Delete");
-    assert_eq!(gradebook(&ui).get_columns().row_count(), 2);
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 4);
     assert_eq!(ui.dialogs.questions.borrow()[0], english(&Message::ConfirmDeleteColumn { column: "Exam" }));
     ui.dialogs.answer_next(true);
     click(&ui, "Delete");
-    assert_eq!(gradebook(&ui).get_columns().row_count(), 1);
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 3);
     assert_eq!(gradebook(&ui).get_panel_index(), -1, "the panel closes with its column");
 }
 
@@ -2258,14 +2295,14 @@ fn a_rounded_column_rounds_its_source() {
     type_into(&ui, "Ana, Exam", "7.46");
     click(&ui, "+ Add column");
     click_menu_option(&ui, "Rounded");
-    let rounded = gradebook(&ui).get_columns().row_data(2).unwrap();
+    let rounded = gradebook(&ui).get_columns().row_data(FIRST_MARK + 2).unwrap();
     assert_eq!(rounded.source_index, 1, "rounds the last numeric column, the final grade");
     click(&ui, "Rounded");
     type_into(&ui, "Decimals", "1");
     assert_eq!(cell_text(&ui, 0, 2), "7.5");
     // the source picker's indexes refer to the numeric columns: 0 is the test
     gradebook(&ui).invoke_set_round_source(rounded.id, 0);
-    assert_eq!(gradebook(&ui).get_columns().row_data(2).unwrap().source_index, 0);
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK + 2).unwrap().source_index, 0);
     assert_eq!(cell_text(&ui, 0, 2), "7.5");
 }
 
@@ -2392,7 +2429,7 @@ fn a_sheet_that_changed_underneath_is_redrawn_whole() {
         let state = ui.session.state.borrow();
         let connection = state.connection().unwrap();
         let class = classes::list_classes(connection).unwrap()[0].id;
-        pupils::add_new_pupil(connection, class, "Carla").unwrap();
+        pupils::add_new_pupil(connection, class, "Carla", "").unwrap();
     }
     type_into(&ui, "Ana, Exam", "8");
     assert_eq!(gradebook(&ui).get_rows().row_count(), 3, "the new pupil shows");
@@ -2402,9 +2439,9 @@ fn a_sheet_that_changed_underneath_is_redrawn_whole() {
         let class = classes::list_classes(connection).unwrap()[0].id;
         columns::add_column(connection, class, ColumnType::Info, Language::English).unwrap();
     }
-    let exam = gradebook(&ui).get_columns().row_data(0).unwrap().id;
+    let exam = gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().id;
     gradebook(&ui).invoke_set_weight(exam, "100".into());
-    assert_eq!(gradebook(&ui).get_columns().row_count(), 3, "the new column shows");
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 5, "the new column shows");
     assert_eq!(cell_text(&ui, 0, 0), "8", "and the marks stay in their places");
 }
 
@@ -2415,8 +2452,8 @@ fn typing_marks_updates_the_final_grade_and_summary() {
     type_into(&ui, "Bea, Exam", "3");
     assert_eq!(cell_text(&ui, 0, 1), "8");
     let rows = gradebook(&ui).get_rows();
-    assert_eq!(rows.row_data(0).unwrap().cells.row_data(1).unwrap().tone, Tone::Pass);
-    assert_eq!(rows.row_data(1).unwrap().cells.row_data(1).unwrap().tone, Tone::Fail);
+    assert_eq!(rows.row_data(0).unwrap().cells.row_data(FIRST_MARK + 1).unwrap().tone, Tone::Pass);
+    assert_eq!(rows.row_data(1).unwrap().cells.row_data(FIRST_MARK + 1).unwrap().tone, Tone::Fail);
     assert!(gradebook(&ui).get_has_summary());
     assert_eq!(gradebook(&ui).get_class_average(), "5.5");
     assert_eq!((gradebook(&ui).get_passing(), gradebook(&ui).get_failing()), (1, 1));
@@ -2428,7 +2465,7 @@ fn typing_marks_updates_the_final_grade_and_summary() {
 fn an_out_of_range_mark_is_flagged_and_ignored() {
     let ui = seeded();
     type_into(&ui, "Ana, Exam", "12");
-    let cell = gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(0).unwrap();
+    let cell = gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(FIRST_MARK).unwrap();
     assert!(cell.invalid);
     assert_eq!(cell_text(&ui, 0, 1), "", "the final grade leaves it out, so nothing is marked yet");
 }
@@ -2661,7 +2698,7 @@ fn regression_opening_another_database_closes_the_column_panel() {
     state.shutdown();
     let ui = seeded();
     click(&ui, "Exam");
-    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32);
     open_folder_settings(&ui);
     ui.dialogs.pick_file_next(Some(&other.database()));
     click(&ui, "Open another database…");
@@ -2705,20 +2742,20 @@ fn regression_the_add_column_menu_works_from_the_keyboard() {
     key(&ui, Key::DownArrow);
     press_enter(&ui);
     let columns = gradebook(&ui).get_columns();
-    assert_eq!(columns.row_count(), 3);
-    assert_eq!(columns.row_data(2).unwrap().kind, avalio_lite::ui::ColumnType::Info, "Down moved to Info");
+    assert_eq!(columns.row_count(), 5);
+    assert_eq!(columns.row_data(FIRST_MARK + 2).unwrap().kind, avalio_lite::ui::ColumnType::Info, "Down moved to Info");
     assert!(!shows(&ui, "Rounded"), "choosing closes the menu");
 
     click(&ui, "+ Add column");
     press_enter(&ui);
-    assert_eq!(gradebook(&ui).get_columns().row_count(), 4, "the first option is the one on");
-    assert_eq!(gradebook(&ui).get_columns().row_data(3).unwrap().kind, avalio_lite::ui::ColumnType::Test);
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 6, "the first option is the one on");
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK + 3).unwrap().kind, avalio_lite::ui::ColumnType::Test);
 
     click(&ui, "+ Add column");
     key(&ui, Key::UpArrow);
     key(&ui, Key::Escape);
     assert!(!shows(&ui, "Rounded"), "Escape closes the menu");
-    assert_eq!(gradebook(&ui).get_columns().row_count(), 4, "and adds nothing");
+    assert_eq!(gradebook(&ui).get_columns().row_count(), 6, "and adds nothing");
 }
 
 #[test]
@@ -2747,7 +2784,7 @@ fn regression_the_column_panel_starts_on_its_title_and_escape_closes_it() {
     let ui = seeded();
     click(&ui, "Exam");
     replace_text(&ui, "Quiz");
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().title, "Quiz", "typing went to the title");
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().title, "Quiz", "typing went to the title");
     key(&ui, Key::Escape);
     assert_eq!(gradebook(&ui).get_panel_index(), -1);
     assert!(!shows(&ui, "Weight"));
@@ -2794,7 +2831,7 @@ fn regression_a_refused_class_name_is_put_back_when_the_field_is_left() {
     replace_text(&ui, "2B");
     assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::DuplicateClassName("2B".into())));
     assert_eq!(field_text(&ui, "Class name"), "2B", "the refused text stays while typing");
-    click(&ui, "Add pupil…");
+    click(&ui, "First name…");
     // "2" was saved on the way to "2B" (saving as you type), and that is what the field goes back to
     assert_eq!(field_text(&ui, "Class name"), "2");
     assert_eq!(gradebook(&ui).get_class_name(), "2");
@@ -2804,13 +2841,13 @@ fn regression_a_refused_class_name_is_put_back_when_the_field_is_left() {
 #[test]
 fn regression_enter_puts_back_a_refused_pupil_name() {
     let ui = seeded();
-    let ana = || elements(&ui, "Pupil").into_iter().find(|e| e.accessible_value().as_deref() == Some("Ana"));
+    let ana = || name_fields(&ui, "First name").into_iter().find(|e| e.accessible_value().as_deref() == Some("Ana"));
     click_element(&ana().unwrap());
     replace_text(&ui, "");
     assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::EmptyName));
     press_enter(&ui);
     assert!(ui.session.window.get_error_message().is_empty());
-    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().name, "Ana");
+    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().full_name, "Ana");
     assert!(ana().is_some(), "the field shows the saved name again");
 }
 
@@ -2853,13 +2890,15 @@ fn regression_a_refused_new_class_or_pupil_stays_in_its_field() {
     assert_eq!(field_text(&ui, "New class"), "", "an accepted one empties the field");
 
     click(&ui, "1A");
-    type_into(&ui, "Add pupil…", "   ");
+    type_into(&ui, "First name…", "   ");
+    press_enter(&ui);
     press_enter(&ui);
     error_on_screen(&ui);
-    assert_eq!(field_text(&ui, "Add pupil…"), "   ");
+    assert_eq!(field_text(&ui, "First name…"), "   ");
     replace_text(&ui, "Carla");
     press_enter(&ui);
-    assert_eq!(field_text(&ui, "Add pupil…"), "");
+    press_enter(&ui);
+    assert_eq!(field_text(&ui, "First name…"), "");
 }
 
 #[test]
@@ -2883,9 +2922,9 @@ fn with_a_pupil_in_no_class() -> Ui {
     {
         let connection = state.connection().unwrap();
         let first = classes::create_class(connection, "1A").unwrap();
-        pupils::add_new_pupil(connection, first, "Ana").unwrap();
+        pupils::add_new_pupil(connection, first, "Ana", "").unwrap();
         let second = classes::create_class(connection, "2B").unwrap();
-        let carla = pupils::add_new_pupil(connection, second, "Carla").unwrap();
+        let carla = pupils::add_new_pupil(connection, second, "Carla", "").unwrap();
         pupils::remove_from_class(connection, second, carla).unwrap();
         classes::delete_class(connection, second).unwrap();
     }
@@ -3023,7 +3062,7 @@ fn an_invalid_key_keeps_the_page_and_the_text() {
 #[test]
 fn a_mistyped_key_is_refused_without_going_online() {
     let ui = unlicensed();
-    activate(&ui, "BRN-79YN-44XQ");
+    activate(&ui, "BRN-EYZE-C1AE");
     assert!(shows_text(&ui, &licence_text(&Notice::InvalidKey)));
     assert_eq!(licence_calls(&ui), 0);
 }
@@ -3177,7 +3216,7 @@ fn seeded_with(licence: FakeLicence, language: Language) -> Ui {
     {
         let connection = state.connection().unwrap();
         let class = classes::create_class(connection, "1A").unwrap();
-        pupils::add_new_pupil(connection, class, "Ana").unwrap();
+        pupils::add_new_pupil(connection, class, "Ana", "").unwrap();
         let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
         columns::rename_column(connection, exam, "Exam").unwrap();
     }
@@ -3679,7 +3718,11 @@ fn view_clear(ui: &Ui) {
 // ---------------------------------------------------------------------------------------------
 // Column widths
 
-/// The width stored for column `index` of class "1A" (`None` for the default).
+/// Where the first mark column is in the sheet: after the first-name and surname columns.
+const FIRST_MARK: usize = 2;
+
+/// The width stored for column `index` of class "1A" (`None` for the default), the name columns
+/// counted.
 fn stored_column_width(ui: &Ui, index: usize) -> Option<i64> {
     let state = ui.session.state.borrow();
     let connection = state.connection().unwrap();
@@ -3687,7 +3730,7 @@ fn stored_column_width(ui: &Ui, index: usize) -> Option<i64> {
     columns::list_columns(connection, class).unwrap()[index].width.map(i64::from)
 }
 
-/// The edges that resize the columns, in sheet order: the pupil column's first.
+/// The edges that resize the columns, in sheet order: the first-name and surname columns' first.
 fn width_edges(ui: &Ui) -> Vec<ElementHandle> {
     elements(ui, "Column width")
 }
@@ -3714,11 +3757,10 @@ fn double_click(ui: &Ui, element: &ElementHandle) {
 
 #[test]
 fn the_sheet_width_limits_match_the_stored_ones() {
-    use avalio_lite::gradebook::model::{MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, MIN_NAME_WIDTH};
+    use avalio_lite::gradebook::model::{MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH};
     let ui = seeded();
     let widths = ui.session.window.global::<ColumnWidths>();
     assert_eq!(widths.get_column_min(), f32::from(MIN_COLUMN_WIDTH));
-    assert_eq!(widths.get_name_min(), f32::from(MIN_NAME_WIDTH));
     assert_eq!(widths.get_max(), f32::from(MAX_COLUMN_WIDTH));
 }
 
@@ -3726,36 +3768,38 @@ fn the_sheet_width_limits_match_the_stored_ones() {
 fn dragging_a_column_edge_resizes_and_saves_it() {
     let ui = seeded();
     let edges = width_edges(&ui);
-    assert_eq!(edges.len(), 3, "the pupil column and both columns have an edge");
-    assert_eq!(edges[1].accessible_value().as_deref(), Some("128"), "a test column starts at its default");
-    drag_edge(&edges[1], 80.0);
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().width, 208);
-    assert_eq!(stored_column_width(&ui, 0), Some(208));
+    assert_eq!(edges.len(), 4, "both name columns and both mark columns have an edge");
+    assert_eq!(edges[0].accessible_value().as_deref(), Some("160"), "the first name starts at its default");
+    assert_eq!(edges[1].accessible_value().as_deref(), Some("210"), "and the surname at its own");
+    assert_eq!(edges[2].accessible_value().as_deref(), Some("128"), "a test column starts at its default");
+    drag_edge(&edges[2], 80.0);
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().width, 208);
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(208));
     assert_eq!(find(&ui, "Ana, Exam").size().width, 208.0 - 24.0, "the cells follow the header");
-    assert_eq!(stored_column_width(&ui, 1), None, "the other column keeps its default");
+    assert_eq!(stored_column_width(&ui, FIRST_MARK + 1), None, "the other column keeps its default");
     assert!(panel_is_closed(&ui), "a drag doesn't open the column panel");
 }
 
 #[test]
 fn a_drag_is_clamped_to_the_limits() {
     let ui = seeded();
-    drag_edge(&width_edges(&ui)[1], -500.0);
-    assert_eq!(stored_column_width(&ui, 0), Some(72), "no narrower than a pill");
-    drag_edge(&width_edges(&ui)[1], 1500.0);
-    assert_eq!(stored_column_width(&ui, 0), Some(640));
+    drag_edge(&width_edges(&ui)[2], -500.0);
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(72), "no narrower than a pill");
+    drag_edge(&width_edges(&ui)[2], 1500.0);
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(640));
     drag_edge(&width_edges(&ui)[0], -500.0);
-    assert_eq!(gradebook(&ui).get_name_width(), 120, "the pupil column has its own minimum");
+    assert_eq!(stored_column_width(&ui, 0), Some(72), "the first name has the same limits as any column");
 }
 
 #[test]
 fn double_clicking_the_edge_restores_the_default() {
     let ui = seeded();
-    drag_edge(&width_edges(&ui)[1], 80.0);
-    assert_eq!(stored_column_width(&ui, 0), Some(208));
-    double_click(&ui, &width_edges(&ui)[1]);
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().width, 0);
-    assert_eq!(stored_column_width(&ui, 0), None, "the default is stored as no width at all");
-    assert_eq!(width_edges(&ui)[1].accessible_value().as_deref(), Some("128"));
+    drag_edge(&width_edges(&ui)[2], 80.0);
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(208));
+    double_click(&ui, &width_edges(&ui)[2]);
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().width, 0);
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), None, "the default is stored as no width at all");
+    assert_eq!(width_edges(&ui)[2].accessible_value().as_deref(), Some("128"));
 }
 
 #[test]
@@ -3772,60 +3816,63 @@ fn shift_arrow_on_a_focused_header_changes_its_width() {
             break;
         }
     }
-    assert!(reached, "Tab reaches the Exam header");
-    assert_eq!(stored_column_width(&ui, 0), Some(144), "16px wider");
+    assert!(reached, "Tab reaches the first-name header");
+    assert_eq!(stored_column_width(&ui, 0), Some(176), "16px wider");
     with_modifier(&ui, Key::Shift, Key::LeftArrow);
     with_modifier(&ui, Key::Shift, Key::LeftArrow);
-    assert_eq!(stored_column_width(&ui, 0), Some(112), "16px narrower each time");
+    assert_eq!(stored_column_width(&ui, 0), Some(144), "16px narrower each time");
     assert!(panel_is_closed(&ui), "Shift+arrow doesn't open the panel");
 }
 
 #[test]
 fn a_screen_reader_can_step_the_width() {
     let ui = seeded();
-    width_edges(&ui)[1].invoke_accessible_increment_action();
-    assert_eq!(stored_column_width(&ui, 0), Some(144));
-    width_edges(&ui)[1].invoke_accessible_decrement_action();
-    assert_eq!(stored_column_width(&ui, 0), Some(128));
+    width_edges(&ui)[2].invoke_accessible_increment_action();
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(144));
+    width_edges(&ui)[2].invoke_accessible_decrement_action();
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(128));
 }
 
 #[test]
-fn the_pupil_column_width_is_kept_per_class() {
+fn the_name_column_widths_are_kept_per_class() {
     let ui = with_second_class();
+    let name_width = |ui: &Ui, index: usize| gradebook(ui).get_columns().row_data(index).unwrap().width;
     drag_edge(&width_edges(&ui)[0], 90.0);
-    assert_eq!(gradebook(&ui).get_name_width(), 300);
+    drag_edge(&width_edges(&ui)[1], -60.0);
+    assert_eq!((name_width(&ui, 0), name_width(&ui, 1)), (250, 150));
     click(&ui, "2B");
-    assert_eq!(gradebook(&ui).get_name_width(), 0, "the other class keeps its default");
+    assert_eq!((name_width(&ui, 0), name_width(&ui, 1)), (0, 0), "the other class keeps its defaults");
     click(&ui, "1A");
-    assert_eq!(gradebook(&ui).get_name_width(), 300, "and this one keeps its own");
-    assert_eq!(find(&ui, "Column width").accessible_value().as_deref(), Some("300"));
+    assert_eq!((name_width(&ui, 0), name_width(&ui, 1)), (250, 150), "and this one keeps its own");
+    assert_eq!(width_edges(&ui)[0].accessible_value().as_deref(), Some("250"));
 }
 
 /// Was: with no columns the header row had no height, so the pupil column's edge couldn't be grabbed.
 #[test]
 fn regression_a_class_without_columns_still_has_a_pupil_edge_to_drag() {
     let ui = with_second_class();
-    let edge = find(&ui, "Column width");
-    assert!(edge.size().height >= 44.0, "a whole row high: {:?}", edge.size());
+    let edges = width_edges(&ui);
+    assert_eq!(edges.len(), 2, "only the name columns");
+    assert!(edges.iter().all(|edge| edge.size().height >= 44.0), "a whole row high: {:?}", edges[0].size());
 }
 
 #[test]
 fn a_click_on_the_edge_does_not_open_the_column_panel() {
     let ui = seeded();
-    click_element(&width_edges(&ui)[1]);
+    click_element(&width_edges(&ui)[2]);
     assert!(panel_is_closed(&ui));
-    assert_eq!(stored_column_width(&ui, 0), None, "a click without a drag saves nothing");
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), None, "a click without a drag saves nothing");
     click(&ui, "Exam");
-    assert_eq!(gradebook(&ui).get_panel_index(), 0, "the rest of the header still opens the panel");
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32, "the rest of the header still opens the panel");
 }
 
 #[test]
 fn resizing_the_column_in_the_panel_keeps_the_panel_open_on_it() {
     let ui = seeded();
     click(&ui, "Exam");
-    drag_edge(&width_edges(&ui)[1], 60.0);
-    assert_eq!(gradebook(&ui).get_panel_index(), 0);
-    assert_eq!(stored_column_width(&ui, 0), Some(188));
+    drag_edge(&width_edges(&ui)[2], 60.0);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32);
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(188));
 }
 
 #[test]
@@ -3842,10 +3889,10 @@ fn a_failed_width_save_shows_the_error() {
             )
             .unwrap();
     }
-    drag_edge(&width_edges(&ui)[1], 80.0);
+    drag_edge(&width_edges(&ui)[2], 80.0);
     assert!(!ui.session.window.get_error_message().is_empty(), "the failure is on screen");
-    assert_eq!(gradebook(&ui).get_columns().row_data(0).unwrap().width, 0, "the column snaps back");
-    assert_eq!(width_edges(&ui)[1].accessible_value().as_deref(), Some("128"));
+    assert_eq!(gradebook(&ui).get_columns().row_data(FIRST_MARK).unwrap().width, 0, "the column snaps back");
+    assert_eq!(width_edges(&ui)[2].accessible_value().as_deref(), Some("128"));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3860,13 +3907,14 @@ fn with_a_scrolling_sheet() -> Ui {
         let connection = state.connection().unwrap();
         let class = classes::create_class(connection, "1A").unwrap();
         for name in ["Ana", "Bea"] {
-            pupils::add_new_pupil(connection, class, name).unwrap();
+            pupils::add_new_pupil(connection, class, name, "").unwrap();
         }
         let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
         columns::rename_column(connection, exam, "Exam").unwrap();
         let notes = columns::add_column(connection, class, ColumnType::Info, Language::English).unwrap();
         columns::rename_column(connection, notes, "Notes").unwrap();
-        columns::set_column_width(connection, notes, Some(500)).unwrap();
+        // wide enough to start out partly hidden, with its middle still in view to click
+        columns::set_column_width(connection, notes, Some(300)).unwrap();
     }
     state.shutdown();
     let ui = Ui::open(fixture);
@@ -3919,9 +3967,10 @@ fn going_back_to_a_pupil_name_scrolls_the_whole_name_cell_into_view() {
     let remove = || elements(&ui, "Remove from this class").first().map(|button| button.absolute_position().x);
     click(&ui, "Ana, Notes");
     assert_eq!(remove(), None, "the sheet scrolled the name cells' start away");
-    // from Ana's note back past her exam to her name
-    with_modifier(&ui, Key::Shift, Key::Tab);
-    with_modifier(&ui, Key::Shift, Key::Tab);
+    // from Ana's note back past her exam and surname to her first name
+    for _ in 0..3 {
+        with_modifier(&ui, Key::Shift, Key::Tab);
+    }
     let shown = remove().expect("the remove button shows again");
     assert!(shown >= left - 0.5, "{shown}, view from {left}");
 }
@@ -3933,10 +3982,10 @@ fn tabbing_to_add_pupil_scrolls_its_whole_row_start_into_view() {
     click(&ui, "Bea, Notes");
     // the last cell of the last row is followed by the new pupil's field
     key(&ui, Key::Tab);
-    let (_, field) = text_and_box(&ui, "Add pupil…", 0);
-    // the field sits 36px into its cell, past the "+", and its text 10px into the focused field:
-    // the cell's start is back in view
-    assert!((field.0 - (left + 46.0)).abs() < 1.0, "the text starts at {}, view from {left}", field.0);
+    let (_, field) = text_and_box(&ui, "First name…", 0);
+    // past the "+" strip and its grid line (33px), the field sits 10px into its cell and its text
+    // 10px into the focused field: the row's start is back in view
+    assert!((field.0 - (left + 53.0)).abs() < 1.0, "the text starts at {}, view from {left}", field.0);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3946,7 +3995,7 @@ fn tabbing_to_add_pupil_scrolls_its_whole_row_start_into_view() {
 /// (left, right) pairs in window coordinates. Each field's text and box come in the same order
 /// along a row, so the box is the one at the text's place among the row's boxes.
 fn text_and_box(ui: &Ui, label: &str, nth: usize) -> ((f32, f32), (f32, f32)) {
-    let input = &elements(ui, label)[nth];
+    let input = &name_fields(ui, label)[nth];
     let (at, size) = (input.absolute_position(), input.size());
     let on_row = |id: &str| -> Vec<(f32, f32)> {
         let mut found: Vec<(f32, f32)> = Vec::new();
@@ -3979,52 +4028,52 @@ const LONG_NAME: &str = "Ana María Fernández de la Iglesia Rodríguez-Castelao
 #[test]
 fn a_long_pupil_name_scrolls_to_the_cursor() {
     let ui = seeded();
-    click_nth(&ui, "Pupil", 0);
+    click_element(&name_fields(&ui, "First name")[0]);
     replace_text(&ui, LONG_NAME);
     assert!(LONG_NAME.chars().count() >= 80);
-    assert!(shows_its_end(&ui, "Pupil", 0), "typing at the end keeps the cursor in view");
+    assert!(shows_its_end(&ui, "First name", 0), "typing at the end keeps the cursor in view");
     key(&ui, Key::Home);
-    assert!(!is_scrolled(&ui, "Pupil", 0), "Home shows the start");
+    assert!(!is_scrolled(&ui, "First name", 0), "Home shows the start");
     key(&ui, Key::End);
-    assert!(shows_its_end(&ui, "Pupil", 0), "End shows the end");
+    assert!(shows_its_end(&ui, "First name", 0), "End shows the end");
     for _ in 0..10 {
         key(&ui, Key::LeftArrow);
     }
-    assert!(is_scrolled(&ui, "Pupil", 0), "a few steps left from the end stays scrolled");
-    assert_eq!(count(&ui, &format!("SELECT COUNT(*) FROM pupils WHERE name = '{LONG_NAME}'")), 1);
+    assert!(is_scrolled(&ui, "First name", 0), "a few steps left from the end stays scrolled");
+    assert_eq!(count(&ui, &format!("SELECT COUNT(*) FROM pupils WHERE first_name = '{LONG_NAME}'")), 1);
 }
 
 #[test]
 fn leaving_the_field_shows_its_start_again() {
     let ui = seeded();
-    click_nth(&ui, "Pupil", 0);
+    click_element(&name_fields(&ui, "First name")[0]);
     replace_text(&ui, LONG_NAME);
-    assert!(is_scrolled(&ui, "Pupil", 0));
+    assert!(is_scrolled(&ui, "First name", 0));
     key(&ui, Key::Tab);
-    assert!(!is_scrolled(&ui, "Pupil", 0), "the resting sheet shows the start of the name");
+    assert!(!is_scrolled(&ui, "First name", 0), "the resting sheet shows the start of the name");
 }
 
 #[test]
 fn a_short_name_does_not_move() {
     let ui = seeded();
-    click_nth(&ui, "Pupil", 0);
+    click_element(&name_fields(&ui, "First name")[0]);
     key(&ui, Key::End);
     type_text(&ui, " M.");
-    let (text, field) = text_and_box(&ui, "Pupil", 0);
+    let (text, field) = text_and_box(&ui, "First name", 0);
     assert_eq!(text, field, "a text that fits fills its box and never slides");
 }
 
 #[test]
 fn shift_arrows_select_and_scroll_the_same_way() {
     let ui = seeded();
-    click_nth(&ui, "Pupil", 0);
+    click_element(&name_fields(&ui, "First name")[0]);
     replace_text(&ui, LONG_NAME);
     key(&ui, Key::Home);
-    assert!(!is_scrolled(&ui, "Pupil", 0));
+    assert!(!is_scrolled(&ui, "First name", 0));
     for _ in 0..LONG_NAME.chars().count() {
         with_modifier(&ui, Key::Shift, Key::RightArrow);
     }
-    assert!(shows_its_end(&ui, "Pupil", 0), "selecting to the end follows the cursor");
+    assert!(shows_its_end(&ui, "First name", 0), "selecting to the end follows the cursor");
 }
 
 #[test]
@@ -4086,7 +4135,7 @@ fn stored_mark(ui: &Ui, pupil: &str) -> Option<String> {
         .unwrap()
         .query_row(
             "SELECT c.value FROM cells c JOIN pupils p ON p.id = c.pupil_id
-             JOIN sheet_columns sc ON sc.id = c.column_id WHERE p.name = ?1 AND sc.title = 'Exam'",
+             JOIN sheet_columns sc ON sc.id = c.column_id WHERE p.first_name = ?1 AND sc.title = 'Exam'",
             [pupil],
             |row| row.get(0),
         )
@@ -4131,10 +4180,10 @@ fn enter_in_an_out_of_range_cell_still_moves_down_and_keeps_it_red() {
     let ui = seeded();
     type_into(&ui, "Ana, Exam", "12");
     press_enter(&ui);
-    assert!(gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(0).unwrap().invalid);
+    assert!(gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(FIRST_MARK).unwrap().invalid);
     type_text(&ui, "4");
     assert_eq!(stored_mark(&ui, "Bea").as_deref(), Some("4"));
-    assert!(gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(0).unwrap().invalid, "still marked");
+    assert!(gradebook(&ui).get_rows().row_data(0).unwrap().cells.row_data(FIRST_MARK).unwrap().invalid, "still marked");
 }
 
 #[test]
@@ -4162,12 +4211,12 @@ fn enter_moves_down_again_from_a_cell_reached_by_enter() {
 #[test]
 fn enter_in_a_pupil_name_ends_the_editing() {
     let ui = seeded();
-    click_nth(&ui, "Pupil", 0);
+    click_element(&name_fields(&ui, "First name")[0]);
     replace_text(&ui, "Ana María");
     press_enter(&ui);
     type_text(&ui, "x");
-    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().name, "Ana María", "the field lost focus");
-    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils WHERE name = 'Ana María'"), 1, "and the name was saved");
+    assert_eq!(gradebook(&ui).get_rows().row_data(0).unwrap().full_name, "Ana María", "the field lost focus");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM pupils WHERE first_name = 'Ana María'"), 1, "and the name was saved");
 }
 
 #[test]
@@ -4188,10 +4237,13 @@ fn enter_in_add_pupil_keeps_the_field_focused() {
     click(&ui, "+ Add pupil");
     type_text(&ui, "Carmen");
     press_enter(&ui);
+    type_text(&ui, "Gómez");
+    press_enter(&ui);
     type_text(&ui, "Dora");
     press_enter(&ui);
-    let names: Vec<String> = gradebook(&ui).get_rows().iter().map(|row| row.name.to_string()).collect();
-    assert!(names.contains(&"Carmen".to_owned()) && names.contains(&"Dora".to_owned()), "{names:?}");
+    press_enter(&ui);
+    let names: Vec<String> = gradebook(&ui).get_rows().iter().map(|row| row.full_name.to_string()).collect();
+    assert!(names.contains(&"Carmen Gómez".to_owned()) && names.contains(&"Dora".to_owned()), "{names:?}");
 }
 
 /// Class "1A" with Ana, Bea and Carla, and the test "Exam".
@@ -4202,11 +4254,299 @@ fn with_three_pupils() -> Ui {
         let connection = state.connection().unwrap();
         let class = classes::create_class(connection, "1A").unwrap();
         for name in ["Ana", "Bea", "Carla"] {
-            pupils::add_new_pupil(connection, class, name).unwrap();
+            pupils::add_new_pupil(connection, class, name, "").unwrap();
         }
         let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
         columns::rename_column(connection, exam, "Exam").unwrap();
     }
     state.shutdown();
     Ui::open(fixture)
+}
+
+// ---------------------------------------------------------------------------------------------
+// First name and surname
+
+/// The pupil `pupil_id` as stored: first name, surname.
+fn stored_names(ui: &Ui, pupil_id: i32) -> (String, String) {
+    let state = ui.session.state.borrow();
+    let pupil = pupils::pupil_name(state.connection().unwrap(), i64::from(pupil_id)).unwrap();
+    (pupil.first_name, pupil.surname)
+}
+
+/// Which of the add row's fields has the keyboard focus. The testing backend can't tell, so a key
+/// is typed and taken back again: the field it lands in is the focused one.
+fn focused_label(ui: &Ui) -> Option<String> {
+    let before = ["First name…", "Surname…"].map(|label| field_text(ui, label));
+    type_text(ui, "§");
+    let after = ["First name…", "Surname…"].map(|label| field_text(ui, label));
+    let found = (0..2).find(|index| before[*index] != after[*index]);
+    if found.is_some() {
+        key(ui, Key::Backspace);
+    }
+    found.map(|index| ["First name…", "Surname…"][index].to_owned())
+}
+
+#[test]
+fn enter_in_the_first_name_moves_to_the_surname() {
+    let ui = seeded();
+    type_into(&ui, "First name…", "Ana");
+    press_enter(&ui);
+    assert_eq!(gradebook(&ui).get_rows().row_count(), 2, "nothing added yet");
+    assert_eq!(focused_label(&ui).as_deref(), Some("Surname…"));
+    assert_eq!(field_text(&ui, "First name…"), "Ana", "the first name waits for the surname");
+}
+
+#[test]
+fn enter_in_the_surname_adds_the_pupil_and_refocuses_the_first_name() {
+    let ui = seeded();
+    type_into(&ui, "First name…", "Ana");
+    press_enter(&ui);
+    type_text(&ui, "Pérez López");
+    press_enter(&ui);
+    let rows = gradebook(&ui).get_rows();
+    assert_eq!(rows.row_count(), 3);
+    let added = rows.row_data(2).unwrap();
+    assert_eq!((added.first_name.as_str(), added.surname.as_str()), ("Ana", "Pérez López"));
+    assert_eq!(added.full_name, "Ana Pérez López");
+    assert_eq!(stored_names(&ui, added.pupil_id), ("Ana".to_owned(), "Pérez López".to_owned()));
+    assert_eq!((field_text(&ui, "First name…"), field_text(&ui, "Surname…")), (String::new(), String::new()));
+    assert_eq!(focused_label(&ui).as_deref(), Some("First name…"), "ready for the next pupil");
+}
+
+#[test]
+fn a_new_pupil_without_a_first_name_is_refused_and_the_surname_stays() {
+    let ui = seeded();
+    type_into(&ui, "Surname…", "Otero");
+    press_enter(&ui);
+    assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::EmptyName));
+    assert_eq!(gradebook(&ui).get_rows().row_count(), 2, "nobody added");
+    assert_eq!(field_text(&ui, "Surname…"), "Otero", "the typed surname is kept");
+    assert_eq!(focused_label(&ui).as_deref(), Some("First name…"), "where the missing name goes");
+    type_text(&ui, "Brais");
+    press_enter(&ui);
+    press_enter(&ui);
+    assert_eq!(gradebook(&ui).get_rows().row_data(2).unwrap().full_name, "Brais Otero");
+}
+
+#[test]
+fn a_pupil_without_a_surname_can_be_added() {
+    let ui = seeded();
+    type_into(&ui, "First name…", "Carmen");
+    press_enter(&ui);
+    press_enter(&ui);
+    let added = gradebook(&ui).get_rows().row_data(2).unwrap();
+    assert_eq!((added.first_name.as_str(), added.surname.as_str(), added.full_name.as_str()), ("Carmen", "", "Carmen"));
+    assert!(ui.session.window.get_error_message().is_empty());
+}
+
+#[test]
+fn first_name_and_surname_are_renamed_in_place() {
+    let ui = seeded();
+    let ana = gradebook(&ui).get_rows().row_data(0).unwrap().pupil_id;
+    click_element(&name_fields(&ui, "First name")[0]);
+    replace_text(&ui, "Ana María");
+    click_element(&name_fields(&ui, "Surname")[0]);
+    type_text(&ui, "Pérez");
+    assert_eq!(stored_names(&ui, ana), ("Ana María".to_owned(), "Pérez".to_owned()));
+    let row = gradebook(&ui).get_rows().row_data(0).unwrap();
+    assert_eq!(row.full_name, "Ana María Pérez", "what confirmations and screen readers use");
+    assert!(shows(&ui, "Ana María Pérez, Exam"), "the cells are spoken with the full name");
+    replace_text(&ui, "");
+    assert!(ui.session.window.get_error_message().is_empty(), "a surname may be emptied");
+    assert_eq!(stored_names(&ui, ana), ("Ana María".to_owned(), String::new()));
+    press_enter(&ui);
+    type_text(&ui, "x");
+    assert_eq!(stored_names(&ui, ana).1, "", "Enter ended the editing: nothing takes the typing");
+}
+
+#[test]
+fn removing_a_pupil_quotes_the_full_name() {
+    let ui = seeded();
+    click_element(&name_fields(&ui, "Surname")[0]);
+    type_text(&ui, "Pérez");
+    ui.dialogs.answer_next(false);
+    click_nth(&ui, "Remove from this class", 0);
+    let question = english(&Message::ConfirmRemovePupil { pupil: "Ana Pérez", class: "1A" });
+    assert_eq!(ui.dialogs.questions.borrow()[0], question);
+}
+
+#[test]
+fn pupils_from_another_class_are_listed_by_surname() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    {
+        let connection = state.connection().unwrap();
+        let first = classes::create_class(connection, "1A").unwrap();
+        pupils::add_new_pupil(connection, first, "Ana", "").unwrap();
+        let second = classes::create_class(connection, "2B").unwrap();
+        pupils::add_new_pupil(connection, second, "Ana", "Pérez López").unwrap();
+        pupils::add_new_pupil(connection, second, "Carla", "").unwrap();
+    }
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    let listed: Vec<String> = gradebook(&ui).get_addable_pupils().iter().map(|pupil| pupil.name.to_string()).collect();
+    assert_eq!(listed, ["Carla", "Pérez López, Ana"]);
+    click(&ui, "More actions");
+    click(&ui, "Add from another class…");
+    click(&ui, "Pérez López, Ana");
+    assert_eq!(gradebook(&ui).get_rows().iter().last().unwrap().full_name, "Ana Pérez López");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Name columns among the others, and dragging headers
+
+/// Every column's title in sheet order, the name columns included.
+fn all_titles(ui: &Ui) -> Vec<String> {
+    gradebook(ui).get_columns().iter().map(|column| column.title.to_string()).collect()
+}
+
+fn centre(element: &ElementHandle) -> slint::LogicalPosition {
+    let (at, size) = (element.absolute_position(), element.size());
+    slint::LogicalPosition::new(at.x + size.width / 2.0, at.y + size.height / 2.0)
+}
+
+/// Presses the header titled `title`, moves the pointer sideways to `x` (window coordinates) in a
+/// few steps, and releases it there, through real pointer events.
+fn drag_header_to(ui: &Ui, title: &str, x: f32) {
+    let start = centre(&header(ui, title));
+    let window = ui.session.window.window();
+    window.dispatch_event(WindowEvent::PointerMoved { position: start });
+    window.dispatch_event(WindowEvent::PointerPressed { position: start, button: PointerEventButton::Left });
+    for step in 1..=4 {
+        let position = slint::LogicalPosition::new(start.x + (x - start.x) * step as f32 / 4.0, start.y);
+        window.dispatch_event(WindowEvent::PointerMoved { position });
+    }
+    let end = slint::LogicalPosition::new(x, start.y);
+    window.dispatch_event(WindowEvent::PointerReleased { position: end, button: PointerEventButton::Left });
+}
+
+/// The left edge of the header titled `title`, in window coordinates.
+fn header_left(ui: &Ui, title: &str) -> f32 {
+    header(ui, title).absolute_position().x
+}
+
+#[test]
+fn a_name_columns_panel_shows_only_the_move_buttons() {
+    let ui = seeded();
+    click_element(&header(&ui, "Surname"));
+    assert_eq!(gradebook(&ui).get_panel_index(), 1);
+    assert!(!shows(&ui, "Title"), "the title follows the language");
+    assert!(!shows(&ui, "Delete"), "a name column can't be deleted");
+    assert!(shows_text(&ui, "Surname: the same in every class the pupil is in"));
+    assert!(shows(&ui, "Move left (Ctrl+←)") && shows(&ui, "Move right (Ctrl+→)"));
+}
+
+#[test]
+fn ctrl_arrow_moves_the_surname_past_a_test() {
+    let ui = seeded();
+    click_element(&header(&ui, "Surname"));
+    with_modifier(&ui, Key::Control, Key::RightArrow);
+    assert_eq!(all_titles(&ui), ["First name", "Exam", "Surname", "Final grade"]);
+    assert_eq!(gradebook(&ui).get_panel_index(), 2, "the panel follows it");
+    assert_eq!(field_text(&ui, "Surname…"), "", "the add row's surname field moved with it");
+    assert!(shows(&ui, "First name…") && shows(&ui, "Surname…"));
+}
+
+#[test]
+fn the_remove_button_works_with_the_names_moved() {
+    let ui = seeded();
+    click_element(&header(&ui, "First name"));
+    click(&ui, "Move right (Ctrl+→)");
+    click(&ui, "Move right (Ctrl+→)");
+    key(&ui, Key::Escape);
+    assert_eq!(all_titles(&ui), ["Surname", "Exam", "First name", "Final grade"]);
+    ui.dialogs.answer_next(true);
+    click_nth(&ui, "Remove from this class", 0);
+    assert_eq!(ui.dialogs.questions.borrow()[0], english(&Message::ConfirmRemovePupil { pupil: "Ana", class: "1A" }));
+    assert_eq!(gradebook(&ui).get_rows().row_count(), 1);
+}
+
+#[test]
+fn the_add_row_follows_the_moved_name_columns() {
+    let ui = seeded();
+    click_element(&header(&ui, "Surname"));
+    with_modifier(&ui, Key::Control, Key::RightArrow);
+    key(&ui, Key::Escape);
+    let (first_name, surname) = (find(&ui, "First name…"), find(&ui, "Surname…"));
+    assert!((first_name.absolute_position().x - header_left(&ui, "First name")).abs() < 12.0, "under its column");
+    assert!((surname.absolute_position().x - header_left(&ui, "Surname")).abs() < 12.0, "under its column");
+    type_into(&ui, "First name…", "Carla");
+    press_enter(&ui);
+    type_text(&ui, "Iglesias");
+    press_enter(&ui);
+    assert_eq!(gradebook(&ui).get_rows().row_data(2).unwrap().full_name, "Carla Iglesias");
+}
+
+#[test]
+fn dragging_a_header_moves_the_column() {
+    let ui = four_columns();
+    // the final grade dropped just after the first name
+    drag_header_to(&ui, "Final grade", header_left(&ui, "Surname") + 4.0);
+    assert_eq!(all_titles(&ui), ["First name", "Final grade", "Surname", "Exam", "Quiz", "Rounded"]);
+    assert!(panel_is_closed(&ui), "a drag isn't a click");
+    let state = ui.session.state.borrow();
+    let connection = state.connection().unwrap();
+    let class = classes::list_classes(connection).unwrap()[0].id;
+    assert_eq!(columns::list_columns(connection, class).unwrap()[1].title, "Final grade", "saved");
+}
+
+#[test]
+fn a_small_move_is_still_a_click_that_opens_the_panel() {
+    let ui = four_columns();
+    let start = header_left(&ui, "Quiz");
+    drag_header_to(&ui, "Quiz", centre(&header(&ui, "Quiz")).x + 4.0);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 1);
+    assert_eq!(header_left(&ui, "Quiz"), start, "and nothing moved");
+}
+
+#[test]
+fn dropping_a_column_on_its_own_place_writes_nothing() {
+    let ui = four_columns();
+    {
+        let state = ui.session.state.borrow();
+        state
+            .connection()
+            .unwrap()
+            .execute_batch(
+                "CREATE TEMP TABLE writes (n INTEGER);
+                 CREATE TEMP TRIGGER count_writes AFTER UPDATE OF position ON sheet_columns
+                 BEGIN INSERT INTO writes VALUES (1); END;",
+            )
+            .unwrap();
+    }
+    let quiz = header(&ui, "Quiz");
+    // on its own right half: the gap after it, which is where it already is
+    drag_header_to(&ui, "Quiz", quiz.absolute_position().x + quiz.size().width - 10.0);
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM writes"), 0);
+    assert_eq!(column_titles(&ui), ["Exam", "Quiz", "Final grade", "Rounded"]);
+}
+
+#[test]
+fn the_open_panel_follows_a_dragged_column() {
+    let ui = four_columns();
+    click(&ui, "Exam");
+    key(&ui, Key::Escape);
+    click(&ui, "Quiz");
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32 + 1);
+    drag_header_to(&ui, "Quiz", header_left(&ui, "Exam") + 4.0);
+    assert_eq!(column_titles(&ui), ["Quiz", "Exam", "Final grade", "Rounded"]);
+    assert_eq!(gradebook(&ui).get_panel_index(), FIRST_MARK as i32, "still on Quiz");
+    assert_eq!(gradebook(&ui).get_panel_column().row_data(0).unwrap().title, "Quiz");
+}
+
+#[test]
+fn pressing_the_resize_edge_never_starts_a_drag() {
+    let ui = seeded();
+    drag_edge(&width_edges(&ui)[2], 60.0);
+    assert_eq!(all_titles(&ui), ["First name", "Surname", "Exam", "Final grade"], "nothing moved");
+    assert_eq!(stored_column_width(&ui, FIRST_MARK), Some(188), "it resized instead");
+}
+
+#[test]
+fn a_name_column_can_be_dragged() {
+    let ui = seeded();
+    let final_grade = header(&ui, "Final grade");
+    // past the end of the last header: the last gap
+    drag_header_to(&ui, "First name", final_grade.absolute_position().x + final_grade.size().width + 40.0);
+    assert_eq!(all_titles(&ui), ["Surname", "Exam", "Final grade", "First name"]);
 }

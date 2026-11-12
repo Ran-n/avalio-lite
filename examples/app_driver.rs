@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.921715
-//+ Revised: 	2026/11/09 21:53:59.844994
+//+ Revised: 	2026/11/11 17:10:57.722422
 // -----------------------------------------------------------------------------
 
 //! Runs the real app, in its real window, for the desktop tests (`tests/desktop.rs`), against a
@@ -290,7 +290,12 @@ fn state(session: &Session) -> Value {
                     json!({ "text": cell.text.as_str(), "tone": tone, "provisional": cell.provisional, "invalid": cell.invalid })
                 })
                 .collect();
-            json!({ "name": row.name.as_str(), "cells": cells })
+            json!({
+                "name": row.full_name.as_str(),
+                "first_name": row.first_name.as_str(),
+                "surname": row.surname.as_str(),
+                "cells": cells,
+            })
         })
         .collect();
     let columns: Vec<String> = gradebook.get_columns().iter().map(|column| column.title.to_string()).collect();
@@ -312,7 +317,6 @@ fn state(session: &Session) -> Value {
         "class_name": gradebook.get_class_name().as_str(),
         "columns": columns,
         "column_widths": column_widths,
-        "name_width": gradebook.get_name_width(),
         "rows": rows,
         "panel_index": gradebook.get_panel_index(),
         "sidebar_collapsed": gradebook.get_sidebar_collapsed(),

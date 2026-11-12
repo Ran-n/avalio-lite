@@ -1,10 +1,12 @@
 # 1A
-s:Pupil	s:Exam	s:Project	s:Final grade	s:Notes
-s:Ana	n:7.5	n:10	n:8.5	
-s:Bea	n:4		n:4	s:Needs glasses
+s:First name	s:Exam	s:Surname	s:Project	s:Final grade	s:Notes
+s:Ana	n:7.5	s:Pérez	n:10	n:8.5	
+s:Bea	n:4			n:4	s:Needs glasses
 # Columns
 s:Column	s:Kind	s:Weight %	s:Maximum	s:Bonus	s:Rounds	s:Decimals
+s:First name	s:First name					
 s:Exam	s:Test	n:100	n:10			
+s:Surname	s:Surname					
 s:Project	s:Test	n:10	n:10	s:Yes		
 s:Final grade	s:Final grade		n:10			
 s:Notes	s:Info					

@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.661079 )
-[//]: # (+ Revised: 	2026/11/09 21:53:59.337500 )
+[//]: # (+ Revised: 	2026/11/11 17:10:57.643973 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite user guide
@@ -15,7 +15,7 @@ Everything the app does, screen by screen. To download and install it, see the [
 1. **Choose your folders.** On first launch the app asks where to keep the database and the logs (both default to `Documents\avalio-lite`; see [Your data](#your-data)). The window opens centred on the screen you started it from, sized to fit; on small screens it opens maximised.
 2. **Enter your licence key.** Type the `BRN-…` key you received by email and press **Activate** (see [Licence](#licence)).
 3. **Add a class.** Type a name in **+ New class** in the sidebar and press Enter.
-4. **Add pupils.** Type a name in the last row of the sheet and press Enter.
+4. **Add pupils.** In the last row of the sheet, type a first name, press Enter, type the surname and press Enter again.
 5. **Add columns.** Use **+ Add column**, for example two tests and a final grade, then click a header to set its weight and maximum.
 6. **Type marks.** The final grade and the pass/fail count under the class name update as you type.
 7. *(Optional)* **Set a PIN** in **Settings → PIN and encryption** to encrypt the file.
@@ -25,7 +25,7 @@ Everything the app does, screen by screen. To download and install it, see the [
 ### Classes and pupils
 
 - **Classes** are listed on the left. Type a name in **+ New class** and press Enter.
-- **Pupils** are the rows of a class's sheet. Type a name in the last row (or click **+ Add pupil**) and press Enter. A pupil can be in several classes (**⋯ → Add from another class**). Renaming a pupil renames them everywhere. Removing them from one class (× next to the name) deletes only their marks in that class.
+- **Pupils** are the rows of a class's sheet. Each has a **first name** and a **surname**, in two columns of their own. To add one, type the first name in the last row (or click **+ Add pupil**), press Enter to go to the surname, and press Enter again: the pupil is added and the first-name field is ready for the next one. The surname may be left empty; the first name can't. Pupils from before surnames existed keep their whole name as the first name; fix them by hand. A pupil can be in several classes (**⋯ → Add from another class**, which lists pupils as "Surname, First name", sorted by surname). Renaming a pupil renames them everywhere. Removing them from one class (the × at the start of their row) deletes only their marks in that class.
 - Under the class name you see the number of pupils, the class average of the final grade, and how many pass and fail.
 - Classes and pupils are sorted alphabetically, ignoring accents and case (Álvaro goes with the A's; Ñ comes after N).
 
@@ -33,7 +33,11 @@ Everything the app does, screen by screen. To download and install it, see the [
 
 Add columns with **+ Add column**. Click a column's header to open its settings on the right: title, weight, maximum, bonus, rounding, move left / right, and delete. Esc closes the panel. ‹ and › at the top of the panel (or Alt+← and Alt+→) open the settings of the column to the left or right, and Ctrl+← and Ctrl+→ move the column while its panel is open. The header shows the title and small tags such as `50%` and `/10`. **⋯ → Hide weights & scales** hides those tags, and the app remembers the choice.
 
-Drag the right edge of a column's header to change its width (double-click the edge to reset it, or Shift+← / Shift+→ on a focused header); the **Pupil** column too. Each class keeps its widths, also in a duplicate or a backup.
+Drag a column's header to move it: a line shows where it will land, and it moves when you let go (a click without dragging still opens its settings). The panel's Move buttons and Ctrl+← / Ctrl+→ still move it one place. Dragging near the edge of the sheet scrolls it, so a column can go to a place off screen.
+
+The **First name** and **Surname** columns move and resize like any other, but can't be deleted or renamed: their panel shows only the Move buttons, and their titles follow the interface language.
+
+Drag the right edge of a column's header to change its width (double-click the edge to reset it, or Shift+← / Shift+→ on a focused header); the name columns too. Each class keeps its own column order and widths, also in a duplicate or a backup.
 
 **⋯ → Duplicate class** copies a class's columns and settings; **Duplicate with pupils** brings the same pupils with empty marks (for a new term), and **Duplicate with pupils and marks** makes an exact copy. The copy is called e.g. *1A (2)*; rename it in place.
 
@@ -57,8 +61,8 @@ Everything saves as you type.
 
 ### Excel
 
-- **⋯ → Export to Excel…** saves the sheet as an .xlsx file, with the marks as numbers and a second tab listing each column's settings.
-- **⋯ → Import from Excel…** adds the pupils listed in column A of a workbook (.xlsx, .xls or .ods) and fills in the marks under columns with the same titles. It asks before replacing marks that are already there.
+- **⋯ → Export to Excel…** saves the sheet as an .xlsx file in the sheet's column order, First name and Surname included, with the marks as numbers and a second tab listing each column's settings. When the two name columns come first, they stay in view as you scroll sideways.
+- **⋯ → Import from Excel…** adds the pupils of a workbook (.xlsx, .xls or .ods) and fills in the marks under columns with the same titles. It finds the names by their headers anywhere in the first row: **First name** / **Nome** and **Surname** / **Apelidos**. With neither header, column A holds the whole name (and with only a surname header, column A is the first name). Pupils are matched by their full name, so a file with one name column still finds Ana Pérez. It asks before replacing marks that are already there.
 
 To back up all classes at once, use a [backup](#backups) instead.
 
@@ -108,7 +112,7 @@ The only file in a fixed place is `%APPDATA%\avalio-lite\config.toml`, which hol
 **Settings → Backup → Export everything…** saves the whole database to one `.avalio` file while the app stays open. The file is encrypted with your PIN if you have set one.
 
 - **Restore from a backup…** replaces everything in the app with the backup. It asks first, and keeps your current PIN.
-- **Add classes from a backup…** copies a backup's classes, pupils and marks into the app without changing what's already there. Pupils with the same name are joined.
+- **Add classes from a backup…** copies a backup's classes, pupils and marks into the app without changing what's already there. Pupils with the same full name (first name and surname) are joined.
 
 ### PIN and encryption
 

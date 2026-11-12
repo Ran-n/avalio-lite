@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/10 20:48:22.043125 )
+[//]: # (+ Revised: 	2026/11/11 17:10:57.239390 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,12 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Pupils have a first name and a surname, in two columns you edit and resize separately; menus list them by surname, and Excel export and import keep the two apart (a file with one name column still imports)
+- First name and Surname move like any other column, in each class on its own; the remove button now sits at the start of each row
+- Drag a column's header to move it anywhere in the sheet
 
 ## [0.7.0] - 2026-11-10
 

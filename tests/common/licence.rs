@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.164721
-//+ Revised: 	2026/11/07 20:25:35.164721
+//+ Revised: 	2026/11/11 08:54:25.176949
 // -----------------------------------------------------------------------------
 
 //! A Clavren licence server in memory, for the tests and the desktop test driver: it answers the
@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 /// A well-formed key; the fake accepts any.
-pub const KEY: &str = "BRN-79YN-44XQ-W025-377Z";
+pub const KEY: &str = "BRN-EYZE-C1AE-CR2G-MTJK";
 
 /// What the server does with the next requests.
 #[derive(Debug, Clone, PartialEq)]

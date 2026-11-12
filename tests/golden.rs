@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/11/09 21:54:06.051742
+//+ Revised: 	2026/11/11 17:11:01.788874
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use avalio_lite::error::AppError;
-use avalio_lite::gradebook::model::ColumnType;
+use avalio_lite::gradebook::model::{ColumnKind, ColumnType};
 use avalio_lite::gradebook::{cells, classes, columns, pupils, sheet};
 use avalio_lite::i18n::Language;
 use avalio_lite::platform::config::{AppConfig, ConfigStore, Preferences, ThemeChoice};
@@ -106,11 +106,12 @@ fn a_settings_file_from_before_preferences_loads_with_the_defaults() {
 // ---------------------------------------------------------------------------------------------
 // Database
 
-/// Class "1A": Ana (7.5) and Bea (4) in "Exam" (100 %, out of 10), a final grade, and a note.
+/// Class "1A": Ana Pérez (7.5) and Bea (4) in "Exam" (100 %, out of 10), a final grade, and a note;
+/// the notes, first-name and surname columns resized.
 fn fill_current(connection: &Connection) {
     let class = classes::create_class(connection, "1A").unwrap();
-    let ana = pupils::add_new_pupil(connection, class, "Ana").unwrap();
-    let bea = pupils::add_new_pupil(connection, class, "Bea").unwrap();
+    let ana = pupils::add_new_pupil(connection, class, "Ana", "Pérez").unwrap();
+    let bea = pupils::add_new_pupil(connection, class, "Bea", "").unwrap();
     let exam = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
     columns::rename_column(connection, exam, "Exam").unwrap();
     let bonus = columns::add_column(connection, class, ColumnType::Test, Language::English).unwrap();
@@ -124,27 +125,49 @@ fn fill_current(connection: &Connection) {
     cells::set_cell(connection, bonus, ana, "10").unwrap();
     cells::set_cell(connection, notes, bea, "Needs glasses").unwrap();
     columns::set_column_width(connection, notes, Some(300)).unwrap();
-    classes::set_name_width(connection, class, Some(260)).unwrap();
+    let names = columns::list_columns(connection, class).unwrap();
+    columns::set_column_width(connection, names[0].id, Some(260)).unwrap();
+    columns::set_column_width(connection, names[1].id, Some(180)).unwrap();
+    // the surname after the exam, as a teacher may move it
+    columns::move_column_to(connection, names[1].id, 2).unwrap();
 }
 
-/// The column widths of the golden class: the notes and pupil columns were resized, the rest
-/// follow their defaults. `None` everywhere in samples from before widths were stored.
-fn sheet_widths(connection: &Connection) -> (Option<u16>, Vec<Option<u16>>) {
+/// The column widths of the golden class, in sheet order (the first-name and surname columns
+/// first, from samples before they could move): `None` follows the kind's default.
+fn sheet_widths(connection: &Connection) -> Vec<Option<u16>> {
+    let class = classes::list_classes(connection).unwrap()[0].id;
+    sheet::load_sheet(connection, class).unwrap().columns.iter().map(|column| column.width).collect()
+}
+
+/// The kinds of the golden class's columns in sheet order, the names as F (first name) and S.
+fn column_order(connection: &Connection) -> String {
     let class = classes::list_classes(connection).unwrap()[0].id;
     let loaded = sheet::load_sheet(connection, class).unwrap();
-    (classes::class_name_width(connection, class).unwrap(), loaded.columns.iter().map(|column| column.width).collect())
+    loaded
+        .columns
+        .iter()
+        .map(|column| match column.kind {
+            ColumnKind::FirstName => 'F',
+            ColumnKind::Surname => 'S',
+            _ => 'm',
+        })
+        .collect()
 }
 
-/// What the current golden database shows for class "1A".
+/// What the golden databases show for class "1A", whatever their version: the mark columns, the
+/// pupils and their marks.
 fn assert_current_sheet(connection: &Connection) {
     let class = classes::list_classes(connection).unwrap()[0].id;
     let loaded = sheet::load_sheet(connection, class).unwrap();
-    let titles: Vec<&str> = loaded.columns.iter().map(|column| column.title.as_str()).collect();
+    let marks: Vec<usize> = (0..loaded.columns.len()).filter(|index| !loaded.columns[*index].kind.is_name()).collect();
+    let titles: Vec<&str> = marks.iter().map(|index| loaded.columns[*index].title.as_str()).collect();
     assert_eq!(titles, ["Exam", "Project", "Final grade", "Notes"]);
-    let names: Vec<&str> = loaded.rows.iter().map(|row| row.pupil.name.as_str()).collect();
+    let names: Vec<&str> = loaded.rows.iter().map(|row| row.pupil.first_name.as_str()).collect();
     assert_eq!(names, ["Ana", "Bea"]);
-    assert_eq!(loaded.rows[0].values, ["7,5", "10", "", ""]);
-    assert_eq!(loaded.rows[1].values, ["4", "", "", "Needs glasses"]);
+    let values =
+        |row: usize| -> Vec<&str> { marks.iter().map(|index| loaded.rows[row].values[*index].as_str()).collect() };
+    assert_eq!(values(0), ["7,5", "10", "", ""]);
+    assert_eq!(values(1), ["4", "", "", "Needs glasses"]);
 }
 
 /// Rebuilds a current-format database sample from scratch.
@@ -168,7 +191,10 @@ fn the_current_database_sample_opens_with_its_data() {
     let connection = db::open(&path, None).unwrap();
     assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
     assert_current_sheet(&connection);
-    assert_eq!(sheet_widths(&connection), (Some(260), vec![None, None, None, Some(300)]));
+    assert_eq!(column_order(&connection), "FmSmmm", "the surname was moved after the exam");
+    assert_eq!(sheet_widths(&connection), [Some(260), None, Some(180), None, None, Some(300)]);
+    let class = classes::list_classes(&connection).unwrap()[0].id;
+    assert_eq!(pupils::list_class_pupils(&connection, class).unwrap()[0].surname, "Pérez");
 }
 
 #[test]
@@ -194,10 +220,11 @@ fn a_version_1_database_upgrades_with_all_its_data() {
     assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
     let class = classes::list_classes(&connection).unwrap()[0].id;
     let loaded = sheet::load_sheet(&connection, class).unwrap();
-    let titles: Vec<&str> = loaded.columns.iter().map(|column| column.title.as_str()).collect();
+    let titles: Vec<&str> =
+        loaded.columns.iter().filter(|column| !column.kind.is_name()).map(|column| column.title.as_str()).collect();
     assert_eq!(titles, ["Exam", "Final grade"]);
-    assert_eq!(loaded.rows[0].pupil.name, "Ana");
-    assert_eq!(loaded.rows[0].values, ["7,5", ""]);
+    assert_eq!(loaded.rows[0].pupil.first_name, "Ana");
+    assert_eq!(loaded.rows[0].values, ["Ana", "", "7,5", ""], "the names first, then the marks");
     assert!(
         loaded
             .columns
@@ -230,6 +257,46 @@ fn a_version_3_database_upgrades_with_all_its_data() {
 }
 
 #[test]
+fn a_version_5_database_upgrades_and_keeps_its_pupils() {
+    let (_dir, path) = scratch_copy("db-v5.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 5, "the sample really is version 5");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    let class = classes::list_classes(&connection).unwrap()[0].id;
+    let names: Vec<(String, String)> = pupils::list_class_pupils(&connection, class)
+        .unwrap()
+        .into_iter()
+        .map(|pupil| (pupil.first_name, pupil.surname))
+        .collect();
+    assert_eq!(
+        names,
+        [("Ana".to_owned(), String::new()), ("Bea".to_owned(), String::new())],
+        "whole names, no surnames"
+    );
+    assert_eq!(column_order(&connection), "FSmmmm");
+    assert_eq!(sheet_widths(&connection), [Some(260), None, None, None, None, Some(300)]);
+}
+
+#[test]
+fn a_version_6_database_upgrades_with_its_names_first() {
+    let (_dir, path) = scratch_copy("db-v6.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 6, "the sample really is version 6");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    assert_eq!(column_order(&connection), "FSmmmm", "the names come first, where the sheet showed them");
+    assert_eq!(sheet_widths(&connection), [Some(260), Some(180), None, None, None, Some(300)], "with their widths");
+    let class = classes::list_classes(&connection).unwrap()[0].id;
+    let loaded = sheet::load_sheet(&connection, class).unwrap();
+    assert_eq!(loaded.rows[0].values[..2], ["Ana", "Pérez"], "the name columns show the pupil's names");
+}
+
+#[test]
 fn a_version_4_database_upgrades_with_all_its_data() {
     let (_dir, path) = scratch_copy("db-v4.db");
     let old = Connection::open(&path).unwrap();
@@ -238,7 +305,7 @@ fn a_version_4_database_upgrades_with_all_its_data() {
     let connection = db::open(&path, None).unwrap();
     assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
     assert_current_sheet(&connection);
-    assert_eq!(sheet_widths(&connection), (None, vec![None; 4]), "every column keeps its default width");
+    assert_eq!(sheet_widths(&connection), vec![None; 6], "every column keeps its default width");
 }
 
 // ---------------------------------------------------------------------------------------------

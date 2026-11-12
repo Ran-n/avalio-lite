@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/11/07 20:25:37.202982
+//+ Revised: 	2026/11/11 17:11:01.935521
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -469,7 +469,13 @@ fn file_kinds_have_extensions_and_translated_filters() {
 #[test]
 fn export_words_are_translated() {
     let (english, galician) = (export_labels(Language::English), export_labels(Language::Galician));
-    assert_ne!(english.pupil, galician.pupil);
+    assert_ne!(english.first_name, galician.first_name);
+    assert_ne!(english.surname, galician.surname);
+    assert_eq!(
+        avalio_lite::i18n::surname_headers().collect::<Vec<_>>(),
+        [english.surname, galician.surname],
+        "an import knows the surname header of every language"
+    );
     assert_ne!(english.sheet, galician.sheet);
     assert_ne!(english.columns_tab, galician.columns_tab);
     assert_ne!(english.yes, galician.yes);

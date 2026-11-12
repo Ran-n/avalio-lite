@@ -11,10 +11,23 @@ component Faint inherits Text {
 }
 
 // Header of one sheet column: its title and a few tags. Clicking it opens the column's settings panel;
+// dragging it sideways moves the column (the sheet shows where it will land and moves it on release);
 // dragging its right edge, or Shift+← / Shift+→ while it has focus, resizes the column.
 export component ColumnHeader inherits Rectangle {
     in property <ColumnItem> column;
     in property <int> index;
+    // how far the pointer must go sideways before a press becomes a drag rather than a click
+    property <length> drag-threshold: 6px;
+    // the header is being dragged to another place
+    out property <bool> dragging: false;
+    // since the last press: the release then ends a drag rather than opening the panel
+    property <bool> dragged: false;
+    // a drag began; the pointer is at `x` in the header's own coordinates (also outside it); the
+    // drag ended with the button released there, or was cut short (the window lost the pointer)
+    callback drag-started();
+    callback drag-moved(length);
+    callback drag-ended();
+    callback drag-cancelled();
     // the width shown while the edge is being dragged
     callback resizing(length);
     // the drag ended, or a key or the screen reader changed the width: save this width
@@ -22,15 +35,45 @@ export component ColumnHeader inherits Rectangle {
     // back to the default width
     callback reset-width();
     property <bool> selected: Gradebook.panel-index == root.index;
-    property <bool> calculated: root.column.kind != ColumnType.info && root.column.kind != ColumnType.test;
+    property <bool> is-name: root.column.kind == ColumnType.first-name || root.column.kind == ColumnType.surname;
+    property <bool> calculated: !root.is-name && root.column.kind != ColumnType.info && root.column.kind != ColumnType.test;
 
-    background: root.selected ? Theme.accent-soft : touch.has-hover ? Theme.line : (root.calculated ? Theme.computed : Theme.raised);
+    background: root.dragging || root.selected ? Theme.accent-soft : touch.has-hover ? Theme.line : (root.calculated ? Theme.computed : Theme.raised);
+    opacity: root.dragging ? 0.6 : 1;
     accessible-role: button;
     accessible-label: root.column.title;
     accessible-action-default => { Gradebook.open-column-panel(root.index); }
     touch := TouchArea {
-        mouse-cursor: MouseCursor.pointer;
-        clicked => { Gradebook.open-column-panel(root.index); }
+        mouse-cursor: root.dragging ? MouseCursor.grabbing : MouseCursor.pointer;
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                root.dragged = false;
+            }
+            if (root.dragging && event.kind == PointerEventKind.up) {
+                root.dragging = false;
+                root.drag-ended();
+            }
+            if (root.dragging && event.kind == PointerEventKind.cancel) {
+                root.dragging = false;
+                root.drag-cancelled();
+            }
+        }
+        moved => {
+            if (self.pressed && !root.dragging && abs(self.mouse-x - self.pressed-x) > root.drag-threshold) {
+                root.dragging = true;
+                root.dragged = true;
+                root.drag-started();
+            }
+            if (root.dragging) {
+                root.drag-moved(self.mouse-x);
+            }
+        }
+        // a press that became a drag isn't a click
+        clicked => {
+            if (!root.dragged) {
+                Gradebook.open-column-panel(root.index);
+            }
+        }
     }
     keys := KeyboardPress {
         pressed => { Gradebook.open-column-panel(root.index); }
@@ -58,7 +101,8 @@ export component ColumnHeader inherits Rectangle {
             overflow: elide;
             color: root.selected ? Theme.accent : Theme.text;
         }
-        if Gradebook.show-column-settings: HorizontalLayout {
+        // a name column has no settings to show
+        if Gradebook.show-column-settings && !root.is-name: HorizontalLayout {
             spacing: 5px;
             alignment: start;
             if root.column.kind == ColumnType.test && !root.column.bonus: Tag { text: @tr("{}%", root.column.weight); }
