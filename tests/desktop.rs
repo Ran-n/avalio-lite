@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/11/11 23:00:48.764100
+//+ Revised: 	2026/11/13 17:55:35.066365
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -962,12 +962,15 @@ fn the_update_bar() {
         scroll_into_view(&mut app, &words("Check for updates now"));
         app.click(&words("Check for updates now"));
         assert!(app.state()["update"].as_str().unwrap().contains("9.0.0"), "a real click looked for it");
-        app.click("2º ESO A");
         let (update_now, whats_new) = (words("Update now"), words("What's new"));
         let check_bar = |app: &mut App, image: &Image| {
             assert_on_screen(image, located(app, &update_now), "Update now");
             assert_on_screen(image, located(app, &whats_new), "What's new");
         };
+        // the bar is the window's, not the sheet's: it shows on Settings, where the check was made
+        let image = app.capture();
+        check_bar(&mut app, &image);
+        app.click("2º ESO A");
         if language == "en" {
             every_look_after(&mut app, "update-bar", |_| {}, |app, image, _, _| check_bar(app, image));
             app.click("Hide");
