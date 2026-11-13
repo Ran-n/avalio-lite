@@ -12,6 +12,8 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-13
+
 ### Changed
 
 - The bar that says a new version is out sits across the top of the window, like other programs' notification bars, instead of above the marks
