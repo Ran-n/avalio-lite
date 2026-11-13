@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/11/12 14:39:50.739460 )
+[//]: # (+ Revised: 	2026/11/13 15:55:15.348531 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 <p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
@@ -240,6 +240,8 @@ cargo build --release      # writes target\release\avalio-lite.exe
 
 ## Technical details
 
+The app uses [Slint](https://slint.dev/) 1.18 for its desktop UI and [Rust](https://www.rust-lang.org/) for the application logic. Data is stored locally in [SQLite](https://sqlite.org/), accessed through `rusqlite`, with [SQLCipher](https://www.zetetic.net/sqlcipher/) encryption when a PIN is set. Dependency versions are defined in [Cargo.toml](Cargo.toml).
+
 The full technical documentation lives in separate files:
 
 | Document | What's in it |
@@ -249,8 +251,6 @@ The full technical documentation lives in separate files:
 | [Design decisions](docs/design-decisions.md) | Why the code is laid out as it is: feature folders, the dependency rules, file sizes |
 | [Contributing](CONTRIBUTING.md) | Reporting bugs, suggesting features, submitting changes and the commit style |
 | [Changelog](CHANGELOG.md) | What changed in each version |
-
-**Built with** [Rust](https://www.rust-lang.org/), the [Slint](https://slint.dev/) UI toolkit, and [SQLite](https://sqlite.org/) with [SQLCipher](https://www.zetetic.net/sqlcipher/) encryption.
 
 ## License
 

@@ -5,8 +5,6 @@ import { ColumnPanel } from "../column-panel/column-panel.slint";
 import { ColumnMenuContent, MoreMenuContent, PupilMenuContent } from "menus.slint";
 import { SheetGrid } from "sheet-grid.slint";
 import { SheetTitle } from "sheet-header.slint";
-import { UpdateBar } from "update-bar.slint";
-import { Update } from "../update.slint";
 
 export component SheetPage inherits Rectangle {
     in property <string> error-message;
@@ -43,7 +41,6 @@ export component SheetPage inherits Rectangle {
             message: root.status-message;
             is-error: false;
         }
-        if Update.notice != "": UpdateBar { }
         HorizontalLayout {
             alignment: start;
             vertical-stretch: 1;

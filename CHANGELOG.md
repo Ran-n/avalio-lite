@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/12 14:40:54.489692 )
+[//]: # (+ Revised: 	2026/11/13 19:44:32.196652 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- The bar that says a new version is out sits across the top of the window, like other programs' notification bars, instead of above the marks
+
+### Fixed
+
+- Checking for updates in Settings shows the new version's bar there at once, not only after going back to a class
 
 ## [0.9.0] - 2026-11-12
 

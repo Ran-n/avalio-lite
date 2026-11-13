@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.728640 )
-[//]: # (+ Revised: 	2026/11/12 14:39:51.321866 )
+[//]: # (+ Revised: 	2026/11/13 17:55:34.897107 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Developing avalio-lite
@@ -102,7 +102,7 @@ src/
     db/         SQLite connection, copy/verify, schema migrations
     logging.rs  file logger whose folder can change at runtime
     storage.rs  safe cross-drive file moves
-ui/             Slint UI with its own light and dark theme (theme.slint); `components/` the shared widgets, one file per family (buttons, fields, menu, navigation, icons, surfaces, focus); one folder per page (`sheet/`, `settings/`, `lock/`, `licence/`, `column-panel/`) holding the page and its parts, with the folding sidebar in sidebar.slint; gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts, backup.slint the Backup card's actions
+ui/             Slint UI with its own light and dark theme (theme.slint); `components/` the shared widgets, one file per family (buttons, fields, menu, navigation, icons, surfaces, focus); one folder per page (`sheet/`, `settings/`, `lock/`, `licence/`, `column-panel/`) holding the page and its parts, with the folding sidebar in sidebar.slint and the update bar across the window's top in update-bar.slint; gradebook.slint holds the sheet's data and actions, shortcuts.slint the keyboard shortcuts, backup.slint the Backup card's actions
 lang/           translations of the UI strings, lang/<code>/LC_MESSAGES/avalio-lite.po, bundled into the exe
 assets/         logo (SVG source, generated .ico/.png; regenerate with cargo run --example render_logo -- <preview folder>)
 examples/       demo_data: builds a sample database; app_driver: runs the app for the desktop tests; render_logo: the icon files
