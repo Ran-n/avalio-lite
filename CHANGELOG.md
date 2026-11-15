@@ -12,6 +12,8 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-15
+
 ### Added
 
 - The sheet says **✓ Saved** under the class name after every change, or **Not saved** if one failed, and Ctrl+S confirms that everything is saved
