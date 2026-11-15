@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/11/12 14:39:56.237280
+//+ Revised: 	2026/11/15 12:17:28.422748
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
@@ -31,7 +31,7 @@ use avalio_lite::update::install::Installation;
 use avalio_lite::update::source::FixedRelease;
 use avalio_lite::update::ui::Updates;
 use avalio_lite::window::dialogs::{Dialogs, FileKind};
-use avalio_lite::window::worker::InlineWorker;
+use avalio_lite::window::worker::{Done, InlineWorker, Job, Worker};
 use clavren_client::Client;
 use licence::FakeLicence;
 use log::LevelFilter;
@@ -256,6 +256,26 @@ thread_local! {
     static HEADLESS: RefCell<bool> = const { RefCell::new(false) };
 }
 
+/// The tests' worker: runs each job at once, as `InlineWorker` does, until a test makes it refuse,
+/// as when Windows won't give the app another thread.
+#[derive(Default)]
+pub struct TestWorker {
+    pub refusing: std::cell::Cell<bool>,
+}
+
+impl Worker for TestWorker {
+    fn start(&self, window: &avalio_lite::ui::AppWindow, job: Job, done: Done) -> std::io::Result<()> {
+        if self.refusing.get() {
+            return Err(std::io::Error::other("no more threads"));
+        }
+        InlineWorker.start(window, job, done)
+    }
+
+    fn join(&self) {
+        InlineWorker.join();
+    }
+}
+
 /// The real window, wired as in the app, on Slint's headless testing backend.
 pub struct Ui {
     pub fixture: Fixture,
@@ -264,6 +284,8 @@ pub struct Ui {
     pub licence: FakeLicence,
     /// what "the latest release" answers; nothing until a test sets it
     pub releases: Arc<FixedRelease>,
+    /// runs background work at once; a test can make it refuse to start any
+    pub worker: Rc<TestWorker>,
     pub session: Session,
     _turn: MutexGuard<'static, ()>,
 }
@@ -338,11 +360,12 @@ impl Ui {
             installation,
             downloads: fixture.path("downloads"),
         };
-        let ports = Ports { dialogs: dialogs.clone(), licence: client, worker: Rc::new(InlineWorker), updates };
+        let worker = Rc::new(TestWorker::default());
+        let ports = Ports { dialogs: dialogs.clone(), licence: client, worker: worker.clone(), updates };
         let session = app::open(fixture.store(), leaked_logger(), ports, system_language).unwrap();
         // the size the app opens at (its preferred size); headless windows otherwise get a default
         session.window.window().set_size(slint::LogicalSize::new(1280.0, 800.0));
-        Self { fixture, dialogs, licence, releases, session, _turn: turn }
+        Self { fixture, dialogs, licence, releases, worker, session, _turn: turn }
     }
 
     /// The app after first-run setup created a database in the fixture's `data` folder.
@@ -355,6 +378,8 @@ impl Ui {
 
 impl Drop for Ui {
     fn drop(&mut self) {
+        // as the app quits: background work is waited for, then the state shuts down
+        self.session.worker.join();
         self.session.state.borrow_mut().shutdown();
     }
 }

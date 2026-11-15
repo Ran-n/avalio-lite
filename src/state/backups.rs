@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.566701
-//+ Revised: 	2026/11/12 14:39:54.659167
+//+ Revised: 	2026/11/14 17:16:20.174319
 // -----------------------------------------------------------------------------
 
 //! Backups of the open database: exporting one, and opening one to restore or add classes from.
@@ -10,7 +10,7 @@ use std::path::Path;
 
 use super::AppState;
 use crate::backup::{self, AddSummary, OpenedBackup};
-use crate::error::Result;
+use crate::error::{AppError, Result};
 use crate::lock::Pin;
 use crate::platform::storage;
 
@@ -27,9 +27,14 @@ impl AppState {
 
     /// Opens a copy of the backup `file` (never the file itself) next to the database. With a typed
     /// `pin`, only that is tried; otherwise the app's own PIN, since a backup of this database has
-    /// it. A backup that needs another PIN is `WrongPin`.
+    /// it. A backup that needs another PIN is `WrongPin`. The open database itself is refused
+    /// (`OpenDatabaseAsBackup`): the copy would miss what its write-ahead log still holds, so
+    /// restoring it would drop the latest changes.
     pub fn open_backup(&self, file: &Path, pin: Option<&str>) -> Result<OpenedBackup> {
         let database = &self.open_config()?.database_path;
+        if storage::same_location(file, database) {
+            return Err(AppError::OpenDatabaseAsBackup(file.to_path_buf()));
+        }
         let own_key = self.key.as_ref().map(Pin::as_str);
         let keys = match pin {
             Some(pin) => [Some(pin)],

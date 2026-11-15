@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.917995
-//+ Revised: 	2026/11/12 14:39:52.004713
+//+ Revised: 	2026/11/15 12:17:28.081486
 // -----------------------------------------------------------------------------
 
 use std::collections::HashMap;
@@ -48,9 +48,7 @@ pub fn add_column(
     column_type: ColumnType,
     titles: impl ColumnTitles,
 ) -> Result<i64> {
-    if matches!(column_type, ColumnType::FirstName | ColumnType::Surname) {
-        return Err(AppError::NotEditable);
-    }
+    // a name column is refused by `insert_column`: the class came with its two
     let existing = list_columns(connection, class_id)?;
     insert_column(
         connection,

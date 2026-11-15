@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/11/12 14:39:56.636938
+//+ Revised: 	2026/11/14 17:16:22.396263
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -332,6 +332,21 @@ fn a_version_8_database_upgrades_with_all_its_data() {
     assert_current_sheet(&connection);
     assert_eq!(column_order(&connection), "FmSmmm");
     assert_eq!(sheet_widths(&connection), [Some(260), None, Some(180), None, None, Some(300)]);
+}
+
+#[test]
+fn a_version_9_database_upgrades_with_all_its_data() {
+    let (_dir, path) = scratch_copy("db-v9.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 9, "the sample really is version 9");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    assert_eq!(column_order(&connection), "FmSmmm");
+    assert_eq!(sheet_widths(&connection), [Some(260), None, Some(180), None, None, Some(300)]);
+    let class = classes::list_classes(&connection).unwrap()[0].id;
+    assert_eq!(pupils::list_class_pupils(&connection, class).unwrap()[0].surname, "Pérez");
 }
 
 #[test]

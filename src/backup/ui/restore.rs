@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.921143
-//+ Revised: 	2026/11/03 11:39:46.921143
+//+ Revised: 	2026/11/15 03:14:39.969210
 // -----------------------------------------------------------------------------
 
 //! Opening a backup to restore it or add its classes, with the inline prompt for the backup's own PIN.
@@ -137,6 +137,8 @@ fn restore(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs, bac
         Ok(()) => {
             // a reload that failed has its error on screen, which a success message would hide
             if gradebook::ui::show_database(window, state) {
+                // after the reload, which starts the acknowledgement afresh
+                gradebook::ui::saved::mark_saved(window);
                 view::show_status(window, i18n::text(i18n::current(), &Message::BackupRestored { file: &file }));
             }
         }
@@ -170,6 +172,7 @@ fn add_classes(window: &AppWindow, state: &SharedState, backup: OpenedBackup) {
     if !gradebook::ui::redraw_selecting(window, state, Some(first)) {
         return;
     }
+    gradebook::ui::saved::mark_saved(window);
     let mut status = i18n::text(
         language,
         &Message::BackupClassesAdded {

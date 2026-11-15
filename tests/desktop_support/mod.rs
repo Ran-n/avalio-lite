@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.485818
-//+ Revised: 	2026/11/11 23:00:49.024776
+//+ Revised: 	2026/11/15 03:14:42.496795
 // -----------------------------------------------------------------------------
 
 //! The desktop test harness: the real app started through `examples/app_driver.rs`, its window
@@ -453,6 +453,11 @@ impl App {
             }
         }
         panic!("the app window isn't active; another window took the foreground during the run");
+    }
+
+    /// The window as it is this instant, animations under way included.
+    pub fn glimpse(&mut self) -> Image {
+        self.window.capture()
     }
 
     /// The window once two captures in a row agree apart from a blinking caret.

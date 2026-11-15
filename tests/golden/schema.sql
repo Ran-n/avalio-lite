@@ -54,6 +54,18 @@ BEGIN
     INSERT INTO sheet_columns (class_id, position, title, kind) VALUES (NEW.id, 2, '', 'surname');
 END;
 
+CREATE TRIGGER classes_have_names_on_insert BEFORE INSERT ON classes
+WHEN trim(NEW.name) = ''
+BEGIN
+    SELECT RAISE(ABORT, 'a class needs a name');
+END;
+
+CREATE TRIGGER classes_have_names_on_update BEFORE UPDATE OF name ON classes
+WHEN trim(NEW.name) = ''
+BEGIN
+    SELECT RAISE(ABORT, 'a class needs a name');
+END;
+
 CREATE TRIGGER column_limits_on_insert BEFORE INSERT ON sheet_columns
 WHEN (NEW.weight IS NOT NULL AND NEW.weight > 1000)
   OR (NEW.max_score IS NOT NULL AND NEW.max_score > 10000)
@@ -108,6 +120,18 @@ CREATE TABLE pupils (
     first_name        TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 , surname TEXT NOT NULL DEFAULT '');
+
+CREATE TRIGGER pupils_have_first_names_on_insert BEFORE INSERT ON pupils
+WHEN trim(NEW.first_name) = ''
+BEGIN
+    SELECT RAISE(ABORT, 'a pupil needs a first name');
+END;
+
+CREATE TRIGGER pupils_have_first_names_on_update BEFORE UPDATE OF first_name ON pupils
+WHEN trim(NEW.first_name) = ''
+BEGIN
+    SELECT RAISE(ABORT, 'a pupil needs a first name');
+END;
 
 CREATE TRIGGER remove_cells_when_pupil_leaves_class AFTER DELETE ON class_pupils
 BEGIN

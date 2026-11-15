@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:31.011467
-//+ Revised: 	2026/11/12 14:39:52.981297
+//+ Revised: 	2026/11/15 03:14:41.076628
 // -----------------------------------------------------------------------------
 
 //! The Rust-side texts and error messages in Galician.
@@ -180,6 +180,7 @@ BRN-XXXX-XXXX-XXXX-XXXX"
             format!("A versión non ten {file}. Descarga a nova versión desde a páxina da versión.")
         }
         Message::UpdatedTo { version } => format!("Actualizado a avalio-lite {version}."),
+        Message::EverythingSaved => "Está todo gardado. avalio-lite garda cada cambio ao escribilo.".to_owned(),
         Message::UpdateNotStarted => {
             "Non se puido iniciar a actualización. Descárgaa desde a páxina da versión; o rexistro ten os detalles.".to_owned()
         }
@@ -253,6 +254,10 @@ pub(super) fn error(error: &AppError) -> String {
         AppError::NotADatabase(path) => {
             format!("{} non é unha copia nin unha base de datos de avalio-lite.", path.display())
         }
+        AppError::OpenDatabaseAsBackup(path) => format!(
+            "{} é a base de datos que a aplicación está a usar agora, non unha copia. Escolle un ficheiro de copia.",
+            path.display()
+        ),
         AppError::KeptAside { kept, path } => {
             let (kept, path) = (kept.display(), path.display());
             format!(

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.893101
-//+ Revised: 	2026/11/12 14:39:55.679372
+//+ Revised: 	2026/11/15 12:17:26.704517
 // -----------------------------------------------------------------------------
 
 //! The update bar and the Updates card: looking for a newer release on the worker, by itself (at
@@ -27,7 +27,7 @@ use crate::update::install::{
 use crate::update::signature::file_hash;
 use crate::update::source::SharedSource;
 use crate::update::{Asset, Release, UpdateError, current_version, due, newer};
-use crate::window::worker::{self, Panicked, SharedWorker};
+use crate::window::worker::{self, SharedWorker};
 use crate::window::{SharedDialogs, SharedState, report_failure, view, with_window, with_window1};
 
 /// How often the app looks whether a day has passed since the last check.
@@ -161,10 +161,7 @@ pub fn after_start(window: &AppWindow, updater: &Updater) {
 /// one when the new version was found. A hidden (empty) bar stays hidden.
 pub fn reword(window: &AppWindow, updater: &Updater) {
     let update = window.global::<Update>();
-    if update.get_notice().is_empty() {
-        return;
-    }
-    if let Some(release) = updater.found() {
+    if let Some(release) = updater.found().filter(|_| !update.get_notice().is_empty()) {
         let version = release.version.to_string();
         update.set_notice(i18n::text(i18n::current(), &Message::UpdateAvailable { version: &version }).into());
     }
@@ -205,33 +202,32 @@ fn look(window: &AppWindow, updater: &Updater, asked: Asked) {
     }
     let source = updater.updates.source.clone();
     let shared = updater.clone();
-    let started = worker::run(
+    worker::run_or(
         updater.worker.as_ref(),
         window,
+        "looking for a new version",
         move || source.latest(),
-        move |window, latest| match latest {
-            Ok(latest) => looked(window, &shared, asked, latest),
-            Err(Panicked) => not_run(window, asked),
-        },
+        move |window, latest| looked(window, &shared, asked, latest),
+        move |window| not_run(window, asked),
     );
-    if let Err(error) = started {
-        log::error!("looking for a new version couldn't be started: {error}");
-        not_run(window, asked);
-    }
 }
 
 /// Work that couldn't start, or broke off: the card stops waiting; like a failed automatic check,
 /// an automatic one is only logged.
 fn not_run(window: &AppWindow, asked: Asked) {
-    window.global::<Update>().set_busy(false);
     if asked == Asked::ByTheUser {
+        window.global::<Update>().set_busy(false);
         view::show_error_text(window, i18n::text(i18n::current(), &Message::BackgroundFailed));
     }
 }
 
 fn looked(window: &AppWindow, updater: &Updater, asked: Asked, latest: Result<Release, UpdateError>) {
     let update = window.global::<Update>();
-    update.set_busy(false);
+    // an automatic check never made the screen wait, so it doesn't end a wait either: a download
+    // may be under way, and its button must stay off until that is done
+    if asked == Asked::ByTheUser {
+        update.set_busy(false);
+    }
     // a failed check counts too, so a broken network brings one try a day, not one an hour
     if let Err(error) = updater.state.borrow_mut().set_last_update_check(Utc::now()) {
         log::warn!("couldn't note when updates were last looked for: {error}");
@@ -289,13 +285,7 @@ fn update_now(window: &AppWindow, updater: &Updater) {
     let (asset, sig) = match asset_for(&release, &installation.copy) {
         Ok((asset, sig)) => (asset.clone(), sig.clone()),
         Err(error) => {
-            log::warn!("can't update from {}: {error}", release.version);
-            let text = match &error {
-                UpdateError::MissingAsset(file) => Message::UpdateFileMissing { file },
-                // asset_for only ever misses a file; any other error reads as a failed download
-                other => Message::UpdateDownloadFailed { problem: other.problem().unwrap_or(UpdateProblem::BadAnswer) },
-            };
-            view::show_error_text(window, i18n::text(language, &text));
+            view::show_error_text(window, failure_text(language, &error));
             return;
         }
     };
@@ -314,14 +304,10 @@ fn update_now(window: &AppWindow, updater: &Updater) {
     let (key, downloads) = (updater.updates.key, updater.updates.downloads.clone());
     let job = move || fetch_and_place(&installation.copy, &asset, &sig, &key, &downloads);
     let shared = updater.clone();
-    let started = worker::run(updater.worker.as_ref(), window, job, move |window, placed| match placed {
-        Ok(placed) => ready(window, &shared, placed),
-        Err(Panicked) => not_run(window, Asked::ByTheUser),
-    });
-    if let Err(error) = started {
-        log::error!("the update couldn't be started: {error}");
+    let done = move |window: &AppWindow, placed| ready(window, &shared, placed);
+    worker::run_or(updater.worker.as_ref(), window, "the update", job, done, |window| {
         not_run(window, Asked::ByTheUser);
-    }
+    });
 }
 
 /// Off the UI thread: download the file and its signature and verify them. Whatever went wrong,
@@ -399,30 +385,34 @@ fn ready(window: &AppWindow, updater: &Updater, fetched: Result<Pending, UpdateE
         }
         Err(error) => {
             window.global::<Update>().set_busy(false);
-            let text = match &error {
-                UpdateError::NotVerified(problem) => {
-                    log::error!("the downloaded update failed its signature check: {problem}");
-                    i18n::text(language, &Message::UpdateNotVerified)
-                }
-                UpdateError::Swap(reason) => {
-                    log::error!("the new version couldn't be put in place: {reason}");
-                    i18n::text(language, &Message::UpdateNotPlaced)
-                }
-                UpdateError::SwapLeftAside { old, detail } => {
-                    log::error!("the new version couldn't be put in place, nor the old one back: {detail}");
-                    i18n::text(language, &Message::UpdateLeftAside { path: &old.display().to_string() })
-                }
-                UpdateError::MissingAsset(file) => {
-                    log::warn!("the release has no {file}");
-                    i18n::text(language, &Message::UpdateFileMissing { file })
-                }
-                other => {
-                    log::warn!("the update couldn't be downloaded: {other}");
-                    let problem = other.problem().unwrap_or(UpdateProblem::BadAnswer);
-                    i18n::text(language, &Message::UpdateDownloadFailed { problem })
-                }
-            };
-            view::show_error_text(window, text);
+            view::show_error_text(window, failure_text(language, &error));
+        }
+    }
+}
+
+/// What the user is told when Update now fails, in `language`; the technical reason goes to the log.
+pub fn failure_text(language: i18n::Language, error: &UpdateError) -> String {
+    match error {
+        UpdateError::NotVerified(problem) => {
+            log::error!("the downloaded update failed its signature check: {problem}");
+            i18n::text(language, &Message::UpdateNotVerified)
+        }
+        UpdateError::Swap(reason) => {
+            log::error!("the new version couldn't be put in place: {reason}");
+            i18n::text(language, &Message::UpdateNotPlaced)
+        }
+        UpdateError::SwapLeftAside { old, detail } => {
+            log::error!("the new version couldn't be put in place, nor the old one back: {detail}");
+            i18n::text(language, &Message::UpdateLeftAside { path: &old.display().to_string() })
+        }
+        UpdateError::MissingAsset(file) => {
+            log::warn!("the release has no {file}");
+            i18n::text(language, &Message::UpdateFileMissing { file })
+        }
+        other => {
+            log::warn!("the update couldn't be downloaded: {other}");
+            let problem = other.problem().unwrap_or(UpdateProblem::BadAnswer);
+            i18n::text(language, &Message::UpdateDownloadFailed { problem })
         }
     }
 }

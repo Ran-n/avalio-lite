@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.660497
-//+ Revised: 	2026/11/12 14:39:53.658906
+//+ Revised: 	2026/11/14 17:16:19.635709
 // -----------------------------------------------------------------------------
 
 use rusqlite::{Connection, OptionalExtension};
@@ -20,6 +20,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../../migrations/007_name_columns.sql"),
     include_str!("../../../migrations/008_split_comma_names.sql"),
     include_str!("../../../migrations/009_column_limits.sql"),
+    include_str!("../../../migrations/010_names_required.sql"),
 ];
 
 pub fn latest_version() -> usize {

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.751522
-//+ Revised: 	2026/11/07 20:25:34.751522
+//+ Revised: 	2026/11/15 12:17:26.005765
 // -----------------------------------------------------------------------------
 
 //! Release signatures: each release file ships with `<file>.sig`, an Ed25519 signature made with
@@ -54,9 +54,7 @@ pub fn parse_sig_line(line: &str) -> Result<(Signature, String), SigError> {
     let (encoded, name) = line.trim_end().split_once("  ").ok_or(SigError::Malformed)?;
     let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| SigError::Malformed)?;
     let bytes: [u8; SIGNATURE_LENGTH] = bytes.try_into().map_err(|_| SigError::Malformed)?;
-    if name.is_empty() {
-        return Err(SigError::Malformed);
-    }
+    // the name is never empty: the line's trailing blanks went before it was split
     Ok((Signature::from_bytes(&bytes), name.to_owned()))
 }
 

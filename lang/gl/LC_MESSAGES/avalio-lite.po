@@ -221,6 +221,15 @@ msgstr "Cambiar o PIN"
 msgid "Class average {}"
 msgstr "Media da clase {}"
 
+msgid "Saves as you type"
+msgstr "Gárdase ao escribir"
+
+msgid "✓ Saved"
+msgstr "✓ Gardado"
+
+msgid "Not saved"
+msgstr "Sen gardar"
+
 msgid "Close"
 msgstr "Pechar"
 

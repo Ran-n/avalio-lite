@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.336843
-//+ Revised: 	2026/11/12 14:39:57.606064
+//+ Revised: 	2026/11/15 12:17:32.129275
 // -----------------------------------------------------------------------------
 
 //! Updating: release signatures (what is signed, the `.sig` line, and every way a check fails),
@@ -16,14 +16,16 @@ use std::path::{Path, PathBuf};
 
 use avalio_lite::update::download::{agent, download, verify_file};
 use avalio_lite::update::install::{
-    Copy, asset_for, clean_leftovers, copy_kind, new_exe, old_exe, swap_portable, swap_portable_with, writable,
+    Copy, Pending, asset_for, clean_leftovers, copy_kind, new_exe, old_exe, swap_portable, swap_portable_with, writable,
 };
 use avalio_lite::update::signature::{
     self, CONTEXT, SigError, encode_key, file_hash, message, parse_sig_line, private_key, public_key, sig_line, verify,
 };
 use avalio_lite::update::source::{FixedRelease, GitHub, ReleaseSource, releases_api};
+use avalio_lite::update::windows::{Hive, install_locations, registry_text, start};
 use avalio_lite::update::{
-    Asset, PUBLIC_KEY, RELEASES_API, Release, UpdateError, current_version, due, newer, parse_release, release_key,
+    Asset, PUBLIC_KEY, RELEASES_API, Release, UpdateError, current_version, due, is_web_address, newer, parse_release,
+    release_key,
 };
 use chrono::{TimeDelta, TimeZone, Utc};
 use common::http::{self, Served};
@@ -153,6 +155,28 @@ fn answers_that_are_not_a_release_are_refused() {
     ] {
         assert!(matches!(parse_release(json), Err(UpdateError::BadAnswer(_))), "{json:?}");
     }
+}
+
+#[test]
+fn regression_a_release_page_that_is_not_a_web_address_is_refused() {
+    // the page went to Windows to open as it came, which would start a program or open a file
+    // named there as readily as a web page
+    for page in [
+        "C:\\Windows\\System32\\calc.exe",
+        "file:///C:/Windows/System32/calc.exe",
+        "http://github.com/Ran-n/avalio-lite/releases",
+        "HTTPS://github.com/Ran-n/avalio-lite/releases",
+        "https://",
+        " https://x",
+        "https://x y",
+        "https://x\nstart calc",
+        "",
+    ] {
+        assert!(!is_web_address(page), "{page:?}");
+        let json = serde_json::json!({ "tag_name": "v1.2.3", "html_url": page }).to_string();
+        assert!(matches!(parse_release(&json), Err(UpdateError::BadAnswer(_))), "{page:?}");
+    }
+    assert!(is_web_address("https://github.com/Ran-n/avalio-lite/releases/tag/v1.2.3"));
 }
 
 #[test]
@@ -416,7 +440,7 @@ fn the_release_key_this_build_trusts_is_the_published_one() {
 #[test]
 #[ignore = "goes online to api.github.com"]
 fn the_real_api_names_the_latest_release() {
-    let release = avalio_lite::update::source::GitHub::new().latest().unwrap();
+    let release = GitHub::at(RELEASES_API).latest().unwrap();
     assert!(release.version >= Version::new(0, 5, 0), "{}", release.version);
     assert!(release.page.starts_with("https://github.com/Ran-n/avalio-lite/releases/"), "{}", release.page);
     assert!(release.assets.iter().any(|asset| asset.name.ends_with("-setup.exe")));
@@ -482,4 +506,186 @@ fn github_out_of_reach_is_a_network_error() {
 fn github_cut_off_mid_answer_is_a_network_error() {
     let served = Served { announced: Some(5000), ..http::file(b"{\"tag_name\":") };
     assert!(matches!(github_answering(served), Err(UpdateError::Network(_))));
+}
+
+// ---------------------------------------------------------------------------------------------
+// What a failure tells the user
+
+#[test]
+fn each_failure_has_its_problem_for_the_user() {
+    use avalio_lite::i18n::UpdateProblem;
+    assert_eq!(UpdateError::Network("refused".into()).problem(), Some(UpdateProblem::Offline));
+    assert_eq!(UpdateError::RateLimited.problem(), Some(UpdateProblem::RateLimited));
+    assert_eq!(UpdateError::BadAnswer("HTTP 500".into()).problem(), Some(UpdateProblem::BadAnswer));
+    assert_eq!(UpdateError::Disk("full".into()).problem(), Some(UpdateProblem::Disk));
+    // these have a message of their own
+    for own in [
+        UpdateError::MissingAsset(SETUP.into()),
+        UpdateError::NotVerified(SigError::BadSignature),
+        UpdateError::Swap("in use".into()),
+        UpdateError::SwapLeftAside { old: PathBuf::from("avalio-lite.exe.old"), detail: "in use".into() },
+    ] {
+        assert_eq!(own.problem(), None, "{own:?}");
+    }
+}
+
+#[test]
+fn every_failed_update_is_worded_for_the_user() {
+    use avalio_lite::i18n::{self, Language, Message, UpdateProblem};
+    use avalio_lite::update::ui::failure_text;
+    let said = |error: &UpdateError| failure_text(Language::English, error);
+    let english = |message: &Message| i18n::text(Language::English, message);
+
+    assert_eq!(said(&UpdateError::NotVerified(SigError::BadSignature)), english(&Message::UpdateNotVerified));
+    assert_eq!(said(&UpdateError::Swap("in use".into())), english(&Message::UpdateNotPlaced));
+    let old = r"C:\apps\avalio-lite.exe.old";
+    let aside = said(&UpdateError::SwapLeftAside { old: PathBuf::from(old), detail: "os error 32".into() });
+    assert_eq!(aside, english(&Message::UpdateLeftAside { path: old }));
+    assert!(aside.contains(old) && !aside.contains("os error"), "the path, not the system's reason: {aside}");
+    assert_eq!(said(&UpdateError::MissingAsset(SETUP.into())), english(&Message::UpdateFileMissing { file: SETUP }));
+    for (error, problem) in [
+        (UpdateError::Network("refused".into()), UpdateProblem::Offline),
+        (UpdateError::RateLimited, UpdateProblem::RateLimited),
+        (UpdateError::BadAnswer("HTTP 500".into()), UpdateProblem::BadAnswer),
+        (UpdateError::Disk("full".into()), UpdateProblem::Disk),
+    ] {
+        assert_eq!(said(&error), english(&Message::UpdateDownloadFailed { problem }), "{error:?}");
+    }
+    let galician = failure_text(Language::Galician, &UpdateError::Swap("in use".into()));
+    assert_eq!(galician, i18n::text(Language::Galician, &Message::UpdateNotPlaced));
+    assert_ne!(galician, said(&UpdateError::Swap("in use".into())));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Failures on top of failures: what couldn't be cleaned up is left, and the first error stands
+
+#[test]
+fn a_download_from_a_server_out_of_reach_is_a_network_error() {
+    // a port nothing listens on: bound, then closed again
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let dir = tempfile::tempdir().unwrap();
+    let to = dir.path().join("a.exe");
+    let error = download(&agent(), &asset("a.exe", &format!("http://127.0.0.1:{port}"), 1), &to).unwrap_err();
+    assert!(matches!(error, UpdateError::Network(_)), "{error:?}");
+    assert!(!to.exists());
+}
+
+#[test]
+fn a_failed_download_that_cannot_be_deleted_still_fails_as_it_did() {
+    let base = http::serve(HashMap::from([("/a.exe".to_owned(), http::file(b"short"))]));
+    let dir = tempfile::tempdir().unwrap();
+    let to = dir.path().join("a.exe");
+    fs::write(&to, b"").unwrap();
+    let held = common::hold_against_removal(&to);
+    let error = download(&agent(), &asset("a.exe", &base, 999), &to).unwrap_err();
+    assert!(matches!(error, UpdateError::Network(_)), "{error:?}");
+    assert!(to.exists(), "another program has it open; the next start cleans up");
+    drop(held);
+}
+
+#[test]
+fn a_tampered_download_that_cannot_be_deleted_is_still_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (file, sig) = signed_file(dir.path(), SETUP, b"the real installer", &key());
+    fs::write(&file, b"something else").unwrap();
+    let held = common::hold_against_removal(&file);
+    let refused = verify_file(&key().verifying_key(), &file, &sig, SETUP);
+    assert!(matches!(refused, Err(UpdateError::NotVerified(_))), "{refused:?}");
+    assert!(file.exists());
+    drop(held);
+}
+
+#[test]
+fn an_old_exe_left_by_an_earlier_update_makes_way_for_this_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("avalio-lite.exe");
+    fs::write(old_exe(&exe), b"older").unwrap();
+    fs::write(&exe, b"old").unwrap();
+    fs::write(new_exe(&exe), b"new").unwrap();
+    swap_portable(&exe).unwrap();
+    assert_eq!(fs::read(&exe).unwrap(), b"new");
+    assert_eq!(fs::read(old_exe(&exe)).unwrap(), b"old");
+}
+
+#[test]
+fn an_old_exe_that_cannot_be_removed_stops_the_swap_before_anything_moves() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("avalio-lite.exe");
+    fs::write(old_exe(&exe), b"older").unwrap();
+    fs::write(&exe, b"old").unwrap();
+    fs::write(new_exe(&exe), b"new").unwrap();
+    let held = common::hold_exclusively(&old_exe(&exe));
+    assert!(matches!(swap_portable(&exe), Err(UpdateError::Swap(_))));
+    drop(held);
+    assert_eq!(fs::read(&exe).unwrap(), b"old", "the running exe is where it was");
+    assert_eq!(fs::read(new_exe(&exe)).unwrap(), b"new");
+}
+
+#[test]
+fn leftovers_that_cannot_be_removed_are_left_for_the_next_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("avalio-lite.exe");
+    let downloads = dir.path().join("downloads");
+    fs::create_dir_all(&downloads).unwrap();
+    fs::write(old_exe(&exe), b"x").unwrap();
+    fs::write(downloads.join("setup.exe"), b"x").unwrap();
+    let held = [common::hold_exclusively(&old_exe(&exe)), common::hold_exclusively(&downloads.join("setup.exe"))];
+    clean_leftovers(&exe, &downloads);
+    assert!(old_exe(&exe).exists() && downloads.join("setup.exe").exists());
+    drop(held);
+    clean_leftovers(&exe, &downloads);
+    assert!(!old_exe(&exe).exists() && !downloads.exists(), "gone once nothing holds them");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Windows: where the installer put the app, and starting what was downloaded
+
+const WINDOWS_VERSION_KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+
+#[test]
+fn a_text_value_is_read_from_the_registry() {
+    let name = registry_text(Hive::LocalMachine, WINDOWS_VERSION_KEY, "ProductName").unwrap();
+    assert!(name.starts_with("Windows"), "{name}");
+}
+
+#[test]
+fn a_registry_value_that_is_missing_or_not_text_reads_as_nothing() {
+    assert_eq!(registry_text(Hive::CurrentUser, r"Software\avalio-lite-no-such-key", "InstallLocation"), None);
+    assert_eq!(registry_text(Hive::LocalMachine, WINDOWS_VERSION_KEY, "NoSuchValue"), None);
+    // a number where text is asked for: refused (and logged), not misread
+    assert_eq!(registry_text(Hive::LocalMachine, WINDOWS_VERSION_KEY, "InstallDate"), None);
+}
+
+#[test]
+fn the_install_locations_are_folders_when_there_are_any() {
+    // this computer may or may not have avalio-lite installed; either way nothing odd comes back
+    for folder in install_locations() {
+        assert!(!folder.as_os_str().is_empty());
+    }
+}
+
+/// A program that does nothing and ends at once, whatever arguments it gets.
+fn harmless_program() -> PathBuf {
+    PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join("hostname.exe")
+}
+
+#[test]
+fn the_new_portable_exe_is_started() {
+    start(&Pending::StartNew(harmless_program())).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    assert!(start(&Pending::StartNew(dir.path().join("gone.exe"))).is_err(), "a missing exe is an error");
+}
+
+#[test]
+fn the_installer_runs_only_if_it_is_still_the_file_that_was_verified() {
+    let installer = harmless_program();
+    let hash = file_hash(&installer).unwrap();
+    start(&Pending::RunInstaller { installer: installer.clone(), hash }).unwrap();
+
+    let changed = start(&Pending::RunInstaller { installer, hash: HASH.to_owned() }).unwrap_err();
+    assert!(changed.to_string().contains("changed after it was verified"), "{changed}");
+
+    let dir = tempfile::tempdir().unwrap();
+    let gone = Pending::RunInstaller { installer: dir.path().join(SETUP), hash: HASH.to_owned() };
+    assert!(start(&gone).is_err(), "an installer that is gone is an error");
 }

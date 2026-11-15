@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:30.944950
-//+ Revised: 	2026/11/12 14:39:52.896916
+//+ Revised: 	2026/11/15 03:14:40.705099
 // -----------------------------------------------------------------------------
 
 //! The Rust-side texts and error messages in English.
@@ -162,6 +162,7 @@ BRN-XXXX-XXXX-XXXX-XXXX"
             format!("The release has no {file}. Download the new version from the release page.")
         }
         Message::UpdatedTo { version } => format!("Updated to avalio-lite {version}."),
+        Message::EverythingSaved => "Everything is saved. avalio-lite saves each change as you type.".to_owned(),
         Message::UpdateNotStarted => {
             "The update couldn't be started. Download it from the release page; the log has the details.".to_owned()
         }
@@ -231,6 +232,9 @@ pub(super) fn error(error: &AppError) -> String {
         ),
         AppError::IntegrityCheckFailed(path) => format!("The database at {} is damaged.", path.display()),
         AppError::NotADatabase(path) => format!("{} isn't an avalio-lite backup or database.", path.display()),
+        AppError::OpenDatabaseAsBackup(path) => {
+            format!("{} is the database the app is using now, not a backup. Choose a backup file.", path.display())
+        }
         AppError::KeptAside { kept, path } => {
             let (kept, path) = (kept.display(), path.display());
             format!(

@@ -1,14 +1,14 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.661079 )
-[//]: # (+ Revised: 	2026/11/12 14:39:51.420836 )
+[//]: # (+ Revised: 	2026/11/15 03:14:43.627237 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # avalio-lite user guide
 
 Everything the app does, screen by screen. To download and install it, see the [README](../README.md#download-and-install).
 
-**Contents:** [Getting started](#getting-started) · [Using it](#using-it) · [Your data](#your-data) · [Licence](#licence)
+**Contents:** [Getting started](#getting-started) · [Using it](#using-it) · [Your data](#your-data) · [Licence](#licence) · [Updates](#updates)
 
 ## Getting started
 
@@ -53,7 +53,7 @@ A test's weight can be anything from 0 to 1000 %, and its maximum anything above
 
 ### Marks
 
-Everything saves as you type.
+Everything saves as you type; there is no Save button. The line under the class name says so: **Saves as you type** at first, then **✓ Saved**, which lights up green for a moment after each change that was written. If a change couldn't be saved, it says **Not saved** in red until the next change that is, and the message above the sheet says why. Pressing Ctrl+S, by habit, answers *Everything is saved*.
 
 - Scores can be typed as `7.5` or `7,5`: digits with one decimal point or comma (`1e1` and `+5` aren't accepted). A score that isn't a number in the test's range is shaded red and left out of the calculations.
 - Press Enter to go to the same column in the next pupil's row, with its mark selected so typing replaces it; after the last pupil Enter leaves the sheet.
@@ -88,7 +88,7 @@ Shortcuts work anywhere on the main screen, even while you're typing in a cell, 
 | Ctrl+PageDown | Next class | `next-class` |
 | Ctrl+PageUp | Previous class | `previous-class` |
 
-In a column's panel, Ctrl+←/→ moves the column and Alt+←/→ opens the next column's settings; these are fixed.
+In a column's panel, Ctrl+←/→ moves the column and Alt+←/→ opens the next column's settings; these are fixed. So is Ctrl+S, which only confirms that everything is saved, unless you give those keys to one of the shortcuts above.
 
 To change a shortcut, press **Change** next to it in **Settings → Keyboard shortcuts**, then press the new keys (Esc cancels). The change is saved at once. **Reset** restores one shortcut and **Reset all** restores every one. Keys that another shortcut already uses are refused, not taken over. You can also close the app and add the shortcut to `config.toml` under `[shortcuts]`, e.g. `lock = "Ctrl+K"`.
 
@@ -115,6 +115,8 @@ The only file in a fixed place is `%APPDATA%\avalio-lite\config.toml`, which hol
 
 - **Restore from a backup…** replaces everything in the app with the backup. It asks first, and keeps your current PIN.
 - **Add classes from a backup…** copies a backup's classes, pupils and marks into the app without changing what's already there. A backup pupil joins the pupil here with the same full name (first name and surname) when there is exactly one; with none, or several, a new pupil is made, so two people are never merged by guess.
+
+A backup is an `.avalio` file or a copy of an `avalio-lite.db` made while the app was closed. The database the app is using right now isn't one, and choosing it is refused: its latest changes may not be in the file yet.
 
 ### PIN and encryption
 
@@ -158,17 +160,18 @@ What the licence screen can say:
 | Connect to the internet so avalio-lite can confirm your licence | 30 days without a check, or the computer's clock was set back | Connect and press **Check again** |
 | Too many attempts | The server asks to wait | Try again after the minutes shown |
 | The licence server can't be reached | No internet, or the server is down | Check the connection and try again |
+| The licence couldn't be saved on this computer | The licence file couldn't be written | Check that there is free space and try again; the log has the details |
 
 ## Updates
 
-- **Looking for a new version:** once a day, at start or while it runs, the app asks GitHub for the latest release. Nothing about you or your marks is sent. When a newer version is out, a bar above the sheet says *avalio-lite X.Y.Z is available*.
-- **What's new** opens the release page, with the list of changes, in your browser.
+- **Looking for a new version:** once a day, at start or while it runs, the app asks GitHub for the latest release. Nothing about you or your marks is sent. When a newer version is out, a bar across the top of the window says *avalio-lite X.Y.Z is available*.
+- **What's new** opens the release page, with the list of changes, in your browser. The app only ever opens an `https://` address there.
 - **Hide** (×) hides the bar for that version; it comes back for the next one.
 - **Update now** downloads the new version and checks its signature. Each release is signed by the developer, and a file that doesn't match is deleted, never run. Then:
   - an **installed** copy closes and runs the new installer, which shows its progress and opens the app again;
   - a **portable** copy replaces its own exe and opens again. Its folder must be writable; if it isn't (a read-only USB stick, for example), the app says so before downloading.
 
   Everything you typed is already saved. The next start says *Updated to X.Y.Z*.
-- **Settings → Updates:** **Check for updates automatically** turns the daily check on or off (it starts on). **Check now** looks straight away, even for a version you hid, and says *avalio-lite X.Y.Z is up to date* when there is nothing newer.
+- **Settings → Updates:** **Check for updates automatically** turns the daily check on or off (it starts on). **Check now** looks straight away, even for a version you hid, and says *avalio-lite is up to date (X.Y.Z)* when there is nothing newer.
 - If the check or the download fails (no internet, GitHub asking to wait, a file missing from the release), the app says why in plain words, keeps the technical details for the log, and stays as it was; a download that failed is deleted. Try again later, or download the new version by hand from the release page. A check that runs by itself and fails says nothing; it tries again the next day.
 - Closing the app during a download stops it; nothing is changed, and the half-downloaded file is deleted at the next start.

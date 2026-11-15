@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:18.136173
-//+ Revised: 	2026/11/12 14:39:56.875887
+//+ Revised: 	2026/11/15 12:17:29.643874
 // -----------------------------------------------------------------------------
 
 use std::collections::BTreeSet;
@@ -180,6 +180,7 @@ fn every_message() -> Vec<Message<'static>> {
         Message::ConfirmDeleteColumn { column: "Exam" },
         Message::ConfirmDeletePupil { pupil: "Ana" },
         Message::DatabaseMoved { path: "D:\\x" },
+        Message::DatabaseMovedOldKept { path: "D:\\x", old: "C:\\old" },
         Message::LogsMoved { path: "D:\\y" },
         Message::DatabaseFileType,
         Message::BackupFileType,
@@ -242,6 +243,7 @@ fn every_message() -> Vec<Message<'static>> {
         Message::UpdateFileMissing { file: "x.exe" },
         Message::UpdatedTo { version: "0.6.0" },
         Message::UpdateNotStarted,
+        Message::EverythingSaved,
     ];
     for message in &all {
         match message {
@@ -304,7 +306,8 @@ fn every_message() -> Vec<Message<'static>> {
             | Message::UpdateFolderReadOnly
             | Message::UpdateFileMissing { .. }
             | Message::UpdatedTo { .. }
-            | Message::UpdateNotStarted => {}
+            | Message::UpdateNotStarted
+            | Message::EverythingSaved => {}
         }
     }
     all
@@ -328,6 +331,8 @@ fn every_error() -> Vec<AppError> {
         AppError::NewerSchema { found: 3, supported: 1 },
         AppError::IntegrityCheckFailed("D:\\x".into()),
         AppError::NotADatabase("D:\\x".into()),
+        AppError::OpenDatabaseAsBackup("D:\\x".into()),
+        AppError::KeptAside { kept: "D:\\x".into(), path: "D:\\x".into() },
         AppError::NoDatabaseOpen,
         AppError::EmptyName,
         AppError::DuplicateClassName("1A".into()),
@@ -368,6 +373,7 @@ fn every_error() -> Vec<AppError> {
             | AppError::NewerSchema { .. }
             | AppError::IntegrityCheckFailed(_)
             | AppError::NotADatabase(_)
+            | AppError::OpenDatabaseAsBackup(_)
             | AppError::KeptAside { .. }
             | AppError::NoDatabaseOpen
             | AppError::EmptyName
@@ -425,6 +431,10 @@ fn default_column_titles_exist_in_every_language() {
             assert!(!default_column_title(language, column_type, 1).is_empty());
         }
         assert!(default_column_title(language, ColumnType::Test, 3).ends_with('3'));
+        // a name column's title is its header
+        for name in [ColumnType::FirstName, ColumnType::Surname] {
+            assert_eq!(default_column_title(language, name, 1), column_type_name(language, name));
+        }
     }
 }
 

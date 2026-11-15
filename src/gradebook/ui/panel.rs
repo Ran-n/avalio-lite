@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:43.679671
-//+ Revised: 	2026/11/03 11:13:31.602364
+//+ Revised: 	2026/11/15 03:14:39.614204
 // -----------------------------------------------------------------------------
 
 use slint::{ComponentHandle, Model};
@@ -32,8 +32,9 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
     }));
 
     gradebook.on_close_column_panel(with_window(window, |window| {
-        // a value refused in one of its fields goes with the panel, and so does its error
+        // a value refused in one of its fields goes with the panel, and so do its error and "Not saved"
         crate::window::view::clear_error(window);
+        super::saved::clear_not_saved(window);
         close(window);
     }));
 }

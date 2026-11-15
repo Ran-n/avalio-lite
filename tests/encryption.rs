@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/11/12 14:39:56.518833
+//+ Revised: 	2026/11/15 12:17:28.808245
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -349,4 +349,42 @@ fn the_old_file_is_kept_and_named_when_it_cannot_be_put_back() {
     let galician =
         avalio_lite::i18n::error_message(avalio_lite::i18n::Language::Galician, result.as_ref().unwrap_err());
     assert!(galician.contains(&kept.display().to_string()) && galician.starts_with("Non funcionou"), "{galician}");
+}
+
+/// The copy kept before an update, made while the database had no PIN, can be read by anyone. If a
+/// PIN was set since and that clean-up couldn't delete it, the next unlock does.
+#[test]
+fn a_readable_copy_kept_before_an_update_goes_once_a_database_with_a_pin_is_unlocked() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    state.set_pin("246810", "246810").unwrap();
+    state.shutdown();
+    let copy = std::path::PathBuf::from(format!("{}{}", fixture.database().display(), db::BEFORE_UPDATE_SUFFIX));
+    fs::write(&copy, format!("SQLite format 3\0{SECRET}")).unwrap();
+    let mut state = fixture.state();
+    assert_eq!(state.start(), Startup::Locked);
+    assert!(copy.exists(), "kept while locked");
+    state.unlock("246810").unwrap();
+    assert!(!copy.exists());
+}
+
+/// A copy kept under the PIN stays: it is what the user would go back to.
+#[test]
+fn an_encrypted_copy_kept_before_an_update_stays_when_the_database_is_unlocked() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    state.set_pin("246810", "246810").unwrap();
+    state.shutdown();
+    let copy = std::path::PathBuf::from(format!("{}{}", fixture.database().display(), db::BEFORE_UPDATE_SUFFIX));
+    fs::copy(fixture.database(), &copy).unwrap();
+    let mut state = fixture.state();
+    assert_eq!(state.start(), Startup::Locked);
+    state.unlock("246810").unwrap();
+    assert!(copy.exists());
+}
+
+#[test]
+fn a_file_that_is_not_there_is_not_encrypted() {
+    let fixture = Fixture::new();
+    assert!(!db::is_encrypted(&fixture.path("nothing.db")).unwrap());
 }

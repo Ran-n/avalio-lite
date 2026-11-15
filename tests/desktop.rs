@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.356749
-//+ Revised: 	2026/11/13 17:55:35.066365
+//+ Revised: 	2026/11/15 03:55:47.980230
 // -----------------------------------------------------------------------------
 
 //! The real app in its real window: started through `examples/app_driver.rs` on scratch data,
@@ -21,7 +21,7 @@ mod desktop_support;
 use std::path::{Path, PathBuf};
 
 use common::Fixture;
-use desktop_support::pixels::{Image, Rect};
+use desktop_support::pixels::{Image, Rect, Rgb};
 use desktop_support::{App, ThemeColours};
 use serde_json::{Value, json};
 
@@ -290,6 +290,47 @@ fn the_sheet() {
     wide_name_columns();
     a_long_note();
     enter_moves_down_a_column();
+    the_saved_indicator_fades_back_to_grey();
+}
+
+/// How many of `area`'s pixels are `colour`, give or take the smoothing at a letter's edge.
+fn pixels_of(image: &Image, area: Rect, colour: Rgb) -> usize {
+    let across = area.x..area.right().min(image.width);
+    (area.y..area.bottom().min(image.height))
+        .flat_map(|y| across.clone().map(move |x| (x, y)))
+        .filter(|(x, y)| image.pixel(*x, *y).near(colour, 20))
+        .count()
+}
+
+/// A typed mark lights "✓ Saved" green, and once the window has settled it is grey again: the
+/// green is the acknowledgement of that one change, not a state the line stays in.
+fn the_saved_indicator_fades_back_to_grey() {
+    let colours = ThemeColours::load();
+    let fixture = with_sample_class();
+    for (language, saved) in [("en", "✓ Saved"), ("gl", "✓ Gardado")] {
+        let mut app = App::start(&config(&fixture), language);
+        app.resize(NORMAL.0, NORMAL.1);
+        for (dark, mark) in [(false, "6"), (true, "7")] {
+            app.theme(dark);
+            app.type_into("Ana Pérez, Exam 1", mark);
+            // typing into the field takes longer than the fade, so one more change is typed and
+            // looked at straight away: the mark becomes 6.5 (or 7.5)
+            app.capture();
+            app.send(json!({ "cmd": "type", "text": ".5" }));
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            let lit = app.glimpse();
+            let image = app.capture();
+            let indicator = located_text(&mut app, saved);
+            assert_on_screen(&image, indicator, saved);
+            let muted = colours.get("muted", dark);
+            let grey = pixels_of(&image, indicator, muted);
+            assert!(grey > 0, "the settled indicator is grey ({language}, dark: {dark})");
+            assert_eq!(pixels_of(&image, indicator, colours.get("pass", dark)), 0, "no green is left ({language})");
+            let grey_while_lit = pixels_of(&lit, indicator, muted);
+            assert!(grey_while_lit < grey, "right after the change it is lit: {grey_while_lit} grey of {grey}");
+        }
+        app.quit();
+    }
 }
 
 /// The longest surname in the sample, given to Uxía so the surname column is too narrow for it.

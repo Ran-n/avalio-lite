@@ -1,10 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/11/12 14:39:51.923522
+//+ Revised: 	2026/11/14 17:16:17.953777
 // -----------------------------------------------------------------------------
 
-use rusqlite::{Connection, ErrorCode, params};
+use rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE;
+use rusqlite::{Connection, params};
 
 use super::model::{ClassSummary, DuplicateContents, clean_name, name_sort_key};
 use super::{cells, columns, pupils, sheet, update_one};
@@ -118,9 +119,13 @@ pub fn delete_class(connection: &Connection, class_id: i64) -> Result<()> {
     Ok(())
 }
 
+/// A broken UNIQUE constraint is a name already taken; any other failure, a broken rule of
+/// another kind included (the triggers of migration 010), is the database's own.
 fn duplicate_or(error: rusqlite::Error, name: &str) -> AppError {
-    match error.sqlite_error_code() {
-        Some(ErrorCode::ConstraintViolation) => AppError::DuplicateClassName(name.to_owned()),
+    match &error {
+        rusqlite::Error::SqliteFailure(failure, _) if failure.extended_code == SQLITE_CONSTRAINT_UNIQUE => {
+            AppError::DuplicateClassName(name.to_owned())
+        }
         _ => AppError::Database(error),
     }
 }

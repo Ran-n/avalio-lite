@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/11/13 15:55:15.348531 )
+[//]: # (+ Revised: 	2026/11/15 03:14:42.877563 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 <p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
@@ -47,9 +47,9 @@ A gradebook for teachers that works like a spreadsheet, does the maths for you, 
 
 ## Why avalio lite?
 
-- **As easy as a spreadsheet.** Each class is one sheet: pupils down the side, your tests and notes across the top. Type a mark and you're done. There's no Save button, because everything saves as you type.
+- **As easy as a spreadsheet.** Each class is one sheet: pupils down the side, your tests and notes across the top. Type a mark and you're done. There's no Save button, because everything saves as you type, and the sheet tells you so.
 - **The maths is done for you.** Give each test a weight and a maximum, and the app works out final grades, averages and roundings straight away. Extra-credit tests are supported, and passing and failing marks are colour-coded.
-- **Private by design.** No cloud, no tracking. Your marks live in one file in a folder you choose; add a PIN and the file is encrypted. The app goes online only to check its licence.
+- **Private by design.** No cloud, no tracking. Your marks live in one file in a folder you choose; add a PIN and the file is encrypted. The app goes online only to check its licence and to look for a new version.
 - **Works with Excel.** Export a class to Excel, or bring pupils and marks in from a spreadsheet.
 - **Easy to back up.** Save everything to a single file, then restore it later or on another computer.
 - **Feels at home.** Available in Galician and English, with light and dark themes and keyboard shortcuts.
@@ -181,7 +181,7 @@ Yes. The app asks for a licence key (it looks like `BRN-XXXX-XXXX-XXXX-XXXX`) th
 <details>
 <summary><b>How do I update?</b></summary>
 
-The app looks for a new version once a day and shows a bar above the sheet when one is out. Press **Update now**: it downloads the new version, checks that it really comes from avalio lite, installs it and opens again. Your marks and settings stay as they were. **Settings → Updates** turns the daily check off, or looks straight away.
+The app looks for a new version once a day and shows a bar across the top of the window when one is out. Press **Update now**: it downloads the new version, checks that it really comes from avalio lite, installs it and opens again. Your marks and settings stay as they were. **Settings → Updates** turns the daily check off, or looks straight away.
 </details>
 
 <details>
@@ -205,7 +205,7 @@ See [How grades are worked out](#how-grades-are-worked-out) for a worked example
 <details>
 <summary><b>Can I bring my marks in from Excel?</b></summary>
 
-Yes. **⋯ → Import from Excel…** reads pupils from column A of an .xlsx, .xls or .ods file and fills in marks under columns with matching titles. It asks before replacing marks already there.
+Yes. **⋯ → Import from Excel…** reads pupils from an .xlsx, .xls or .ods file (by its **First name** and **Surname** headers, or from the first column when it has neither) and fills in marks under columns with matching titles. It asks before replacing marks already there.
 </details>
 
 <details>
@@ -246,7 +246,7 @@ The full technical documentation lives in separate files:
 
 | Document | What's in it |
 |---|---|
-| [User guide](docs/user-guide.md) | Every feature in detail: column types and the grade formulas, accepted marks and limits, Excel import/export, keyboard shortcuts and `config.toml`, data and log locations, backups, PIN encryption (SQLCipher, AES-256) and how strong a PIN to choose |
+| [User guide](docs/user-guide.md) | Every feature in detail: column types and the grade formulas, accepted marks and limits, Excel import/export, keyboard shortcuts and `config.toml`, data and log locations, backups, PIN encryption (SQLCipher, AES-256) and how strong a PIN to choose, the licence and updates |
 | [Development](docs/development.md) | Building from source (Rust, Strawberry Perl, Inno Setup), the test suites (headless UI, desktop pixel tests, golden files, coverage and mutation testing), the source layout, translations, schema migrations and releasing |
 | [Design decisions](docs/design-decisions.md) | Why the code is laid out as it is: feature folders, the dependency rules, file sizes |
 | [Contributing](CONTRIBUTING.md) | Reporting bugs, suggesting features, submitting changes and the commit style |

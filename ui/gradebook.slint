@@ -94,6 +94,13 @@ export global Gradebook {
     in property <int> passing;
     in property <int> failing;
 
+    // the acknowledgement on the summary line: a change was written in this run of the app, the
+    // last change failed (the screen may show what the database doesn't hold), and how many
+    // changes were written, so the line can light up for each one
+    in property <bool> saved;
+    in property <bool> save-failed;
+    in property <int> save-count;
+
     // the column whose settings panel is open: zero or one item, replaced (not edited) on each
     // selection so the panel's fields start fresh for every column
     in property <[ColumnItem]> panel-column;
@@ -145,4 +152,7 @@ export global Gradebook {
 
     // row index, column index, typed text
     callback cell-edited(int, int, string);
+
+    // Ctrl+S: says that everything is saved; nothing is written
+    callback confirm-saved();
 }

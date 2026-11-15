@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.139186
-//+ Revised: 	2026/11/12 14:39:52.636376
+//+ Revised: 	2026/11/15 03:14:38.550437
 // -----------------------------------------------------------------------------
 
 mod cells;
@@ -10,12 +10,14 @@ mod columns;
 mod items;
 mod panel;
 mod pupils;
+pub mod saved;
 pub mod view;
 
 use rusqlite::Connection;
 use slint::ComponentHandle;
 
 use crate::error::{AppError, Result};
+use crate::i18n::{self, Message};
 use crate::shortcuts;
 use crate::state::AppState;
 use crate::ui::{AppWindow, Gradebook};
@@ -32,6 +34,10 @@ pub fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
     wire_preferences(window, state);
     window.global::<Gradebook>().on_field_restored(with_window(window, |window| {
         window_view::clear_error(window);
+        saved::clear_not_saved(window);
+    }));
+    window.global::<Gradebook>().on_confirm_saved(with_window(window, |window| {
+        window_view::show_status(window, i18n::text(i18n::current(), &Message::EverythingSaved));
     }));
 }
 
@@ -119,7 +125,9 @@ pub fn show_database(window: &AppWindow, state: &SharedState) -> bool {
 
 /// Runs one database action, redraws what it changed, and shows or clears the error banner of the
 /// page that is open. The status of an earlier action is cleared first, so it never sits next to
-/// a new error. True when the action succeeded.
+/// a new error. An action that wrote to the database is acknowledged on the summary line
+/// ("Saved"), and one that failed with typed data at stake is marked there too ("Not saved").
+/// True when the action succeeded.
 pub(crate) fn run(
     window: &AppWindow,
     state: &SharedState,
@@ -127,16 +135,23 @@ pub(crate) fn run(
     task: impl FnOnce(&Connection) -> Result<Refresh>,
 ) -> bool {
     window_view::clear_status(window);
-    let result = {
+    let (result, wrote) = {
         let state = state.borrow();
         match state.connection() {
-            Some(connection) => task(connection).and_then(|refresh| view::apply(window, connection, refresh)),
-            None => Err(AppError::NoDatabaseOpen),
+            Some(connection) => {
+                let before = connection.total_changes();
+                let result = task(connection).and_then(|refresh| view::apply(window, connection, refresh));
+                (result, connection.total_changes() > before)
+            }
+            None => (Err(AppError::NoDatabaseOpen), false),
         }
     };
     match result {
         Ok(()) => {
             window_view::clear_error(window);
+            if wrote {
+                saved::mark_saved(window);
+            }
             // the class on screen is remembered for the next start, whichever action opened it; a
             // failure to save that is said, but the action itself worked
             let class_id = view::current_class_id(window);
@@ -149,6 +164,9 @@ pub(crate) fn run(
         }
         Err(error) => {
             report_failure!(window, action, &error);
+            if saved::leaves_typed_data_unsaved(&error) {
+                saved::mark_not_saved(window);
+            }
             false
         }
     }

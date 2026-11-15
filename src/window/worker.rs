@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.027873
-//+ Revised: 	2026/11/12 14:39:55.955439
+//+ Revised: 	2026/11/15 12:17:27.726668
 // -----------------------------------------------------------------------------
 
 //! Work that mustn't hold up the window, such as going online: it runs on its own thread, and its
@@ -34,7 +34,7 @@ pub type Done = Box<dyn FnOnce(&AppWindow, Payload)>;
 pub trait Worker {
     /// Starts `job`; `Err` when it couldn't be started, and then nothing runs.
     fn start(&self, window: &AppWindow, job: Job, done: Done) -> std::io::Result<()>;
-    /// Waits for the work still running, at shutdown, for up to `JOIN_LIMIT`.
+    /// Waits for the work still running, at shutdown, for up to `JOIN_LIMIT` in the app.
     fn join(&self);
 }
 
@@ -85,6 +85,28 @@ pub fn run<T: Send + 'static>(
     )
 }
 
+/// `run` for work a screen waits for: when the work can't be started (logged, as `what`) or breaks
+/// off, `failed` runs in place of `done`, so the screen stops waiting and can say so.
+pub fn run_or<T: Send + 'static>(
+    worker: &dyn Worker,
+    window: &AppWindow,
+    what: &str,
+    job: impl FnOnce() -> T + Send + 'static,
+    done: impl FnOnce(&AppWindow, T) + 'static,
+    failed: impl Fn(&AppWindow) + 'static,
+) {
+    let failed = Rc::new(failed);
+    let broke_off = failed.clone();
+    let started = run(worker, window, job, move |window, finished| match finished {
+        Ok(result) => done(window, result),
+        Err(Panicked) => broke_off(window),
+    });
+    if let Err(error) = started {
+        log::error!("{what} couldn't be started: {error}");
+        failed(window);
+    }
+}
+
 thread_local! {
     /// What to do with each running job's result, by job number; only the UI thread uses it.
     static WAITING: RefCell<HashMap<u64, Done>> = RefCell::default();
@@ -93,9 +115,23 @@ thread_local! {
 static NEXT_JOB: AtomicU64 = AtomicU64::new(0);
 
 /// The app's worker: one thread per job.
-#[derive(Default)]
 pub struct ThreadWorker {
     running: RefCell<Vec<JoinHandle<()>>>,
+    /// how long `join` waits for the work still running
+    join_limit: Duration,
+}
+
+impl Default for ThreadWorker {
+    fn default() -> Self {
+        Self::waiting_at_most(JOIN_LIMIT)
+    }
+}
+
+impl ThreadWorker {
+    /// A worker whose `join` gives up after `join_limit`; the app's waits for `JOIN_LIMIT`.
+    pub fn waiting_at_most(join_limit: Duration) -> Self {
+        Self { running: RefCell::default(), join_limit }
+    }
 }
 
 impl Worker for ThreadWorker {
@@ -130,7 +166,7 @@ impl Worker for ThreadWorker {
     }
 
     fn join(&self) {
-        let deadline = Instant::now() + JOIN_LIMIT;
+        let deadline = Instant::now() + self.join_limit;
         let mut running = self.running.take();
         while !running.is_empty() && Instant::now() < deadline {
             let (finished, left): (Vec<_>, Vec<_>) = running.into_iter().partition(JoinHandle::is_finished);

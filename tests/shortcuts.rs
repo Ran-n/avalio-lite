@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:47.030126
-//+ Revised: 	2026/11/03 09:38:29.865629
+//+ Revised: 	2026/11/15 12:17:32.494800
 // -----------------------------------------------------------------------------
 
 //! The shortcut rules, their text form in config.toml, and how config entries are applied.
@@ -259,6 +259,9 @@ fn every_allowed_key_round_trips_through_its_name() {
 fn slint_special_keys_map_to_their_keys() {
     assert_eq!(key_events::key(&char::from(SlintKey::F5).to_string()), Some(Key::Function(5)));
     assert_eq!(key_events::key(&char::from(SlintKey::Home).to_string()), Some(Key::Home));
+    // a key event carries one character: no text, or several, is no key
+    assert_eq!(key_events::key(""), None);
+    assert_eq!(key_events::key("ab"), None);
     assert_eq!(key_events::key("q"), Some(Key::Letter('Q')));
     assert_eq!(key_events::key(" "), None);
 }

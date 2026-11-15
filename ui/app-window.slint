@@ -138,6 +138,13 @@ export component AppWindow inherits Window {
             }
             let action =Shortcuts.find(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt);
             if (action == ShortcutAction.none) {
+                // Ctrl+S, pressed by habit: there is nothing to save, so the app says so. Fixed,
+                // and only when no shortcut of the user's has those keys (find came back empty).
+                if (Licence.licensed && event.modifiers.control && !event.modifiers.shift && !event.modifiers.alt
+                        && (event.text == "s" || event.text == "S")) {
+                    Gradebook.confirm-saved();
+                    return accept;
+                }
                 return reject;
             }
             // the licence screen keeps only locking; every other key goes on to its field

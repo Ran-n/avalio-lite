@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/02 21:31:24.223445 )
-[//]: # (+ Revised: 	2026/11/12 14:39:51.201075 )
+[//]: # (+ Revised: 	2026/11/15 12:17:33.277939 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Design decisions
@@ -132,8 +132,10 @@ headless UI tests don't have, so work started from a thread there would never re
 the UI. The worker lives in the window kit, not in a feature, because it needs Slint (D4) and
 every feature that goes online uses it. `launch` waits for running work at shutdown.
 
-**Consequences:** the UI tests drive activation and checks synchronously against a fake server;
-the thread and the event-loop hand-off are only exercised by the real exe and the desktop tests.
+**Consequences:** the UI tests drive activation and checks synchronously against a fake server.
+The thread and the event-loop hand-off have a test binary of their own, `tests/worker.rs`, which
+runs Slint's testing backend with an event loop; a screen that waits for work starts it with
+`worker::run_or`, which ends the wait when the work can't start or breaks off.
 
 **Status:** Done
 
@@ -150,7 +152,9 @@ it can't be reused for another file or purpose. `src/update/` downloads the file
 checks both, and deletes a file that doesn't verify before anything can run it. Releases are read
 from GitHub; only for trying an update end to end, `AVALIO_RELEASES_API` points the app at another
 release list (it logs a warning), and a file from there is still used only if it carries a valid
-signature.
+signature. The one thing taken from a release without a signature is its page, which **What's new**
+hands to Windows to open: `parse_release` refuses a release whose page isn't an `https://` address,
+since Windows would as readily start a program named there.
 
 **Consequences:** no certificate to buy or renew, and a compromised GitHub account alone can't push
 a working update. Losing the private key means existing copies can no longer update themselves (a

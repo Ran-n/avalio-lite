@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.576798
-//+ Revised: 	2026/11/12 14:39:57.511971
+//+ Revised: 	2026/11/15 12:17:30.906769
 // -----------------------------------------------------------------------------
 
 //! The real window, wired as in the app, driven on Slint's headless backend: elements are found
@@ -1288,6 +1288,21 @@ fn a_cancelled_restore_picker_does_nothing() {
     click(&ui, "Restore from a backup…");
     assert!(ui.dialogs.questions.borrow().is_empty());
     assert_eq!(sidebar_classes(&ui), ["1A"]);
+}
+
+#[test]
+fn the_open_database_chosen_as_a_backup_shows_the_error() {
+    for button in ["Restore from a backup…", "Add classes from a backup…"] {
+        let ui = seeded();
+        open_backup_settings(&ui);
+        let own = ui.fixture.database();
+        ui.dialogs.pick_file_next(Some(&own));
+        click(&ui, button);
+        assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::OpenDatabaseAsBackup(own)), "{button}");
+        assert!(ui.dialogs.questions.borrow().is_empty(), "nothing is asked: {button}");
+        assert!(!backup_global(&ui).get_pin_needed());
+        assert_eq!(sidebar_classes(&ui), ["1A"], "{button}");
+    }
 }
 
 #[test]
@@ -3544,6 +3559,26 @@ fn check_now_reports_a_failure() {
     assert_eq!(error_on_screen(&ui), english(&Message::UpdateCheckFailed { problem: UpdateProblem::RateLimited }));
 }
 
+#[test]
+fn regression_an_automatic_check_leaves_a_download_under_way_alone() {
+    // the daily check ended the wait whatever had started it, so Update now could be clicked a
+    // second time while the first download was still writing the same file
+    for answer in [Ok(release(&next_version())), Ok(release(env!("CARGO_PKG_VERSION"))), Err(UpdateError::RateLimited)]
+    {
+        let ui = seeded();
+        ui.releases.set(answer.clone());
+        update(&ui).set_busy(true);
+        look_if_due(&ui);
+        assert_eq!(ui.releases.calls(), 1);
+        assert!(update(&ui).get_busy(), "after {answer:?}");
+    }
+    let ui = seeded();
+    ui.releases.panic_on_ask();
+    update(&ui).set_busy(true);
+    look_if_due(&ui);
+    assert!(update(&ui).get_busy(), "after a check that broke off");
+}
+
 /// A lookup that breaks off (a panic on the worker) ends the wait and says so, instead of leaving
 /// the button greyed out for good; one that runs by itself says nothing.
 #[test]
@@ -3625,37 +3660,52 @@ fn the_update_bar_and_card_are_in_galician() {
 // ---------------------------------------------------------------------------------------------
 // Update now
 
-/// A portable copy at `<scratch>/app/avalio-lite.exe`, and a release of the next version whose
-/// portable exe (signed with the tests' release key, or `tamper`ed after signing) is served locally.
-fn portable_with_release(tamper: bool) -> (Ui, PathBuf, Vec<u8>) {
+/// A database, and a portable copy of the app at `<scratch>/app/avalio-lite.exe`.
+fn portable_copy() -> (Fixture, PathBuf) {
     let fixture = Fixture::new();
     fixture.set_up().shutdown();
     let folder = fixture.path("app");
     fs::create_dir_all(&folder).unwrap();
     let exe = folder.join("avalio-lite.exe");
     fs::write(&exe, b"old version").unwrap();
+    (fixture, exe)
+}
 
+/// A release's file `name` and its `.sig`, served locally: the signature is of `content`, by the
+/// tests' release key, and the file sent is `served` (anything else was tampered with).
+fn served_assets(name: &str, content: &[u8], served: &[u8]) -> Vec<Asset> {
+    let hash = blake3::hash(content).to_hex().to_string();
+    let sig = signature::sig_line(&signature::sign(&common::release_key(), name, &hash), name);
+    let base = common::http::serve(std::collections::HashMap::from([
+        (format!("/{name}"), common::http::file(served)),
+        (format!("/{name}.sig"), common::http::file(sig.as_bytes())),
+    ]));
+    vec![
+        Asset { name: name.to_owned(), url: format!("{base}/{name}"), size: served.len() as u64 },
+        Asset { name: format!("{name}.sig"), url: format!("{base}/{name}.sig"), size: sig.len() as u64 },
+    ]
+}
+
+/// The app running as `installation`, its bar showing the next version, released with `assets`.
+fn with_release_found(fixture: Fixture, installation: Installation, assets: Vec<Asset>) -> Ui {
+    let ui = Ui::open_installed(fixture, installation);
+    ui.releases.set(Ok(Release { assets, ..release(&next_version()) }));
+    look_if_due(&ui);
+    assert!(!update(&ui).get_notice().is_empty(), "the bar shows the new version");
+    ui
+}
+
+/// A portable copy, and a release of the next version whose portable exe (signed with the tests'
+/// release key, or `tamper`ed after signing) is served locally.
+fn portable_with_release(tamper: bool) -> (Ui, PathBuf, Vec<u8>) {
+    let (fixture, exe) = portable_copy();
     let version = next_version();
     let name = format!("avalio-lite-{version}-portable.exe");
     let content = format!("avalio-lite {version}").into_bytes();
-    let hash = blake3::hash(&content).to_hex().to_string();
-    let sig = signature::sig_line(&signature::sign(&common::release_key(), &name, &hash), &name);
     let served = if tamper { b"something else".to_vec() } else { content.clone() };
-    let base = common::http::serve(std::collections::HashMap::from([
-        (format!("/{name}"), common::http::file(&served)),
-        (format!("/{name}.sig"), common::http::file(sig.as_bytes())),
-    ]));
-    let assets = vec![
-        Asset { name: name.clone(), url: format!("{base}/{name}"), size: served.len() as u64 },
-        Asset { name: format!("{name}.sig"), url: format!("{base}/{name}.sig"), size: sig.len() as u64 },
-    ];
-
+    let assets = served_assets(&name, &content, &served);
     let installation = Installation { exe: exe.clone(), copy: InstallCopy::Portable(exe.clone()) };
-    let ui = Ui::open_installed(fixture, installation);
-    ui.releases.set(Ok(Release { assets, ..release(&version) }));
-    look_if_due(&ui);
-    assert!(!update(&ui).get_notice().is_empty(), "the bar shows the new version");
-    (ui, exe, content)
+    (with_release_found(fixture, installation, assets), exe, content)
 }
 
 #[test]
@@ -4620,4 +4670,534 @@ fn a_name_column_can_be_dragged() {
     // past the end of the last header: the last gap
     drag_header_to(&ui, "First name", final_grade.absolute_position().x + final_grade.size().width + 40.0);
     assert_eq!(all_titles(&ui), ["Surname", "Exam", "Final grade", "First name"]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The acknowledgement that changes are saved
+
+const SAVES_BY_ITSELF: &str = "Saves as you type";
+const SAVED: &str = "✓ Saved";
+const NOT_SAVED: &str = "Not saved";
+
+fn save_count(ui: &Ui) -> i32 {
+    gradebook(ui).get_save_count()
+}
+
+/// Runs `change` and checks the summary line acknowledged it as one more written change.
+fn assert_acknowledged(ui: &Ui, what: &str, change: impl FnOnce()) {
+    let before = save_count(ui);
+    change();
+    assert!(ui.session.window.get_error_message().is_empty(), "{what}: {}", ui.session.window.get_error_message());
+    assert!(save_count(ui) > before, "{what} wasn't acknowledged");
+    assert!(gradebook(ui).get_saved() && !gradebook(ui).get_save_failed(), "{what}");
+}
+
+#[test]
+fn the_sheet_says_it_saves_as_you_type_until_something_changes() {
+    let ui = with_second_class();
+    assert!(shows_text(&ui, SAVES_BY_ITSELF));
+    assert!(!shows_text(&ui, SAVED) && !shows_text(&ui, NOT_SAVED));
+    // looking around writes nothing, so nothing is acknowledged
+    click(&ui, "2B");
+    click(&ui, "1A");
+    gradebook(&ui).invoke_open_column_panel(0);
+    assert_eq!(gradebook(&ui).get_panel_index(), 0);
+    gradebook(&ui).invoke_close_column_panel();
+    let destination = ui.fixture.path("1A.xlsx");
+    export_through_the_menu(&ui, Some(&destination));
+    assert!(destination.is_file());
+    assert_eq!(save_count(&ui), 0);
+    assert!(shows_text(&ui, SAVES_BY_ITSELF));
+}
+
+#[test]
+fn a_typed_mark_is_acknowledged_as_saved() {
+    let ui = seeded();
+    type_into(&ui, "Ana, Exam", "8");
+    assert!(shows_text(&ui, SAVED), "the summary line says so");
+    assert!(!shows_text(&ui, SAVES_BY_ITSELF));
+    assert_eq!(save_count(&ui), 1);
+    type_into(&ui, "Bea, Exam", "3");
+    assert_eq!(save_count(&ui), 2, "each change is acknowledged");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM cells"), 2, "and both are in the database");
+}
+
+#[test]
+fn every_kind_of_change_is_acknowledged() {
+    let ui = seeded();
+    assert_acknowledged(&ui, "a class name", || type_into(&ui, "Class name", "1B"));
+    assert_acknowledged(&ui, "a pupil's name", || {
+        click_element(&name_fields(&ui, "First name")[0]);
+        replace_text(&ui, "Ana María");
+    });
+    assert_acknowledged(&ui, "a new pupil", || {
+        click(&ui, "+ Add pupil");
+        type_text(&ui, "Carmen");
+        press_enter(&ui);
+        press_enter(&ui);
+    });
+    assert_acknowledged(&ui, "a new column", || gradebook(&ui).invoke_add_column(UiColumnType::Info));
+    assert_acknowledged(&ui, "a weight", || {
+        click(&ui, "Exam");
+        type_into(&ui, "Weight", "4");
+    });
+    assert_acknowledged(&ui, "a column width", || drag_edge(&width_edges(&ui)[2], 80.0));
+    assert_acknowledged(&ui, "a deleted column", || {
+        let notes = gradebook(&ui).get_columns().iter().last().unwrap().id;
+        ui.dialogs.answer_next(true);
+        gradebook(&ui).invoke_delete_column(notes);
+    });
+    gradebook(&ui).invoke_close_column_panel();
+    assert_acknowledged(&ui, "an import", || {
+        let file = import_file(&ui, &[&["Pupil", "Exam"], &["Dora", "6"]]);
+        import_through_the_menu(&ui, Some(&file));
+    });
+    assert_acknowledged(&ui, "a duplicate", || {
+        click(&ui, "More actions");
+        click_menu_option(&ui, "Duplicate class");
+    });
+}
+
+#[test]
+fn an_action_that_writes_nothing_is_not_acknowledged() {
+    let ui = seeded();
+    let first = gradebook(&ui).get_columns().row_data(0).unwrap().id;
+    gradebook(&ui).invoke_move_column(first, -1);
+    assert!(ui.session.window.get_error_message().is_empty());
+    assert_eq!(save_count(&ui), 0, "the first column can't go further left, so nothing was written");
+    assert!(shows_text(&ui, SAVES_BY_ITSELF));
+}
+
+#[test]
+fn a_change_that_fails_says_not_saved_until_the_next_one_works() {
+    let ui = seeded();
+    click(&ui, "Exam");
+    type_into(&ui, "Weight", "x");
+    assert!(!ui.session.window.get_error_message().is_empty());
+    assert!(shows_text(&ui, NOT_SAVED), "the field shows a weight the database doesn't hold");
+    assert_eq!(save_count(&ui), 0);
+    type_into(&ui, "Weight", "4");
+    assert!(shows_text(&ui, SAVED));
+    assert!(!shows_text(&ui, NOT_SAVED));
+}
+
+#[test]
+fn a_refused_value_put_back_no_longer_says_not_saved() {
+    let ui = seeded();
+    click(&ui, "Exam");
+    type_into(&ui, "Weight", "x");
+    assert!(gradebook(&ui).get_save_failed());
+    key(&ui, Key::Escape);
+    assert!(!gradebook(&ui).get_save_failed(), "the field shows the saved weight again");
+    assert!(shows_text(&ui, SAVES_BY_ITSELF));
+}
+
+#[test]
+fn a_file_that_cannot_be_imported_does_not_say_not_saved() {
+    let ui = seeded();
+    type_into(&ui, "Ana, Exam", "8");
+    let file = ui.fixture.path("notes.xlsx");
+    fs::write(&file, "not a workbook").unwrap();
+    import_through_the_menu(&ui, Some(&file));
+    assert!(!ui.session.window.get_error_message().is_empty());
+    assert!(!gradebook(&ui).get_save_failed(), "nothing typed was at stake");
+    assert!(shows_text(&ui, SAVED));
+}
+
+#[test]
+fn another_database_starts_unacknowledged() {
+    let other = Fixture::new();
+    other.set_up().shutdown();
+    let ui = seeded();
+    type_into(&ui, "Ana, Exam", "8");
+    assert_eq!(save_count(&ui), 1);
+    open_folder_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&other.database()));
+    click(&ui, "Open another database…");
+    assert_eq!(save_count(&ui), 0);
+    assert!(!gradebook(&ui).get_saved() && !gradebook(&ui).get_save_failed());
+    drop(ui);
+
+    // and so does one unlocked again
+    let ui = encrypted();
+    unlock(&ui);
+    assert!(gradebook(&ui).invoke_create_class("1A".into()));
+    assert_eq!(save_count(&ui), 1);
+    with_control(&ui, "l");
+    unlock(&ui);
+    assert_eq!(save_count(&ui), 0);
+    assert!(shows_text(&ui, SAVES_BY_ITSELF));
+}
+
+#[test]
+fn a_restored_backup_and_added_classes_are_acknowledged() {
+    let (_other, file) = backup_file(None);
+    let ui = seeded();
+    open_backup_settings(&ui);
+    ui.dialogs.pick_file_next(Some(&file));
+    ui.dialogs.answer_next(true);
+    click(&ui, "Restore from a backup…");
+    assert!(gradebook(&ui).get_saved(), "a restore");
+    assert_eq!(save_count(&ui), 1);
+
+    ui.dialogs.pick_file_next(Some(&file));
+    click(&ui, "Add classes from a backup…");
+    assert!(ui.session.window.get_error_message().is_empty(), "{}", ui.session.window.get_error_message());
+    assert_eq!(save_count(&ui), 2, "added classes");
+    click(&ui, "7A");
+    assert!(shows_text(&ui, SAVED), "back on the sheet");
+}
+
+#[test]
+fn ctrl_s_says_everything_is_saved() {
+    let ui = seeded();
+    click(&ui, "Ana, Exam");
+    with_control(&ui, "s");
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::EverythingSaved), "from a cell");
+    assert_eq!(save_count(&ui), 0, "it writes nothing");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM cells"), 0, "and types nothing into the cell");
+    open_settings(&ui);
+    assert!(ui.session.window.get_status_message().is_empty());
+    with_keys(&ui, false, "S");
+    assert_eq!(ui.session.window.get_status_message(), english(&Message::EverythingSaved), "in Settings");
+    click(&ui, "Galego");
+    with_control(&ui, "s");
+    assert_eq!(ui.session.window.get_status_message(), i18n::text(Language::Galician, &Message::EverythingSaved));
+    // with Shift it is another key combination, left alone
+    ui.session.window.set_status_message(SharedString::new());
+    with_keys(&ui, true, "S");
+    assert!(ui.session.window.get_status_message().is_empty());
+}
+
+#[test]
+fn ctrl_s_does_nothing_on_the_lock_first_run_and_licence_screens() {
+    // one at a time: only one window may be open
+    let screens: [fn() -> Ui; 3] = [encrypted, || Ui::open(Fixture::new()), unlicensed];
+    for open in screens {
+        let ui = open();
+        with_control(&ui, "s");
+        assert!(ui.session.window.get_status_message().is_empty());
+        assert!(ui.session.window.get_error_message().is_empty());
+    }
+}
+
+#[test]
+fn a_shortcut_the_user_put_on_ctrl_s_wins() {
+    let fixture = encrypted_fixture();
+    with_shortcut_config(&fixture, &[("lock", "Ctrl+S")]);
+    let ui = Ui::open(fixture);
+    unlock(&ui);
+    with_control(&ui, "s");
+    assert!(ui.session.window.get_locked(), "Ctrl+S locks, as the settings file says");
+    assert!(ui.session.window.get_status_message().is_empty());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Updates: what can't be saved, started, downloaded or put in place
+
+#[test]
+fn the_update_buttons_do_nothing_with_no_release_found() {
+    let ui = seeded();
+    update(&ui).invoke_hide();
+    update(&ui).invoke_whats_new();
+    update(&ui).invoke_update_now();
+    assert!(ui.dialogs.links.borrow().is_empty());
+    assert!(ui.session.window.get_error_message().is_empty());
+    assert_eq!(saved_preferences(&ui.fixture).skipped_update, None);
+    assert!(!update(&ui).get_busy());
+}
+
+#[test]
+fn an_update_setting_that_cannot_be_saved_says_so_and_stays_as_it_was() {
+    let ui = seeded();
+    open_update_settings(&ui);
+    break_saving_the_settings(&ui);
+    click(&ui, "Check for updates automatically");
+    error_on_screen(&ui);
+    assert!(update(&ui).get_automatic(), "still on, as the settings file says");
+}
+
+#[test]
+fn hiding_a_bar_that_cannot_be_remembered_says_so_and_keeps_the_bar() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(&next_version())));
+    look_if_due(&ui);
+    break_saving_the_settings(&ui);
+    click(&ui, "Hide");
+    error_on_screen(&ui);
+    assert!(!update(&ui).get_notice().is_empty());
+}
+
+#[test]
+fn a_check_whose_time_cannot_be_noted_still_shows_the_new_version() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(&next_version())));
+    break_saving_the_settings(&ui);
+    look_if_due(&ui);
+    assert!(!update(&ui).get_notice().is_empty());
+    assert!(ui.session.window.get_error_message().is_empty(), "that is only logged");
+}
+
+#[test]
+fn after_start_says_what_happened_even_when_it_cannot_note_it() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_update_failed(Some("access denied".into())).unwrap();
+    state.shutdown();
+    let ui = Ui::open(fixture);
+    break_saving_the_settings(&ui);
+    avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotStarted));
+}
+
+#[test]
+fn an_update_that_does_not_start_is_kept_for_the_next_start_to_say() {
+    let ui = seeded();
+    ui.session.updater.not_started("the installer changed after it was verified");
+    let kept = saved_preferences(&ui.fixture).update_failed;
+    assert_eq!(kept.as_deref(), Some("the installer changed after it was verified"));
+    let ui = ui.restart();
+    avalio_lite::update::ui::after_start(&ui.session.window, &ui.session.updater);
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotStarted));
+}
+
+#[test]
+fn an_update_that_does_not_start_and_cannot_be_noted_changes_nothing() {
+    let ui = seeded();
+    break_saving_the_settings(&ui);
+    ui.session.updater.not_started("access denied");
+    assert_eq!(ui.session.state.borrow().preferences().update_failed, None);
+}
+
+/// The real app looks at start and then hourly; the hour passes on the test backend's clock.
+#[test]
+fn the_app_looks_at_start_and_again_each_hour_once_a_day_has_passed() {
+    let ui = seeded();
+    ui.releases.set(Ok(release(env!("CARGO_PKG_VERSION"))));
+    let _looking = avalio_lite::update::ui::start_looking(&ui.session.window, &ui.session.updater);
+    assert_eq!(ui.releases.calls(), 1, "at start");
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_secs(3601));
+    assert_eq!(ui.releases.calls(), 1, "an hour later the day hasn't passed");
+    ui.session.state.borrow_mut().set_last_update_check(chrono::Utc::now() - chrono::TimeDelta::days(2)).unwrap();
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_secs(3601));
+    assert_eq!(ui.releases.calls(), 2, "the next hourly look finds the day has passed");
+
+    // the timer outlives the window only until `launch` drops it; a tick in between does nothing
+    let releases = ui.releases.clone();
+    drop(ui);
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_secs(3601));
+    assert_eq!(releases.calls(), 2);
+}
+
+/// A database, with background work that can't be started.
+fn with_a_worker_that_cannot_start() -> Ui {
+    let ui = Ui::with_database();
+    ui.worker.refusing.set(true);
+    ui
+}
+
+#[test]
+fn an_update_that_cannot_be_started_ends_the_wait_and_says_so() {
+    let (ui, exe, _) = portable_with_release(false);
+    ui.worker.refusing.set(true);
+    update(&ui).invoke_update_now();
+    assert!(!update(&ui).get_busy());
+    assert_eq!(error_on_screen(&ui), english(&Message::BackgroundFailed));
+    assert_eq!(fs::read(&exe).unwrap(), b"old version");
+    assert_eq!(ui.session.updater.pending(), None);
+}
+
+/// The bad download is deleted; when another program holds it, that is logged and the refusal
+/// stands (the next start cleans up).
+#[test]
+fn a_refused_download_that_cannot_be_deleted_is_still_refused() {
+    let (ui, exe, _) = portable_with_release(true);
+    fs::write(new_exe(&exe), b"").unwrap();
+    let held = common::hold_against_removal(&new_exe(&exe));
+    update(&ui).invoke_update_now();
+    drop(held);
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotVerified));
+    assert_eq!(fs::read(&exe).unwrap(), b"old version");
+    assert_eq!(ui.session.updater.pending(), None);
+}
+
+#[test]
+fn a_check_for_updates_that_cannot_be_started_ends_the_wait_and_says_so() {
+    let ui = with_a_worker_that_cannot_start();
+    ui.releases.set(Ok(release(&next_version())));
+    look_if_due(&ui);
+    assert!(ui.session.window.get_error_message().is_empty(), "an automatic check is only logged");
+    open_update_settings(&ui);
+    click(&ui, "Check for updates now");
+    assert_eq!(ui.releases.calls(), 0, "nothing ran");
+    assert!(!update(&ui).get_busy());
+    assert_eq!(error_on_screen(&ui), english(&Message::BackgroundFailed));
+}
+
+#[test]
+fn a_licence_check_that_cannot_be_started_ends_the_wait_and_says_so() {
+    let ui = with_a_worker_that_cannot_start();
+    open_licence_settings(&ui);
+    let before = licence_calls(&ui);
+    click(&ui, "Check now");
+    assert_eq!(licence_calls(&ui), before, "nothing ran");
+    assert!(!licence(&ui).get_busy());
+    assert_eq!(error_on_screen(&ui), english(&Message::BackgroundFailed));
+    assert!(licence(&ui).get_licensed(), "the licence stands");
+}
+
+#[test]
+fn update_now_downloads_and_verifies_the_installer_for_an_installed_copy() {
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let exe = fixture.path("avalio-lite.exe");
+    let name = format!("avalio-lite-{}-setup.exe", next_version());
+    let content = b"the installer".to_vec();
+    let assets = served_assets(&name, &content, &content);
+    let ui = with_release_found(fixture, Installation { exe, copy: InstallCopy::Installed }, assets);
+
+    update(&ui).invoke_update_now();
+
+    let installer = ui.fixture.path("downloads").join(&name);
+    assert_eq!(fs::read(&installer).unwrap(), content, "the installer waits in the downloads folder");
+    let hash = blake3::hash(&content).to_hex().to_string();
+    assert_eq!(ui.session.updater.pending(), Some(Pending::RunInstaller { installer, hash }));
+    assert!(ui.session.window.get_error_message().is_empty());
+}
+
+#[test]
+fn a_download_that_fails_says_so_and_leaves_nothing_behind() {
+    let (fixture, exe) = portable_copy();
+    let name = format!("avalio-lite-{}-portable.exe", next_version());
+    // a server that has neither file
+    let base = common::http::serve(std::collections::HashMap::new());
+    let assets = vec![
+        Asset { name: name.clone(), url: format!("{base}/{name}"), size: 10 },
+        Asset { name: format!("{name}.sig"), url: format!("{base}/{name}.sig"), size: 10 },
+    ];
+    let installation = Installation { exe: exe.clone(), copy: InstallCopy::Portable(exe.clone()) };
+    let ui = with_release_found(fixture, installation, assets);
+
+    update(&ui).invoke_update_now();
+
+    let problem = UpdateProblem::BadAnswer;
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateDownloadFailed { problem }));
+    assert!(!new_exe(&exe).exists());
+    assert_eq!(fs::read(&exe).unwrap(), b"old version");
+    assert_eq!(ui.session.updater.pending(), None);
+    assert!(!update(&ui).get_busy());
+}
+
+#[test]
+fn a_new_version_that_cannot_be_put_in_place_says_so_and_keeps_the_old_one() {
+    let (ui, exe, _) = portable_with_release(false);
+    // what an earlier update left is held open by another program, so it can't make way
+    fs::write(old_exe(&exe), b"older").unwrap();
+    let held = common::hold_exclusively(&old_exe(&exe));
+    update(&ui).invoke_update_now();
+    drop(held);
+    assert_eq!(error_on_screen(&ui), english(&Message::UpdateNotPlaced));
+    assert_eq!(fs::read(&exe).unwrap(), b"old version");
+    assert_eq!(ui.session.updater.pending(), None);
+    assert!(!update(&ui).get_busy());
+}
+
+#[test]
+fn an_update_goes_ahead_even_when_its_version_cannot_be_noted() {
+    let (ui, exe, content) = portable_with_release(false);
+    break_saving_the_settings(&ui);
+    update(&ui).invoke_update_now();
+    assert_eq!(fs::read(&exe).unwrap(), content);
+    assert_eq!(ui.session.updater.pending(), Some(Pending::StartNew(exe)));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Background work with no event loop to come back on (as after the window closed)
+
+#[test]
+fn a_background_result_that_cannot_reach_the_window_is_dropped() {
+    use avalio_lite::window::worker::{self, ThreadWorker, Worker};
+    let ui = Ui::with_database();
+    let worker = ThreadWorker::default();
+    let reached = std::rc::Rc::new(std::cell::Cell::new(false));
+    let back = reached.clone();
+    worker::run(&worker, &ui.session.window, || 1, move |_, _| back.set(true)).unwrap();
+    worker.join();
+    assert!(!reached.get(), "the headless backend has no event loop to hand it over");
+}
+
+#[test]
+fn a_daily_licence_answer_that_cannot_reach_the_window_changes_nothing() {
+    let computer = FakeLicence::activated();
+    let client = computer.client_checking_every(std::time::Duration::from_millis(10));
+    let fixture = Fixture::new();
+    fixture.set_up().shutdown();
+    let ui = Ui::open_licensed(fixture, Language::English, computer, client.clone());
+    let checks = avalio_lite::licence::ui::start_checks(&ui.session.window, &client).unwrap();
+    let before = licence_calls(&ui);
+    ui.licence.server.set_mode(Mode::Refuse("licence_revoked", 403));
+    ui.licence.advance(chrono::TimeDelta::hours(25));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while licence_calls(&ui) == before {
+        assert!(std::time::Instant::now() < deadline, "the daily check never ran");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    // waits for the check under way, and so for its answer to be handed over (or not)
+    checks.stop();
+    assert!(licence(&ui).get_licensed(), "the screen is as it was");
+}
+
+// ---------------------------------------------------------------------------------------------
+// The sheet: rows and columns it no longer has, and settings that can't be saved
+
+#[test]
+fn an_import_says_how_many_rows_had_no_name() {
+    let ui = seeded();
+    let file = import_file(&ui, &[&["Pupil", "Exam"], &["", "5"], &["Dora", "6"]]);
+    import_through_the_menu(&ui, Some(&file));
+    let status = ui.session.window.get_status_message().to_string();
+    assert!(status.contains(&english(&Message::ImportUnnamedRows { count: 1 })), "{status}");
+}
+
+#[test]
+fn acting_on_a_row_or_column_the_sheet_no_longer_has_is_said_not_dropped() {
+    let ui = seeded();
+    let refused = error_text(&AppError::NotEditable);
+    let sheet = gradebook(&ui);
+    let refuses = |what: &str, act: &dyn Fn()| {
+        view_clear(&ui);
+        act();
+        assert_eq!(ui.session.window.get_error_message(), refused, "{what}");
+    };
+    refuses("a cell", &|| sheet.invoke_cell_edited(99, 99, "5".into()));
+    refuses("a column to delete", &|| sheet.invoke_delete_column(9999));
+    refuses("a column to resize", &|| sheet.invoke_set_column_width(99, 120));
+    refuses("a pupil to remove", &|| sheet.invoke_remove_pupil(9999));
+    refuses("a pupil in no class to delete", &|| sheet.invoke_delete_pupil_in_no_class(99));
+    assert!(ui.dialogs.questions.borrow().is_empty(), "nothing was asked about something that isn't there");
+    assert_eq!(count(&ui, "SELECT COUNT(*) FROM cells"), 0);
+}
+
+#[test]
+fn a_class_opens_even_when_it_cannot_be_remembered_for_the_next_start() {
+    let ui = with_second_class();
+    break_saving_the_settings(&ui);
+    click(&ui, "2B");
+    assert_eq!(gradebook(&ui).get_class_name(), "2B", "the class is open");
+    assert!(!ui.session.window.get_error_message().is_empty(), "the settings failure is said");
+    assert!(!gradebook(&ui).get_save_failed(), "nothing typed is at stake");
+}
+
+/// The name columns come with the class; the "Add column" menu doesn't offer them, and asking
+/// for one anyway is refused.
+#[test]
+fn a_second_name_column_cannot_be_added() {
+    let ui = seeded();
+    let before = gradebook(&ui).get_columns().row_count();
+    for name in [UiColumnType::FirstName, UiColumnType::Surname] {
+        view_clear(&ui);
+        gradebook(&ui).invoke_add_column(name);
+        assert_eq!(ui.session.window.get_error_message(), error_text(&AppError::NotEditable), "{name:?}");
+    }
+    assert_eq!(gradebook(&ui).get_columns().row_count(), before);
 }

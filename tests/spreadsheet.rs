@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.959439
-//+ Revised: 	2026/11/12 14:39:57.310390
+//+ Revised: 	2026/11/15 12:17:30.043485
 // -----------------------------------------------------------------------------
 
 //! The Excel export, read back with calamine as Excel would read it, and the import, from
@@ -1017,7 +1017,9 @@ mod cell_values {
 
         #[test]
         fn short_decimals_import_as_typed(whole in 0u32..100_000, hundredths in 0u32..100) {
-            let typed = f64::from(whole) + f64::from(hundredths) / 100.0;
+            // read from its decimal text, as Excel stores what was typed: adding the hundredths
+            // to the whole part would bring in noise of its own (1 + 82/100 is 1.8199999999999998)
+            let typed: f64 = format!("{whole}.{hundredths:02}").parse().unwrap();
             prop_assert_eq!(cell_text(&Data::Float(typed)), Some(typed.to_string()));
             prop_assert_eq!(without_float_noise(typed), typed);
         }
@@ -1220,4 +1222,27 @@ fn a_surname_header_without_a_first_name_header_takes_the_first_name_from_column
     scratch.import(class, &path);
     assert_eq!(pupil_names(&scratch, class), [named("Ana", "Pérez")]);
     assert_eq!(scratch.rows(class)[0].1, strings(&["6"]));
+}
+
+/// With no first-name header, the first name is in column A, unless column A is the surname: then
+/// it is in column B.
+#[test]
+fn a_surname_in_column_a_makes_column_b_the_first_name() {
+    let scratch = Scratch::new();
+    let path = scratch.workbook(
+        "x.xlsx",
+        &[vec![Text("Surname"), Text("Who"), Text("Exam")], vec![Text("Pérez"), Text("Ana"), Number(7.0)]],
+    );
+    let table = read(&path).unwrap();
+    assert_eq!(table.headers, ["Exam"], "the name columns are no marks");
+    assert_eq!((table.rows[0].first_name.as_str(), table.rows[0].surname.as_str()), ("Ana", "Pérez"));
+    assert_eq!(table.rows[0].values, [Some("7".to_owned())]);
+}
+
+#[test]
+fn a_false_cell_becomes_the_text_false() {
+    let scratch = Scratch::new();
+    let path =
+        scratch.workbook("x.xlsx", &[vec![Text("Pupil"), Text("Repeats")], vec![Text("Ana"), Cell::Bool(false)]]);
+    assert_eq!(read(&path).unwrap().rows[0].values, [Some("FALSE".to_owned())]);
 }

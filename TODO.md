@@ -1,16 +1,16 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/28 10:26:46.388247 )
-[//]: # (+ Revised: 	2026/11/12 14:39:50.883814 )
+[//]: # (+ Revised: 	2026/11/15 12:50:28.129399 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # TODO
 
-The backlog. Each item is self-contained: reading it alone is enough to
+The planned work. Each item is self-contained: reading it alone is enough to
 implement it fully, without asking anything. Work top to bottom unless an item
-says otherwise.
+says otherwise. Ideas not planned yet live in `BACKLOG.md`.
 
-Next item number: 42
+Next item number: 45
 
 ## Index
 
@@ -29,7 +29,7 @@ Next item number: 42
 - Numbers ascend in file order. Deleting leaves a gap; when adding at the top
   or moving an item breaks the order, renumber every item in file order (from
   the lowest number in use) and update every reference to them.
-- Keep the Index in file order: one `<n>. [title](#anchor)` line per item;
+- Keep the Index in file order: one `- [<n>. title](#anchor)` line per item;
   update it whenever an item is added, retitled, moved or deleted.
 - Screenshots go in `docs/todo/<n>-<slug>.png`, linked from the item.
 - Split anything bigger than one sitting into items that ship alone.
@@ -46,7 +46,7 @@ Next item number: 42
 7. Update the listed docs; write the changelog line when committing.
 8. Tick every Done when line, with evidence.
 9. Delete the item, its Index line and its screenshots; add follow-up work as
-   new items.
+   new items (here if it's planned, in `BACKLOG.md` if not).
 
 ## Template
 

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:55.006271
-//+ Revised: 	2026/11/12 14:39:56.771556
+//+ Revised: 	2026/11/15 12:17:32.828625
 // -----------------------------------------------------------------------------
 
 use avalio_lite::error::AppError;
@@ -330,6 +330,10 @@ fn name_columns_cannot_be_deleted_renamed_or_added() {
     for column_type in [ColumnType::FirstName, ColumnType::Surname] {
         let added = columns::add_column(&connection, class_id, column_type, Language::English);
         assert!(matches!(added, Err(AppError::NotEditable)), "{column_type:?}");
+    }
+    for kind in [ColumnKind::FirstName, ColumnKind::Surname] {
+        let inserted = columns::insert_column(&connection, class_id, "Name", kind);
+        assert!(matches!(inserted, Err(AppError::NotEditable)));
     }
     assert_eq!(order(&connection, class_id), ["<first name>", "<surname>"], "still exactly one of each");
 }

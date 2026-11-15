@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.383625
-//+ Revised: 	2026/11/12 14:39:57.419282
+//+ Revised: 	2026/11/15 12:17:30.514384
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -649,4 +649,39 @@ fn preference_changes_without_a_database_are_refused() {
     assert!(matches!(state.set_show_column_settings(false), Err(AppError::NoDatabaseOpen)));
     assert!(matches!(state.set_shortcut(Action::Lock, "Ctrl+K".parse().unwrap()), Err(AppError::NoDatabaseOpen)));
     assert_eq!(fixture.store().load().unwrap(), None, "no settings file is written");
+}
+
+#[test]
+fn the_copy_kept_before_an_update_moves_with_the_database() {
+    use avalio_lite::platform::{db, storage};
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    let original = state.config().unwrap().database_path.clone();
+    let kept = storage::with_suffix(&original, db::BEFORE_UPDATE_SUFFIX);
+    fs::write(&kept, b"the copy").unwrap();
+
+    let moved = state.move_database(&fixture.path("moved")).unwrap().path;
+
+    assert!(!kept.exists());
+    assert_eq!(fs::read(storage::with_suffix(&moved, db::BEFORE_UPDATE_SUFFIX)).unwrap(), b"the copy");
+}
+
+#[test]
+fn a_kept_copy_that_cannot_be_moved_stays_and_the_database_still_moves() {
+    use avalio_lite::platform::{db, storage};
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    add_pupil(&state);
+    let original = state.config().unwrap().database_path.clone();
+    let kept = storage::with_suffix(&original, db::BEFORE_UPDATE_SUFFIX);
+    fs::write(&kept, b"the copy").unwrap();
+    let held = common::hold_exclusively(&kept);
+
+    let moved = state.move_database(&fixture.path("moved")).unwrap();
+
+    drop(held);
+    assert_eq!(moved.left_behind, None);
+    assert_eq!(pupil_count(&state), 1);
+    assert_eq!(fs::read(&kept).unwrap(), b"the copy", "it stays where it was");
+    assert!(!storage::with_suffix(&moved.path, db::BEFORE_UPDATE_SUFFIX).exists());
 }

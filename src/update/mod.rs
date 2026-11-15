@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.678835
-//+ Revised: 	2026/11/12 14:39:55.467722
+//+ Revised: 	2026/11/14 17:16:20.640466
 // -----------------------------------------------------------------------------
 
 //! Updating the app from its releases on GitHub: whether a newer version is out (`source`), and
@@ -105,7 +105,20 @@ pub fn parse_release(json: &str) -> Result<Release, UpdateError> {
     let version = release.tag_name.strip_prefix('v').unwrap_or(&release.tag_name);
     let version = semver::Version::parse(version)
         .map_err(|error| UpdateError::BadAnswer(format!("the tag {:?} isn't a version: {error}", release.tag_name)))?;
+    if !is_web_address(&release.html_url) {
+        return Err(UpdateError::BadAnswer(format!("the release page {:?} isn't a web address", release.html_url)));
+    }
     Ok(Release { version, page: release.html_url, assets: release.assets })
+}
+
+/// Whether `address` is an `https://` page and nothing else. The release page is handed to
+/// Windows to open, which would as readily start a program or open a file named there, so an
+/// answer naming anything but a web page is refused.
+pub fn is_web_address(address: &str) -> bool {
+    const SCHEME: &str = "https://";
+    address.len() > SCHEME.len()
+        && address.starts_with(SCHEME)
+        && !address.chars().any(|character| character.is_whitespace() || character.is_control())
 }
 
 /// This build's version.

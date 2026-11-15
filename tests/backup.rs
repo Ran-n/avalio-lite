@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 09:42:12.935204
-//+ Revised: 	2026/11/12 14:39:56.046078
+//+ Revised: 	2026/11/14 17:16:21.621485
 // -----------------------------------------------------------------------------
 
 //! `.avalio` backups: exporting everything to one file, read back from the real file on disk.
@@ -242,6 +242,31 @@ fn a_backup_of_this_database_opens_with_its_pin_without_asking() {
     state.export_backup(&file).unwrap();
     let opened = state.open_backup(&file, None).unwrap();
     assert_eq!(opened.contents().classes, 2);
+}
+
+#[test]
+fn regression_the_open_database_is_refused_as_its_own_backup() {
+    // the file was copied without its write-ahead log, so restoring it put the data back as it was
+    // when the app opened it and dropped everything typed since
+    let fixture = Fixture::new();
+    filled(&fixture).shutdown();
+    let mut state = fixture.state();
+    state.start();
+    classes::create_class(state.connection().unwrap(), "Typed since").unwrap();
+    let own = fixture.database();
+    let result = state.open_backup(&own, None);
+    assert!(matches!(&result, Err(AppError::OpenDatabaseAsBackup(path)) if *path == own), "{:?}", result.err());
+    assert!(!restore_copy(&fixture).exists());
+    // the same file spelled another way, and with a PIN typed for it
+    let spelled = own.parent().unwrap().join(".").join(own.file_name().unwrap());
+    assert!(matches!(state.open_backup(&spelled, Some(PIN)), Err(AppError::OpenDatabaseAsBackup(_))));
+    assert!(class_names(&state).contains(&"Typed since".to_owned()));
+    // a copy of it elsewhere is a backup like any other
+    let copy = fixture.path("copy.db");
+    state.shutdown();
+    fs::copy(&own, &copy).unwrap();
+    state.start();
+    assert_eq!(state.open_backup(&copy, None).unwrap().contents().classes, 3);
 }
 
 #[test]

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.116536
-//+ Revised: 	2026/11/12 14:39:56.432186
+//+ Revised: 	2026/11/14 17:16:22.014872
 // -----------------------------------------------------------------------------
 
 use std::fs;
@@ -806,6 +806,44 @@ fn migration_9_keeps_column_limits_and_the_name_columns() {
 
     connection.execute("DELETE FROM classes WHERE id = 1", []).unwrap();
     assert_eq!(count(&connection, "SELECT COUNT(*) FROM sheet_columns"), 0, "deleting the class takes them all");
+}
+
+/// Migration 10: a class always has a name and a pupil a first name, also for a write that
+/// doesn't go through the app's own check; a surname may be empty. Rows from before are kept.
+#[test]
+fn migration_10_keeps_classes_and_pupils_named() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut connection = Connection::open(dir.path().join("x.db")).unwrap();
+    migrations::migrate_to(&mut connection, 9).unwrap();
+    connection
+        .execute_batch(
+            "INSERT INTO classes (id, name) VALUES (1, ' ');
+             INSERT INTO pupils (id, first_name) VALUES (1, '');",
+        )
+        .unwrap();
+    migrations::migrate(&mut connection).unwrap();
+    assert_eq!(count(&connection, "SELECT COUNT(*) FROM classes"), 1, "a nameless class from before is kept");
+    assert_eq!(count(&connection, "SELECT COUNT(*) FROM pupils"), 1, "and so is a nameless pupil");
+
+    let class = |name: &str| connection.execute("INSERT INTO classes (name) VALUES (?1)", [name]);
+    assert!(class("1A").is_ok());
+    assert!(class("").is_err(), "no name");
+    assert!(class("   ").is_err(), "only spaces");
+    assert!(connection.execute("UPDATE classes SET name = '' WHERE name = '1A'", []).is_err());
+    assert!(connection.execute("UPDATE classes SET name = '1B' WHERE name = '1A'", []).is_ok());
+
+    let pupil = |first_name: &str, surname: &str| {
+        connection.execute("INSERT INTO pupils (first_name, surname) VALUES (?1, ?2)", [first_name, surname])
+    };
+    assert!(pupil("Ana", "").is_ok(), "a surname may be empty");
+    assert!(pupil("", "Pérez").is_err(), "no first name");
+    assert!(pupil("  ", "Pérez").is_err(), "only spaces");
+    assert!(connection.execute("UPDATE pupils SET first_name = ' ' WHERE first_name = 'Ana'", []).is_err());
+    assert!(connection.execute("UPDATE pupils SET surname = '' WHERE first_name = 'Ana'", []).is_ok());
+    // the nameless rows from before can still be renamed, and their other fields changed
+    assert!(connection.execute("UPDATE pupils SET surname = 'x' WHERE id = 1", []).is_ok());
+    assert!(connection.execute("UPDATE pupils SET first_name = 'Bea' WHERE id = 1", []).is_ok());
+    assert!(connection.execute("UPDATE classes SET name = '2A' WHERE id = 1", []).is_ok());
 }
 
 #[test]

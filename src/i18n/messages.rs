@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.721797
-//+ Revised: 	2026/11/12 14:39:53.068972
+//+ Revised: 	2026/11/15 03:14:40.364901
 // -----------------------------------------------------------------------------
 
 use super::{Language, english, galician};
@@ -190,6 +190,8 @@ pub enum Message<'a> {
     },
     /// the installer or new exe couldn't be started as the app closed
     UpdateNotStarted,
+    /// the answer to Ctrl+S: there is nothing to save, since every change is saved as it is typed
+    EverythingSaved,
 }
 
 /// Why looking for or downloading an update failed, as far as the user can act on it; the

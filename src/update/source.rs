@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.826099
-//+ Revised: 	2026/11/12 14:39:55.551894
+//+ Revised: 	2026/11/15 12:17:26.324659
 // -----------------------------------------------------------------------------
 
 //! Where releases are read from: GitHub's API in the app, a fixed answer in the tests. Behind a
@@ -45,10 +45,6 @@ pub fn releases_api(overridden: Option<String>) -> String {
 }
 
 impl GitHub {
-    pub fn new() -> Self {
-        Self::at(RELEASES_API)
-    }
-
     /// The API, or the address in `AVALIO_RELEASES_API` when it is set (see `releases_api`).
     pub fn configured() -> Self {
         Self::at(&releases_api(std::env::var(RELEASES_API_ENV).ok()))
@@ -58,12 +54,6 @@ impl GitHub {
     pub fn at(url: &str) -> Self {
         let config = ureq::Agent::config_builder().timeout_global(Some(TIMEOUT)).http_status_as_error(false).build();
         Self { agent: config.into(), url: url.to_owned() }
-    }
-}
-
-impl Default for GitHub {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

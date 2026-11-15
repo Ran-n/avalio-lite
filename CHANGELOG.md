@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/13 19:44:32.196652 )
+[//]: # (+ Revised: 	2026/11/15 13:36:35.267126 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,24 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- The sheet says **✓ Saved** under the class name after every change, or **Not saved** if one failed, and Ctrl+S confirms that everything is saved
+
+### Changed
+
+- The database itself now refuses a class without a name or a pupil without a first name, as the app always has; the first start after this update keeps a copy of the database as it was (`avalio-lite.db.before-update`)
+
+### Fixed
+
+- Choosing the database the app is using as a backup to restore or add classes from is refused with a message, instead of putting back an older state of it and losing what was typed since the app opened
+- The daily check for updates no longer switches **Update now** back on while an update is downloading
+- A release whose page isn't an `https://` web address is refused, so **What's new** can only ever open a web page
+
+### Security
+
+- Dependencies updated to their latest compatible versions
 
 ## [0.9.1] - 2026-11-13
 

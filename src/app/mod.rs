@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.224094
-//+ Revised: 	2026/11/12 14:39:51.499943
+//+ Revised: 	2026/11/15 12:17:25.329812
 // -----------------------------------------------------------------------------
 
 //! Starts the app and wires the features to the window: the composition root. The setup and
@@ -192,21 +192,16 @@ fn saved_preferences(store: &ConfigStore) -> Preferences {
 
 fn show_startup(window: &AppWindow, state: &Rc<RefCell<AppState>>) {
     let startup = state.borrow_mut().start();
+    if let (Startup::Ready | Startup::Locked, Some(config)) = (&startup, state.borrow().config()) {
+        view::show_main(window, config);
+    }
     match startup {
         Startup::Ready => {
-            if let Some(config) = state.borrow().config() {
-                view::show_main(window, config);
-            }
             lock::ui::show_unprotected(window);
             gradebook::ui::show_database(window, state);
         }
         // the classes load once the PIN has opened the database
-        Startup::Locked => {
-            if let Some(config) = state.borrow().config() {
-                view::show_main(window, config);
-            }
-            lock::ui::show_locked(window);
-        }
+        Startup::Locked => lock::ui::show_locked(window),
         Startup::NeedsSetup(reason) => view::show_setup(window, &reason),
     }
 }
