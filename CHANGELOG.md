@@ -12,6 +12,8 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-26
+
 ### Added
 
 - **⋯ → Show a pupil their grades…**: pick a pupil from a list that shows each one's picture, number and name, and the whole window shows only that pupil's own marks and grades in the class. **Next pupil** goes on by number and **Back to the list** lets you pick anyone. With a PIN, it is asked before each pupil's grades and before going back to the sheet, and never to go back to the list
