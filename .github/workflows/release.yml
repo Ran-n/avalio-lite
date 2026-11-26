@@ -39,13 +39,16 @@ jobs:
     runs-on: windows-latest
     env:
       AVALIO_LITE_RELEASE_TARGET: windows-x86_64
-      # A short target folder: the OpenSSL build inside SQLCipher nests too deep for the 260-character
-      # path limit when it sits under the checkout.
-      CARGO_TARGET_DIR: ${{ runner.temp }}\target
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+
+      - name: Use a short target folder
+        shell: pwsh
+        # The OpenSSL build inside SQLCipher nests too deep for the 260-character path limit when the
+        # target folder sits under the checkout. Set in a step because a job's env can't read `runner`.
+        run: Add-Content -LiteralPath $env:GITHUB_ENV -Value "CARGO_TARGET_DIR=$env:RUNNER_TEMP\target"
 
       - name: Build the release exe
         shell: pwsh
