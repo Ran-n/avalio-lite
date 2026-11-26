@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.102653
-//+ Revised: 	2026/11/25 11:43:13.350263
+//+ Revised: 	2026/11/26 14:09:00.584865
 // -----------------------------------------------------------------------------
 
 //! Error paths must reach the log at the right level, not just the screen. The app's own logger
@@ -229,9 +229,11 @@ fn a_screen_that_cannot_be_read_is_a_warning_and_the_window_keeps_its_size() {
     let log = logged(|| {
         let ui = Ui::with_database();
         let before = ui.session.window.window().size();
+        // a small screen (a CI runner's) has the window maximised already: whatever it was, it stays
+        let maximized = ui.session.window.window().is_maximized();
         app::placement::apply_with(&ui.session.window, Err("GetMonitorInfoW failed".to_owned()));
         assert_eq!(ui.session.window.window().size(), before, "Slint's size stays");
-        assert!(!ui.session.window.window().is_maximized());
+        assert_eq!(ui.session.window.window().is_maximized(), maximized, "and so does being maximised");
         assert!(!ui.session.window.get_setup_required(), "the app still shows its sheet");
     });
     assert!(has_line(&log, "WARN", "avalio_lite::app::placement", "couldn't read the screen's work area"), "{log}");

@@ -110,7 +110,10 @@ jobs:
             foreach ($name in $names) {
               $line = (& b3sum $name) -join ''
               if ($LASTEXITCODE -ne 0) { throw "b3sum failed on $name" }
-              [System.IO.File]::WriteAllText("$name.b3", "$line`n", (New-Object System.Text.UTF8Encoding $false))
+              # .NET resolves a relative path against the process's folder, which Push-Location
+              # doesn't change, so it is given the full one
+              $sum = Join-Path (Get-Location).Path "$name.b3"
+              [System.IO.File]::WriteAllText($sum, "$line`n", (New-Object System.Text.UTF8Encoding $false))
             }
             foreach ($name in $names) {
               & b3sum --check "$name.b3"
