@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.812932
-//+ Revised: 	2026/11/12 14:39:53.941661
+//+ Revised: 	2026/11/23 16:34:34.989718
 // -----------------------------------------------------------------------------
+
+//! Moving files safely: copied, checked and only then removed, never over an existing one. Which files move
+//! is decided in `state::locations`.
 
 use std::fs;
 use std::path::{Path, PathBuf};

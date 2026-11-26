@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.545991
-//+ Revised: 	2026/11/12 14:39:54.288154
+//+ Revised: 	2026/11/23 11:49:20.236264
 // -----------------------------------------------------------------------------
 
 //! Matching the workbook's rows and columns to the class, before anything changes.
@@ -11,10 +11,10 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 use rust_xlsxwriter::utility::column_number_to_name;
 
-use super::{ImportPlan, ImportSummary, ImportTable, LeftOut};
+use super::{ImportPlan, ImportRow, ImportSummary, ImportTable, LeftOut};
 use crate::error::{AppError, Result};
 use crate::gradebook::compute::parse_number;
-use crate::gradebook::model::{ColumnKind, SheetRow, name_match_key};
+use crate::gradebook::model::{ColumnKind, Sheet, SheetRow, name_match_key};
 use crate::gradebook::{pupils, sheet};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,31 +42,58 @@ pub fn plan_import(connection: &Connection, class_id: i64, table: &ImportTable) 
     let sheet = sheet::load_sheet(connection, class_id)?;
     let mut left_out = Vec::new();
     let targets = match_headers(&sheet.columns, table, &mut left_out);
-
-    let mut in_class: HashMap<String, &SheetRow> = HashMap::new();
-    for row in &sheet.rows {
-        in_class.entry(name_match_key(&row.pupil.full_name())).or_insert(row);
-    }
-    let mut elsewhere: HashMap<String, Vec<i64>> = HashMap::new();
-    for pupil in pupils::pupils_not_in_class(connection, class_id)? {
-        elsewhere.entry(name_match_key(&pupil.full_name())).or_default().push(pupil.id);
-    }
-
+    let matching = Matching::new(&sheet, &targets, pupils_elsewhere(connection, class_id)?);
     let mut overwrites = 0;
     let mut planned = Vec::new();
     for row in &table.rows {
+        let (pupil, replaced) = matching.plan_row(row);
+        overwrites += replaced;
+        planned.push(pupil);
+    }
+    let summary = summarize(&planned, table, left_out);
+    Ok(ImportPlan { pupils: planned, summary, overwrites })
+}
+
+/// What the file's rows are matched against: the class's rows and the pupils elsewhere, by name,
+/// and the sheet column each header fills (`targets`, from `match_headers`).
+struct Matching<'a> {
+    sheet: &'a Sheet,
+    targets: &'a [Option<(usize, i64)>],
+    in_class: HashMap<String, &'a SheetRow>,
+    elsewhere: HashMap<String, Vec<i64>>,
+}
+
+impl<'a> Matching<'a> {
+    fn new(sheet: &'a Sheet, targets: &'a [Option<(usize, i64)>], elsewhere: HashMap<String, Vec<i64>>) -> Self {
+        let mut in_class = HashMap::new();
+        for row in &sheet.rows {
+            in_class.entry(name_match_key(&row.pupil.full_name())).or_insert(row);
+        }
+        Self { sheet, targets, in_class, elsewhere }
+    }
+
+    /// Who the row is, and how many marks it overwrites.
+    fn plan_row(&self, row: &ImportRow) -> (PlannedPupil, usize) {
         let key = name_match_key(&row.full_name());
-        let existing = in_class.get(&key);
-        let target = match (existing, elsewhere.get(&key).map(Vec::as_slice)) {
-            (Some(row), _) => Target::InClass(row.pupil.id),
+        let existing = self.in_class.get(&key).copied();
+        let target = match (existing, self.elsewhere.get(&key).map(Vec::as_slice)) {
+            (Some(same), _) => Target::InClass(same.pupil.id),
             (None, Some([pupil_id])) => Target::Enroll(*pupil_id),
             (None, _) => Target::New { first_name: row.first_name.clone(), surname: row.surname.clone() },
         };
+        let (writes, overwrites) = self.writes(row, existing);
+        (PlannedPupil { target, writes }, overwrites)
+    }
+
+    /// The cells that change: each value the row gives, where the class's cell holds something else.
+    /// An overwrite is one that replaces text already there.
+    fn writes(&self, row: &ImportRow, existing: Option<&SheetRow>) -> (Vec<(i64, String)>, usize) {
         let mut writes = Vec::new();
-        for (value, target) in row.values.iter().zip(&targets) {
+        let mut overwrites = 0;
+        for (value, target) in row.values.iter().zip(self.targets) {
             let (Some(value), Some((index, column_id))) = (value, target) else { continue };
-            let current = existing.map_or("", |row| row.values[*index].as_str());
-            if same_value(sheet.columns[*index].kind, current, value) {
+            let current = existing.map_or("", |same| same.values[*index].as_str());
+            if same_value(self.sheet.columns[*index].kind, current, value) {
                 continue;
             }
             if !current.trim().is_empty() {
@@ -74,18 +101,8 @@ pub fn plan_import(connection: &Connection, class_id: i64, table: &ImportTable) 
             }
             writes.push((*column_id, value.clone()));
         }
-        planned.push(PlannedPupil { target, writes });
+        (writes, overwrites)
     }
-
-    let summary = ImportSummary {
-        pupils: planned.len(),
-        new_pupils: planned.iter().filter(|pupil| matches!(pupil.target, Target::New { .. })).count(),
-        marks: planned.iter().map(|pupil| pupil.writes.len()).sum(),
-        left_out,
-        error_cells: table.error_cells,
-        unnamed_rows: table.unnamed_rows,
-    };
-    Ok(ImportPlan { pupils: planned, summary, overwrites })
 }
 
 /// Two rows for one pupil would have to be merged, and a mark could be lost.
@@ -94,6 +111,28 @@ fn refuse_repeated_names(table: &ImportTable) -> Result<()> {
     match table.rows.iter().find(|row| !seen.insert(name_match_key(&row.full_name()))) {
         Some(row) => Err(AppError::DuplicatePupilInFile(row.full_name())),
         None => Ok(()),
+    }
+}
+
+/// The pupils of other classes, by name, with their ids: a name that is one pupil's alone is the
+/// pupil who joins this class.
+fn pupils_elsewhere(connection: &Connection, class_id: i64) -> Result<HashMap<String, Vec<i64>>> {
+    let mut elsewhere: HashMap<String, Vec<i64>> = HashMap::new();
+    for pupil in pupils::pupils_not_in_class(connection, class_id)? {
+        elsewhere.entry(name_match_key(&pupil.full_name())).or_default().push(pupil.id);
+    }
+    Ok(elsewhere)
+}
+
+/// The counts the summary shows, from the plan and the table.
+fn summarize(planned: &[PlannedPupil], table: &ImportTable, left_out: Vec<LeftOut>) -> ImportSummary {
+    ImportSummary {
+        pupils: planned.len(),
+        new_pupils: planned.iter().filter(|pupil| matches!(pupil.target, Target::New { .. })).count(),
+        marks: planned.iter().map(|pupil| pupil.writes.len()).sum(),
+        left_out,
+        error_cells: table.error_cells,
+        unnamed_rows: table.unnamed_rows,
     }
 }
 

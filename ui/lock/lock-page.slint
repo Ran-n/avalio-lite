@@ -10,6 +10,11 @@ import { Key, Keys, LetterKey, NumberPad } from "keypad.slint";
 export component LockPage inherits Rectangle {
     in-out property <string> pin;
     in property <string> error-message;
+    // the pupil view asks for the same PIN, under a title of its own and with its own way back
+    in property <string> title: @tr("avalio lite is locked");
+    // empty: "Forgot the PIN?" takes its place
+    in property <string> way-back;
+    callback back();
     callback unlock(string);
     callback erase();
     // leaves the lock screen for the setup screen, without touching the locked file
@@ -51,7 +56,8 @@ export component LockPage inherits Rectangle {
                         BrandMark { }
                     }
                     Text {
-                        text: @tr("avalio lite is locked");
+                        text: root.title;
+                        wrap: word-wrap;
                         font-size: Theme.text-l;
                         font-weight: 600;
                         horizontal-alignment: center;
@@ -180,9 +186,15 @@ export component LockPage inherits Rectangle {
                     HorizontalLayout {
                         alignment: center;
                         ActionButton {
-                            text: @tr("Forgot the PIN?");
+                            text: root.way-back != "" ? root.way-back : @tr("Forgot the PIN?");
                             kind: ButtonKind.ghost;
-                            clicked => { root.forgot-pin(); }
+                            clicked => {
+                                if (root.way-back != "") {
+                                    root.back();
+                                } else {
+                                    root.forgot-pin();
+                                }
+                            }
                         }
                     }
                 }

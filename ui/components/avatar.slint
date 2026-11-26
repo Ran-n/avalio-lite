@@ -1,0 +1,31 @@
+// A pupil's round picture, or their initials when there is none.
+
+import { Theme } from "../theme.slint";
+
+export component Avatar inherits Rectangle {
+    // round already: the pixels outside the circle are transparent
+    in property <image> picture;
+    in property <string> initials;
+
+    height: self.width;
+    border-radius: self.width / 2;
+    background: root.picture.width > 0 ? transparent : Theme.accent-soft;
+    if root.picture.width > 0: Image {
+        width: root.width;
+        height: root.height;
+        source: root.picture;
+        image-fit: fill;
+        accessible-role: none;
+    }
+    if root.picture.width == 0: Text {
+        width: root.width;
+        height: root.height;
+        text: root.initials;
+        accessible-role: none;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: root.width * 0.38;
+        font-weight: 600;
+        color: Theme.accent;
+    }
+}

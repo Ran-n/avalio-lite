@@ -96,9 +96,9 @@ CREATE INDEX idx_cells_pupil ON cells (pupil_id);
 
 CREATE INDEX idx_class_pupils_pupil ON class_pupils (pupil_id);
 
-CREATE INDEX idx_sheet_columns_class ON sheet_columns (class_id, position);
+CREATE INDEX idx_round_sources_source ON round_sources (source_column_id);
 
-CREATE INDEX idx_sheet_columns_source ON sheet_columns (source_column_id);
+CREATE INDEX idx_sheet_columns_class ON sheet_columns (class_id, position);
 
 CREATE TRIGGER name_columns_keep_their_kind BEFORE UPDATE OF kind ON sheet_columns
 WHEN NEW.kind <> OLD.kind AND (OLD.kind IN ('first_name', 'surname') OR NEW.kind IN ('first_name', 'surname'))
@@ -114,6 +114,11 @@ END;
 
 CREATE UNIQUE INDEX one_name_column_of_each_kind ON sheet_columns (class_id, kind)
     WHERE kind IN ('first_name', 'surname');
+
+CREATE TABLE pupil_pictures (
+    pupil_id  INTEGER PRIMARY KEY REFERENCES pupils (id) ON DELETE CASCADE,
+    image     BLOB NOT NULL CHECK (typeof(image) = 'blob' AND length(image) BETWEEN 1 AND 262144)
+);
 
 CREATE TABLE pupils (
     id          INTEGER PRIMARY KEY,
@@ -140,19 +145,36 @@ BEGIN
       AND column_id IN (SELECT id FROM sheet_columns WHERE class_id = OLD.class_id);
 END;
 
-CREATE TRIGGER round_source_on_insert BEFORE INSERT ON sheet_columns
-WHEN NEW.source_column_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM sheet_columns s
-    WHERE s.id = NEW.source_column_id AND s.class_id = NEW.class_id AND s.kind IN ('test', 'weighted', 'average')
+CREATE TABLE round_sources (
+    column_id         INTEGER PRIMARY KEY REFERENCES sheet_columns (id) ON DELETE CASCADE,
+    source_column_id  INTEGER NOT NULL REFERENCES sheet_columns (id) ON DELETE CASCADE
+);
+
+CREATE TRIGGER round_sources_keep_their_columns BEFORE UPDATE OF class_id, kind ON sheet_columns
+WHEN (NEW.class_id <> OLD.class_id OR NEW.kind <> OLD.kind) AND (
+    EXISTS (SELECT 1 FROM round_sources WHERE column_id = OLD.id)
+    OR (EXISTS (SELECT 1 FROM round_sources WHERE source_column_id = OLD.id)
+        AND (NEW.class_id <> OLD.class_id OR NEW.kind NOT IN ('test', 'weighted', 'average')))
+)
+BEGIN
+    SELECT RAISE(ABORT, 'a rounded column and its source stay in their class, and keep the kinds their link needs');
+END;
+
+CREATE TRIGGER round_sources_on_insert BEFORE INSERT ON round_sources
+WHEN NOT EXISTS (
+    SELECT 1 FROM sheet_columns r JOIN sheet_columns s ON s.class_id = r.class_id
+    WHERE r.id = NEW.column_id AND r.kind = 'round'
+      AND s.id = NEW.source_column_id AND s.kind IN ('test', 'weighted', 'average')
 )
 BEGIN
     SELECT RAISE(ABORT, 'a rounded column must round a test, final grade or average of its own class');
 END;
 
-CREATE TRIGGER round_source_on_update BEFORE UPDATE OF source_column_id, class_id ON sheet_columns
-WHEN NEW.source_column_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM sheet_columns s
-    WHERE s.id = NEW.source_column_id AND s.class_id = NEW.class_id AND s.kind IN ('test', 'weighted', 'average')
+CREATE TRIGGER round_sources_on_update BEFORE UPDATE OF column_id, source_column_id ON round_sources
+WHEN NOT EXISTS (
+    SELECT 1 FROM sheet_columns r JOIN sheet_columns s ON s.class_id = r.class_id
+    WHERE r.id = NEW.column_id AND r.kind = 'round'
+      AND s.id = NEW.source_column_id AND s.kind IN ('test', 'weighted', 'average')
 )
 BEGIN
     SELECT RAISE(ABORT, 'a rounded column must round a test, final grade or average of its own class');
@@ -167,23 +189,22 @@ CREATE TABLE "sheet_columns" (
         CHECK (kind IN ('first_name', 'surname', 'info', 'test', 'weighted', 'average', 'round')),
     weight            REAL,
     max_score         REAL,
-    source_column_id  INTEGER REFERENCES sheet_columns (id) ON DELETE SET NULL,
     decimals          INTEGER,
     bonus             INTEGER NOT NULL DEFAULT 0 CHECK (bonus IN (0, 1) AND (bonus = 0 OR kind = 'test')),
     width             INTEGER CHECK (width IS NULL OR width BETWEEN 72 AND 640),
     CHECK (CASE kind
         WHEN 'first_name' THEN title = '' AND weight IS NULL AND max_score IS NULL
-            AND source_column_id IS NULL AND decimals IS NULL
+            AND decimals IS NULL
         WHEN 'surname' THEN title = '' AND weight IS NULL AND max_score IS NULL
-            AND source_column_id IS NULL AND decimals IS NULL
+            AND decimals IS NULL
         WHEN 'info' THEN weight IS NULL AND max_score IS NULL
-            AND source_column_id IS NULL AND decimals IS NULL
+            AND decimals IS NULL
         WHEN 'test' THEN weight IS NOT NULL AND weight >= 0
             AND max_score IS NOT NULL AND max_score > 0
-            AND source_column_id IS NULL AND decimals IS NULL
+            AND decimals IS NULL
         WHEN 'round' THEN weight IS NULL AND max_score IS NULL
             AND decimals IS NOT NULL AND decimals BETWEEN 0 AND 3
         ELSE weight IS NULL AND max_score IS NOT NULL AND max_score > 0
-            AND source_column_id IS NULL AND decimals IS NULL
+            AND decimals IS NULL
     END)
 );

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.630220
-//+ Revised: 	2026/11/12 14:39:55.001992
+//+ Revised: 	2026/11/24 17:54:05.913246
 // -----------------------------------------------------------------------------
 
 //! The view preferences and keyboard shortcuts kept in the settings file.
@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use super::AppState;
 use crate::error::{AppError, Result};
 use crate::i18n::Language;
-use crate::platform::config::{AppConfig, Preferences, ThemeChoice};
+use crate::platform::config::{AppConfig, Preferences, ThemeChoice, WindowPlace};
 use crate::shortcuts::{Action, KeyCombo, ShortcutProblem, Shortcuts};
 
 impl AppState {
@@ -75,6 +75,10 @@ impl AppState {
         self.shortcut_problems = problems;
     }
 
+    #[expect(
+        clippy::fn_params_excessive_bools,
+        reason = "the yes/no value being saved or shown, not a switch between two behaviours"
+    )]
     pub fn set_show_column_settings(&mut self, show: bool) -> Result<()> {
         self.update_preferences(|preferences| preferences.show_column_settings = show)
     }
@@ -108,16 +112,25 @@ impl AppState {
         self.update_config(|config| config.last_class = None)
     }
 
+    #[expect(
+        clippy::fn_params_excessive_bools,
+        reason = "the yes/no value being saved or shown, not a switch between two behaviours"
+    )]
     pub fn set_sidebar_collapsed(&mut self, collapsed: bool) -> Result<()> {
         self.update_preferences(|preferences| preferences.sidebar_collapsed = collapsed)
     }
 
-    pub fn set_check_updates(&mut self, check: bool) -> Result<()> {
-        self.update_preferences(|preferences| preferences.check_updates = check)
+    #[expect(
+        clippy::fn_params_excessive_bools,
+        reason = "the yes/no value being saved or shown, not a switch between two behaviours"
+    )]
+    pub fn set_check_automatically(&mut self, check: bool) -> Result<()> {
+        self.update_preferences(|preferences| preferences.check_automatically = check)
     }
 
-    pub fn set_last_update_check(&mut self, at: DateTime<Utc>) -> Result<()> {
-        self.update_preferences(|preferences| preferences.last_update_check = Some(at))
+    /// Notes when a successful check ended; a failed one isn't noted.
+    pub fn set_last_check(&mut self, at: DateTime<Utc>) -> Result<()> {
+        self.update_preferences(|preferences| preferences.last_check = Some(at.timestamp()))
     }
 
     /// Notes the version now running; returns the one that ran before, if it was another.
@@ -135,9 +148,18 @@ impl AppState {
         self.update_preferences(|preferences| preferences.update_failed = reason)
     }
 
-    /// Hides the update bar for `version`; a later version shows it again.
-    pub fn skip_update(&mut self, version: &str) -> Result<()> {
-        self.update_preferences(|preferences| preferences.skipped_update = Some(version.to_owned()))
+    /// Skips `version` and older ones; a later version is offered again. `None` stops skipping.
+    pub fn set_skipped_version(&mut self, version: Option<&semver::Version>) -> Result<()> {
+        let version = version.and_then(|version| crate::platform::config::checked_version(&version.to_string()));
+        self.update_preferences(|preferences| preferences.skipped_version = version)
+    }
+
+    /// Notes where the window is, for the next start; only written when it moved or changed size.
+    pub fn set_window_place(&mut self, place: WindowPlace) -> Result<()> {
+        if self.preferences().window == Some(place) {
+            return Ok(());
+        }
+        self.update_preferences(|preferences| preferences.window = Some(place))
     }
 
     /// Applies `change` to the view preferences and saves them; refused while no database is open.

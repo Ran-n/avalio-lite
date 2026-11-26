@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.102653
-//+ Revised: 	2026/11/07 20:25:37.063521
+//+ Revised: 	2026/11/25 11:43:13.350263
 // -----------------------------------------------------------------------------
 
 //! Error paths must reach the log at the right level, not just the screen. The app's own logger
@@ -106,6 +106,47 @@ fn a_failed_unlock_other_than_a_wrong_pin_is_an_error() {
         assert!(!ui.session.window.get_unlock_error().is_empty(), "the lock screen says so too");
     });
     assert!(has_line(&log, "ERROR", "avalio_lite::lock::ui", "unlocking failed"), "{log}");
+}
+
+/// A wrong PIN, and a try that has to wait, are the user's doing and no error of the app's.
+#[test]
+fn wrong_pins_are_warnings_never_errors() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    state.set_pin("2468", "2468").unwrap();
+    state.shutdown();
+    let log = logged(|| {
+        let ui = Ui::open(fixture);
+        for _ in 0..6 {
+            ui.session.window.invoke_unlock("1111".into());
+        }
+    });
+    assert!(has_line(&log, "WARN", "avalio_lite::lock", "wrong PIN entered (5 in a row)"), "{log}");
+    assert!(!log.contains("unlocking failed"), "{log}");
+}
+
+/// The pupil view is logged without naming the pupil.
+#[test]
+fn the_pupil_view_is_logged_without_names() {
+    let fixture = Fixture::new();
+    let mut state = fixture.set_up();
+    common::sample_class(state.connection().unwrap());
+    state.shutdown();
+    let log = logged(|| {
+        let ui = Ui::open(fixture);
+        let view = ui.session.window.global::<avalio_lite::ui::PupilView>();
+        view.invoke_open();
+        view.invoke_show_pupil(1);
+        view.invoke_back_to_list();
+        view.invoke_show_pupil(99);
+        view.invoke_leave();
+    });
+    for (level, text) in
+        [("INFO", "pupil view opened"), ("WARN", "no longer in the class"), ("INFO", "pupil view closed")]
+    {
+        assert!(has_line(&log, level, "avalio_lite::pupil_view::ui", text), "{text}: {log}");
+    }
+    assert!(!log.contains("Pérez") && !log.contains("Uxía"), "{log}");
 }
 
 #[test]

@@ -6,9 +6,10 @@ import { TextField } from "../components/fields.slint";
 import { ColumnHeader } from "../column-header.slint";
 import { GridCell } from "../grid-cell.slint";
 import { NameCell, SurnameCell } from "name-cell.slint";
+import { PupilButton } from "pupil-panel.slint";
 
 // The sheet: a card holding the grid of pupils and columns, scrolling when it outgrows the window.
-// Every row starts with a fixed strip (a pupil's "×", the add row's "+"); after it come the columns
+// Every row starts with a fixed strip (a pupil's avatar and "×", the add row's "+"); after it come the columns
 // in their order, the first-name and surname columns among them.
 export component SheetGrid inherits Rectangle {
     // where the column panel's left edge is, in window coordinates; the grid keeps columns left of it
@@ -223,8 +224,16 @@ export component SheetGrid inherits Rectangle {
                         width: ColumnWidths.row-strip;
                         height: Theme.row-height;
                         background: Theme.surface;
+                        PupilButton {
+                            x: 8px;
+                            y: (parent.height - self.height) / 2;
+                            picture: row.avatar;
+                            initials: row.initials;
+                            full-name: row.full-name;
+                            clicked => { Gradebook.open-pupil-panel(row.pupil-id); }
+                        }
                         IconButton {
-                            x: (parent.width - self.width) / 2;
+                            x: 40px;
                             y: (parent.height - self.height) / 2;
                             glyph: "×";
                             tooltip: @tr("Remove from this class");

@@ -1,0 +1,22 @@
+// Settings › About: what the links lead to. The addresses live on the Rust side (src/about.rs), in
+// one place, so the card only says which link was clicked.
+
+export enum AboutLink {
+    // breren.com, the publisher's site
+    website,
+    // the PayBack License the app is under
+    licence,
+    // the licences of the code the app is built from
+    third-party,
+    source,
+    releases,
+    changelog,
+    // where to report a problem
+    issues,
+    // a mail to support
+    support,
+}
+
+export global About {
+    callback open(AboutLink);
+}

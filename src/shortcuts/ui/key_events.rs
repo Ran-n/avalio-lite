@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 09:38:29.281367
-//+ Revised: 	2026/11/03 09:38:29.281367
+//+ Revised: 	2026/11/24 17:54:05.762078
 // -----------------------------------------------------------------------------
 
 //! Turns Slint key events into shortcut keys. The rules themselves (`crate::shortcuts`) know nothing
@@ -9,7 +9,7 @@
 
 use slint::platform::Key as SlintKey;
 
-use crate::shortcuts::{Key, KeyCombo, ShortcutError};
+use crate::shortcuts::{Key, KeyCombo, Modifiers, ShortcutError};
 
 /// The special keys a shortcut may use, as Slint sends them.
 const NAMED_KEYS: [(Key, SlintKey); 4] = [
@@ -50,11 +50,11 @@ pub fn key(text: &str) -> Option<Key> {
 
 /// The combo a key press makes, from Slint's event text and modifiers; `None` when it can't be a
 /// shortcut (AltGr, a plain letter, a key no shortcut uses).
-pub fn combo(text: &str, ctrl: bool, shift: bool, alt: bool) -> Option<KeyCombo> {
-    checked_combo(text, ctrl, shift, alt).ok()
+pub fn combo(text: &str, modifiers: Modifiers) -> Option<KeyCombo> {
+    checked_combo(text, modifiers).ok()
 }
 
 /// Like [`combo`], saying why the keys can't be a shortcut; for recording a new one.
-pub fn checked_combo(text: &str, ctrl: bool, shift: bool, alt: bool) -> Result<KeyCombo, ShortcutError> {
-    KeyCombo::new(ctrl, shift, alt, key(text).ok_or(ShortcutError::UnknownKey)?)
+pub fn checked_combo(text: &str, modifiers: Modifiers) -> Result<KeyCombo, ShortcutError> {
+    KeyCombo::new(modifiers, key(text).ok_or(ShortcutError::UnknownKey)?)
 }

@@ -38,8 +38,8 @@ export global ColumnWidths {
     // still fits a "10.00" pill
     out property <length> column-min: 72px;
     out property <length> max: 640px;
-    // the fixed strip at the start of every row, holding a pupil's "×" and the add row's "+"
-    out property <length> row-strip: 32px;
+    // the fixed strip at the start of every row, holding a pupil's avatar and "×", and the add row's "+"
+    out property <length> row-strip: 68px;
     // what Shift+← / Shift+→ on a focused header changes the width by
     out property <length> key-step: 16px;
 }
@@ -68,7 +68,20 @@ export struct RowItem {
     surname: string,
     // "Ana Pérez López", or "Ana": what confirmations and screen readers call the pupil
     full-name: string,
+    // shown while there is no picture (the avatar is then empty)
+    initials: string,
+    avatar: image,
     cells: [CellItem],
+}
+
+// The pupil whose panel is open
+export struct PupilPanelItem {
+    id: int,
+    full-name: string,
+    initials: string,
+    // their place in the class by surname, from 1
+    number: int,
+    avatar: image,
 }
 
 export global Gradebook {
@@ -105,6 +118,9 @@ export global Gradebook {
     // selection so the panel's fields start fresh for every column
     in property <[ColumnItem]> panel-column;
     in property <int> panel-index: -1;
+
+    // the pupil whose panel is open: zero or one item, in the column panel's place
+    in property <[PupilPanelItem]> panel-pupil;
 
     callback toggle-column-settings();
     callback toggle-sidebar();
@@ -149,6 +165,13 @@ export global Gradebook {
     callback set-first-name(int, string);
     callback set-surname(int, string);
     callback remove-pupil(int);
+    // pupil id
+    callback open-pupil-panel(int);
+    callback close-pupil-panel();
+    // asks for a photo, then makes it the pupil's picture in every class
+    callback choose-picture(int);
+    // asks first
+    callback remove-picture(int);
 
     // row index, column index, typed text
     callback cell-edited(int, int, string);

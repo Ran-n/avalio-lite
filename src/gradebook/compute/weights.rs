@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.380621
-//+ Revised: 	2026/11/03 11:39:46.380621
+//+ Revised: 	2026/11/24 17:54:04.934252
 // -----------------------------------------------------------------------------
 
 //! The weight rules: what the tests add up to, and when grades are only provisional.
@@ -12,19 +12,29 @@ pub const FULL_WEIGHT: f64 = 100.0;
 
 /// Sum of the normal (non-bonus) tests' weights; this is what has to reach 100 %.
 pub fn weight_total(columns: &[Column]) -> f64 {
-    test_weights(columns, false)
+    test_weights(columns, Counted::WithinTheHundred)
 }
 
 /// Sum of the bonus tests' weights, which count on top of the 100 %.
 pub fn bonus_weight_total(columns: &[Column]) -> f64 {
-    test_weights(columns, true)
+    test_weights(columns, Counted::OnTop)
 }
 
-fn test_weights(columns: &[Column], of_bonus_tests: bool) -> f64 {
+/// Where a test's weight counts.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Counted {
+    /// a normal test, part of the 100 %
+    WithinTheHundred,
+    /// a bonus test, on top of the 100 %
+    OnTop,
+}
+
+fn test_weights(columns: &[Column], counted: Counted) -> f64 {
+    let wanted = counted == Counted::OnTop;
     columns
         .iter()
         .filter_map(|column| match column.kind {
-            ColumnKind::Test { weight, bonus, .. } if bonus == of_bonus_tests => Some(weight),
+            ColumnKind::Test { weight, bonus, .. } if bonus == wanted => Some(weight),
             _ => None,
         })
         .sum()

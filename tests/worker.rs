@@ -1,68 +1,47 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/15 12:17:33.982538
-//+ Revised: 	2026/11/15 12:17:33.982538
+//+ Revised: 	2026/11/24 17:54:11.896491
 // -----------------------------------------------------------------------------
 
 //! The app's real worker and its daily licence check: work runs on its own thread, and its result
 //! comes back to the window through the event loop. In a binary of its own, with one test: it
 //! needs Slint's testing backend with an event loop, which belongs to one thread, and the headless
-//! UI tests (tests/ui.rs) run without one.
+//! UI tests (tests/ui/) run without one.
 
 mod common;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use avalio_lite::app::{self, Ports, Session};
 use avalio_lite::i18n::Language;
 use avalio_lite::licence;
+use avalio_lite::ui::AppWindow;
 use avalio_lite::ui::Licence;
 use avalio_lite::update::source::FixedRelease;
-use avalio_lite::update::ui::Updates;
-use avalio_lite::window::worker::{self, Panicked, SharedWorker, ThreadWorker, Worker};
+use avalio_lite::update::target::Build;
+use avalio_lite::window::worker::{self, Ending, Panicked, SharedWorker, ThreadWorker, Worker};
 use chrono::TimeDelta;
 use clavren_client::Client;
+use common::event_loop::{run_for, run_until};
 use common::licence::{FakeLicence, Mode};
-use common::{FakeDialogs, Fixture, leaked_logger, release_key};
+use common::{FakeDialogs, Fixture, leaked_logger};
 use slint::ComponentHandle;
 
 /// The app on `fixture`'s database, its background work on `worker` and its licence from `client`.
 fn open(fixture: &Fixture, worker: SharedWorker, client: Arc<Client>) -> Session {
-    let updates = Updates {
-        source: Arc::new(FixedRelease::default()),
-        key: release_key().verifying_key(),
-        installation: None,
-        downloads: fixture.path("downloads"),
-    };
+    let updates = common::releases::updates(
+        vec![Arc::new(FixedRelease::default())],
+        common::releases::Running { build: Build::Release(common::releases::TARGET), exe: None, automatic: false },
+        fixture.path("downloads"),
+    );
     let ports = Ports { dialogs: Rc::new(FakeDialogs::default()), licence: client, worker, updates };
     app::open(fixture.store(), leaked_logger(), ports, Language::English).unwrap()
-}
-
-/// Runs the event loop until `done` says so; fails if that takes more than 10 s.
-fn run_until(what: &str, done: impl Fn() -> bool + 'static) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let happened = Rc::new(Cell::new(false));
-    let timer = slint::Timer::default();
-    let seen = happened.clone();
-    timer.start(slint::TimerMode::Repeated, Duration::from_millis(5), move || {
-        seen.set(done());
-        if seen.get() || Instant::now() > deadline {
-            slint::quit_event_loop().unwrap();
-        }
-    });
-    slint::run_event_loop().unwrap();
-    assert!(happened.get(), "{what} didn't happen within 10 s");
-}
-
-/// Runs the event loop for `time`, so anything handed to it meanwhile is dealt with.
-fn run_for(time: Duration) {
-    let end = Instant::now() + time;
-    run_until("the wait", move || Instant::now() >= end);
 }
 
 /// Starts `job` on `worker` and runs the event loop until its result is back.
@@ -77,6 +56,16 @@ fn result_of<T: Send + 'static>(
     let waiting = result.clone();
     run_until("the result coming back", move || waiting.borrow().is_some());
     result.take().unwrap()
+}
+
+/// `run_until`'s own rule: a loop whose timer is held up leaves no quit behind for the next one.
+fn a_held_up_wait_does_not_cut_the_next_one_short(worker: &ThreadWorker, session: &Session) {
+    run_until("the held-up wait", || {
+        thread::sleep(Duration::from_millis(20));
+        true
+    });
+    let job = || thread::sleep(Duration::from_millis(50));
+    assert_eq!(result_of(worker, session, job), Ok(()));
 }
 
 fn a_result_comes_back_from_another_thread(worker: &ThreadWorker, session: &Session) {
@@ -102,19 +91,21 @@ fn a_screen_is_told_when_its_work_broke_off(worker: &ThreadWorker, session: &Ses
     worker::run_or(
         worker,
         &session.window,
-        "the sum",
-        || 1 + 1,
-        move |_, sum| done.borrow_mut().push(format!("done {sum}")),
-        move |_| failed.borrow_mut().push("failed".to_owned()),
+        ("the sum", || 1 + 1),
+        Ending {
+            done: move |_: &AppWindow, sum| done.borrow_mut().push(format!("done {sum}")),
+            failed: move |_: &AppWindow| failed.borrow_mut().push("failed".to_owned()),
+        },
     );
     let (done, failed) = (told.clone(), told.clone());
     worker::run_or(
         worker,
         &session.window,
-        "the sum",
-        || -> i32 { panic!("it broke") },
-        move |_, sum| done.borrow_mut().push(format!("done {sum}")),
-        move |_| failed.borrow_mut().push("failed".to_owned()),
+        ("the sum", || -> i32 { panic!("it broke") }),
+        Ending {
+            done: move |_: &AppWindow, sum| done.borrow_mut().push(format!("done {sum}")),
+            failed: move |_: &AppWindow| failed.borrow_mut().push("failed".to_owned()),
+        },
     );
     let waiting = told.clone();
     run_until("both answers", move || waiting.borrow().len() == 2);
@@ -143,15 +134,16 @@ fn shutdown_gives_up_on_work_that_takes_too_long(session: &Session) {
     let impatient = ThreadWorker::waiting_at_most(Duration::from_millis(60));
     let finished = Arc::new(AtomicBool::new(false));
     let flag = finished.clone();
+    let (release, held) = mpsc::channel();
+    // ends only when told to, so `join` returning at all means it gave up
     let job = move || {
-        thread::sleep(Duration::from_millis(700));
+        held.recv().unwrap();
         flag.store(true, Ordering::SeqCst);
     };
     worker::run(&impatient, &session.window, job, |_, _| {}).unwrap();
-    let started = Instant::now();
     impatient.join();
-    assert!(started.elapsed() < Duration::from_millis(600), "join took {:?}", started.elapsed());
     assert!(!finished.load(Ordering::SeqCst), "the work is left to end by itself");
+    release.send(()).unwrap();
     let done = finished.clone();
     run_until("the slow work ending", move || done.load(Ordering::SeqCst));
 }
@@ -200,6 +192,7 @@ fn the_real_worker_hands_its_results_to_the_window_through_the_event_loop() {
     let session = open(&fixture, Rc::new(ThreadWorker::default()), FakeLicence::activated().client());
     let worker = ThreadWorker::default();
 
+    a_held_up_wait_does_not_cut_the_next_one_short(&worker, &session);
     a_result_comes_back_from_another_thread(&worker, &session);
     work_that_panics_comes_back_as_panicked(&worker, &session);
     a_screen_is_told_when_its_work_broke_off(&worker, &session);

@@ -1,0 +1,31 @@
+// -----------------------------------------------------------------------------
+//+ Authors: 	Ran# <ran.hash@proton.me>
+//+ Created: 	2026/10/27 23:00:54.189679
+//+ Revised: 	2026/11/25 11:43:05.868088
+// -----------------------------------------------------------------------------
+
+//! Classes, pupils and each class's sheet: storage and grade calculation. The logic has no UI
+//! code; `ui` wires it to the window.
+
+pub mod cells;
+pub mod classes;
+pub mod columns;
+pub mod compute;
+pub mod model;
+pub mod pictures;
+pub mod pupils;
+pub mod sheet;
+pub mod ui;
+
+use rusqlite::{Connection, Params};
+
+use crate::error::{AppError, Result};
+
+/// Runs a write that must hit exactly the one row it targets; a missing row is `NotEditable`
+/// rather than a silent no-op.
+fn update_one(connection: &Connection, sql: &str, parameters: impl Params) -> Result<()> {
+    if connection.execute(sql, parameters)? == 0 {
+        return Err(AppError::NotEditable);
+    }
+    Ok(())
+}

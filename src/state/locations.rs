@@ -1,13 +1,15 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.689707
-//+ Revised: 	2026/11/12 14:39:54.781608
+//+ Revised: 	2026/11/23 11:49:20.451979
 // -----------------------------------------------------------------------------
 
 //! Moving the database or the log file to another folder, never leaving the settings pointing
 //! at something that isn't there.
 
 use std::path::{Path, PathBuf};
+
+use rusqlite::Connection;
 
 use super::AppState;
 use crate::error::{AppError, Result};
@@ -37,44 +39,35 @@ impl AppState {
         if destination.exists() {
             return Err(AppError::AlreadyExists(destination));
         }
+        let new_connection = self.copy_and_switch(&current, &destination)?;
+        self.replace_connection(new_connection);
+        log::info!("moved database from {} to {}", current.database_path.display(), destination.display());
+        move_kept_copy(&current.database_path, &destination);
+        let left_behind = remove_original(current.database_path);
+        Ok(Moved { path: destination, left_behind })
+    }
+
+    /// The copy step of a move: exports the open database to `destination`, checks that it opens,
+    /// and saves the settings to point at it, returning the connection to the copy. A failure
+    /// discards the copy and leaves the settings as they were.
+    fn copy_and_switch(&mut self, current: &AppConfig, destination: &Path) -> Result<Connection> {
         let connection = self.open_connection()?;
         let pin = self.key.clone();
         let key = pin.as_ref().map(Pin::as_str);
-        let switched = db::export(connection, &destination, key)
-            .and_then(|()| db::verify(&destination, key))
-            .and_then(|()| db::open(&destination, key))
+        let switched = db::export(connection, destination, key)
+            .and_then(|()| db::verify(destination, key))
+            .and_then(|()| db::open(destination, key))
             .and_then(|new_connection| {
-                self.save_config(AppConfig { database_path: destination.clone(), ..current.clone() })?;
+                self.save_config(AppConfig { database_path: destination.to_path_buf(), ..current.clone() })?;
                 Ok(new_connection)
             });
-        let new_connection = match switched {
-            Ok(new_connection) => new_connection,
+        match switched {
+            Ok(new_connection) => Ok(new_connection),
             Err(error) => {
-                db::discard(&destination);
-                return Err(error);
+                db::discard(destination);
+                Err(error)
             }
-        };
-        self.replace_connection(new_connection);
-        log::info!("moved database from {} to {}", current.database_path.display(), destination.display());
-        // the copy kept before the last update goes along with the database
-        let kept = storage::with_suffix(&current.database_path, db::BEFORE_UPDATE_SUFFIX);
-        if kept.is_file()
-            && let Err(error) = storage::move_file(&kept, &storage::with_suffix(&destination, db::BEFORE_UPDATE_SUFFIX))
-        {
-            log::warn!("the copy kept before the last update stays at {}: {error}", kept.display());
         }
-        // the app already uses the new file: a failed delete doesn't undo the move, it is said
-        let left_behind = match db::remove_files(&current.database_path) {
-            Ok(()) => None,
-            Err(error) => {
-                log::error!(
-                    "the moved database's original {} couldn't be deleted: {error}",
-                    current.database_path.display()
-                );
-                Some(current.database_path)
-            }
-        };
-        Ok(Moved { path: destination, left_behind })
     }
 
     pub fn move_logs(&mut self, destination_dir: &Path) -> Result<()> {
@@ -118,6 +111,29 @@ impl AppState {
             && let Err(error) = storage::move_file(&old, &moved)
         {
             log::warn!("the old log {} stayed where it was: {error}", old.display());
+        }
+    }
+}
+
+/// Moves the copy kept before the last update (`.before-update`) along with the database. A
+/// failure is logged: the database has moved already.
+fn move_kept_copy(from: &Path, to: &Path) {
+    let kept = storage::with_suffix(from, db::BEFORE_UPDATE_SUFFIX);
+    if kept.is_file()
+        && let Err(error) = storage::move_file(&kept, &storage::with_suffix(to, db::BEFORE_UPDATE_SUFFIX))
+    {
+        log::warn!("the copy kept before the last update stays at {}: {error}", kept.display());
+    }
+}
+
+/// Deletes the original database once the app uses the new file. A failed delete doesn't undo the
+/// move: it is logged, and the original's path is returned so the user can delete it.
+fn remove_original(original: PathBuf) -> Option<PathBuf> {
+    match db::remove_files(&original) {
+        Ok(()) => None,
+        Err(error) => {
+            log::error!("the moved database's original {} couldn't be deleted: {error}", original.display());
+            Some(original)
         }
     }
 }

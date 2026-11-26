@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.921143
-//+ Revised: 	2026/11/15 03:14:39.969210
+//+ Revised: 	2026/11/23 00:26:14.931294
 // -----------------------------------------------------------------------------
 
 //! Opening a backup to restore it or add its classes, with the inline prompt for the backup's own PIN.
@@ -14,7 +14,7 @@ use slint::{ComponentHandle, SharedString};
 
 use crate::backup::OpenedBackup;
 use crate::error::AppError;
-use crate::i18n::{self, Message};
+use crate::i18n::{self, DataMessage, Message};
 use crate::ui::{self, AppWindow};
 use crate::window::dialogs::FileKind;
 use crate::window::report_failure;
@@ -37,46 +37,48 @@ struct Pending {
 
 type SharedPending = Rc<RefCell<Option<Pending>>>;
 
-/// Wires opening a backup, its PIN prompt, and what happens once it is open.
-pub(super) fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
-    let pending: SharedPending = Rc::default();
-    wire_opening(window, state, dialogs, &pending);
-    wire_prompt(window, state, dialogs, &pending);
+/// What the card's callbacks share: the app state, the dialogs and the backup waiting for a PIN.
+#[derive(Clone)]
+struct Card {
+    state: SharedState,
+    dialogs: SharedDialogs,
+    pending: SharedPending,
 }
 
-fn wire_opening(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs, pending: &SharedPending) {
+/// Wires opening a backup, its PIN prompt, and what happens once it is open.
+pub(super) fn wire(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs) {
+    let card = Card { state: state.clone(), dialogs: dialogs.clone(), pending: Rc::default() };
+    wire_opening(window, &card);
+    wire_prompt(window, &card);
+}
+
+fn wire_opening(window: &AppWindow, card: &Card) {
     let global = window.global::<ui::Backup>();
-    global.on_restore(pick_and_open(window, state, dialogs, pending, Use::Restore));
-    global.on_add_classes(pick_and_open(window, state, dialogs, pending, Use::AddClasses));
+    global.on_restore(pick_and_open(window, card, Use::Restore));
+    global.on_add_classes(pick_and_open(window, card, Use::AddClasses));
 }
 
 /// A button's callback: the Open dialog, then the backup opened for `purpose`.
-fn pick_and_open(
-    window: &AppWindow,
-    state: &SharedState,
-    dialogs: &SharedDialogs,
-    pending: &SharedPending,
-    purpose: Use,
-) -> impl FnMut() + 'static {
-    let (shared, dialogs, pending) = (state.clone(), dialogs.clone(), pending.clone());
+fn pick_and_open(window: &AppWindow, card: &Card, purpose: Use) -> impl FnMut() + 'static {
+    let card = card.clone();
     with_window(window, move |window| {
-        let Some(file) = dialogs.pick_file(FileKind::Backup) else { return };
-        open(window, &shared, &dialogs, &pending, Pending { purpose, file }, None);
+        let Some(file) = card.dialogs.pick_file(FileKind::Backup) else { return };
+        open(window, &card, Pending { purpose, file }, None);
     })
 }
 
-fn wire_prompt(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs, pending: &SharedPending) {
-    let (shared, dialogs, waiting) = (state.clone(), dialogs.clone(), pending.clone());
+fn wire_prompt(window: &AppWindow, card: &Card) {
+    let entered = card.clone();
     window.global::<ui::Backup>().on_pin_entered(with_window(window, move |window| {
-        let Some(backup) = waiting.borrow().clone() else {
+        let Some(backup) = entered.pending.borrow().clone() else {
             log::error!("a backup PIN was entered, but no backup is waiting for one");
             return;
         };
         let pin = window.global::<ui::Backup>().get_pin();
-        open(window, &shared, &dialogs, &waiting, backup, Some(&pin));
+        open(window, &entered, backup, Some(&pin));
     }));
 
-    let waiting = pending.clone();
+    let waiting = card.pending.clone();
     window.global::<ui::Backup>().on_pin_cancelled(with_window(window, move |window| {
         if waiting.borrow_mut().take().is_some() {
             log::info!("the backup PIN prompt was closed");
@@ -87,14 +89,8 @@ fn wire_prompt(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs,
 
 /// Opens the backup, then uses it; when it needs a PIN other than the app's, shows the prompt and
 /// keeps it waiting (a wrong PIN keeps the prompt open, with the error under the field).
-fn open(
-    window: &AppWindow,
-    state: &SharedState,
-    dialogs: &SharedDialogs,
-    pending: &SharedPending,
-    backup: Pending,
-    pin: Option<&str>,
-) {
+fn open(window: &AppWindow, card: &Card, backup: Pending, pin: Option<&str>) {
+    let Card { state, dialogs, pending } = card;
     let opened = state.borrow().open_backup(&backup.file, pin);
     match opened {
         Err(AppError::WrongPin) => {
@@ -128,7 +124,8 @@ fn open(
 fn restore(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs, backup: OpenedBackup) {
     let contents = backup.contents();
     let file = backup.file_name();
-    let question = Message::ConfirmRestore { file: &file, classes: contents.classes, pupils: contents.pupils };
+    let question =
+        Message::Data(DataMessage::ConfirmRestore { file: &file, classes: contents.classes, pupils: contents.pupils });
     if !dialogs.confirm(&i18n::text(i18n::current(), &question)) {
         return;
     }
@@ -139,7 +136,10 @@ fn restore(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs, bac
             if gradebook::ui::show_database(window, state) {
                 // after the reload, which starts the acknowledgement afresh
                 gradebook::ui::saved::mark_saved(window);
-                view::show_status(window, i18n::text(i18n::current(), &Message::BackupRestored { file: &file }));
+                view::show_status(
+                    window,
+                    i18n::text(i18n::current(), &Message::Data(DataMessage::BackupRestored { file: &file })),
+                );
             }
         }
         Err(error) => {
@@ -166,7 +166,7 @@ fn add_classes(window: &AppWindow, state: &SharedState, backup: OpenedBackup) {
     };
     let language = i18n::current();
     let Some(&first) = summary.class_ids.first() else {
-        view::show_status(window, i18n::text(language, &Message::BackupHasNoClasses));
+        view::show_status(window, i18n::text(language, &Message::Data(DataMessage::BackupHasNoClasses)));
         return;
     };
     if !gradebook::ui::redraw_selecting(window, state, Some(first)) {
@@ -175,16 +175,19 @@ fn add_classes(window: &AppWindow, state: &SharedState, backup: OpenedBackup) {
     gradebook::ui::saved::mark_saved(window);
     let mut status = i18n::text(
         language,
-        &Message::BackupClassesAdded {
+        &Message::Data(DataMessage::BackupClassesAdded {
             classes: summary.class_ids.len(),
             pupils: summary.pupils,
             existing: summary.existing_pupils,
             file: &file,
-        },
+        }),
     );
     if !summary.renamed.is_empty() {
         status.push(' ');
-        status.push_str(&i18n::text(language, &Message::BackupClassesRenamed { pairs: &summary.renamed }));
+        status.push_str(&i18n::text(
+            language,
+            &Message::Data(DataMessage::BackupClassesRenamed { pairs: &summary.renamed }),
+        ));
     }
     view::show_status(window, status);
 }

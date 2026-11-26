@@ -1,23 +1,20 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:29:57.490512
-//+ Revised: 	2026/11/12 14:39:55.198736
+//+ Revised: 	2026/11/23 11:49:20.381304
 // -----------------------------------------------------------------------------
 
 //! Starting up and choosing a database: the settings file read at start, the first-run choice,
 //! and the check that an existing file is an avalio-lite database before anything opens it.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::AppState;
-use crate::error::{AppError, Folder, Result, io_at};
+use super::file_kind::{FileKind, existing_kind};
+use crate::error::{AppError, Folder, Result};
 use crate::i18n;
 use crate::platform::config::{AppConfig, DATABASE_FILE_NAME};
 use crate::platform::db;
-
-/// SQLite's plain header is 16 bytes; a shorter file can't be a database of any kind.
-const MIN_DATABASE_BYTES: u64 = 16;
 
 /// Why the first-run screen is being shown.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,16 +43,33 @@ pub enum Opened {
 }
 
 impl AppState {
+    /// Reads the settings and opens the database they name: `Ready`, `Locked` when it is encrypted,
+    /// or `NeedsSetup` with the reason the first-run screen gives.
     pub fn start(&mut self) -> Startup {
+        let config = match self.read_settings() {
+            Ok(config) => config,
+            Err(startup) => return startup,
+        };
+        match check_database(&config) {
+            Ok(FileKind::Encrypted) => {
+                self.config = Some(config);
+                Startup::Locked
+            }
+            Ok(FileKind::Plain) => self.open_plain(config),
+            Err(startup) => startup,
+        }
+    }
+
+    /// The settings file read at start: its shortcuts are adopted and its log folder opened. `Err`
+    /// is the answer `start` gives at once, when there are no usable settings.
+    fn read_settings(&mut self) -> std::result::Result<AppConfig, Startup> {
         let config = match self.store.load() {
             Ok(Some(config)) => config,
-            Ok(None) => return Startup::NeedsSetup(SetupReason::FirstRun),
+            Ok(None) => return Err(Startup::NeedsSetup(SetupReason::FirstRun)),
             Err(error) => {
                 log::warn!("settings file unreadable: {error}");
-                return Startup::NeedsSetup(SetupReason::ConfigUnreadable(i18n::error_message(
-                    i18n::current(),
-                    &error,
-                )));
+                let reason = i18n::error_message(i18n::current(), &error);
+                return Err(Startup::NeedsSetup(SetupReason::ConfigUnreadable(reason)));
             }
         };
         self.adopt_shortcuts(&config);
@@ -63,24 +77,12 @@ impl AppState {
         if let Err(error) = self.logger.open(&config.log_dir) {
             log::warn!("could not open the log folder, logging to stderr: {error}");
         }
-        if !config.database_path.is_file() {
-            log::warn!("database missing at {}", config.database_path.display());
-            return Startup::NeedsSetup(SetupReason::DatabaseMissing(config.database_path));
-        }
-        match existing_kind(&config.database_path) {
-            Ok(FileKind::Encrypted) => {
-                self.config = Some(config);
-                return Startup::Locked;
-            }
-            Ok(FileKind::Plain) => {}
-            Err(error) => {
-                log::error!("could not read the database: {error}");
-                return Startup::NeedsSetup(SetupReason::DatabaseUnusable(i18n::error_message(
-                    i18n::current(),
-                    &error,
-                )));
-            }
-        }
+        Ok(config)
+    }
+
+    /// Opens the plain database `config` names, upgrading it, and clears what an interrupted change
+    /// left beside it. A failure is logged and the first-run screen is shown instead.
+    fn open_plain(&mut self, config: AppConfig) -> Startup {
         match db::open_upgrading(&config.database_path, None) {
             Ok(connection) => {
                 super::protection::clear_leftovers(&config.database_path);
@@ -150,31 +152,17 @@ impl AppState {
     }
 }
 
-/// What an existing database file is, once it is known to be an avalio-lite database.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FileKind {
-    Plain,
-    Encrypted,
-}
-
-/// Checks that the existing file at `path` can be an avalio-lite database before anything opens
-/// it, since opening runs the migrations and would turn any empty or foreign file into one.
-/// A plain file needs avalio's schema; an encrypted one can't be read without its PIN, so it
-/// must at least be whole pages (as in `backup`). Empty and tiny files are never databases.
-fn existing_kind(path: &Path) -> Result<FileKind> {
-    let not_a_database = || AppError::NotADatabase(path.to_path_buf());
-    let length = fs::metadata(path).map_err(io_at(path))?.len();
-    if length < MIN_DATABASE_BYTES {
-        return Err(not_a_database());
+/// Checks the database `config` names before anything opens it: the file must be there, and be an
+/// avalio-lite database. `Err` is the answer `start` gives when it isn't.
+fn check_database(config: &AppConfig) -> std::result::Result<FileKind, Startup> {
+    if !config.database_path.is_file() {
+        log::warn!("database missing at {}", config.database_path.display());
+        return Err(Startup::NeedsSetup(SetupReason::DatabaseMissing(config.database_path.clone())));
     }
-    if db::is_encrypted(path)? {
-        return if db::has_whole_pages(path)? { Ok(FileKind::Encrypted) } else { Err(not_a_database()) };
-    }
-    match db::stored_version(path, None) {
-        Ok(0) | Err(AppError::WrongPin) => Err(not_a_database()),
-        Ok(_) => Ok(FileKind::Plain),
-        Err(error) => Err(error),
-    }
+    existing_kind(&config.database_path).map_err(|error| {
+        log::error!("could not read the database: {error}");
+        Startup::NeedsSetup(SetupReason::DatabaseUnusable(i18n::error_message(i18n::current(), &error)))
+    })
 }
 
 fn require_path(path: &Path, purpose: Folder) -> Result<()> {

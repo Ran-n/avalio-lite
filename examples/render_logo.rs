@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:27:41.465293
-//+ Revised: 	2026/10/29 02:27:41.784142
+//+ Revised: 	2026/11/24 17:54:03.973289
 // -----------------------------------------------------------------------------
 
 //! Turns the logo SVGs into the files Windows and the README use, and previews to look at.
@@ -10,7 +10,7 @@
 //! the preview folder both variants at 256, 32 and 16 px on white and on the dark canvas.
 
 // shared with tests/logo.rs, which also uses what this example doesn't
-#[allow(dead_code)]
+#[expect(dead_code, reason = "shared with tests/logo.rs, which uses parts this example doesn't")]
 #[path = "../tests/common/logo.rs"]
 mod logo;
 

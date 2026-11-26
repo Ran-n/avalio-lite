@@ -1,8 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.747058
-//+ Revised: 	2026/11/11 17:11:01.175671
+//+ Revised: 	2026/11/23 16:34:35.345916
 // -----------------------------------------------------------------------------
+
+//! Grade calculation: numbers, weights, bonuses, rounding, tones and a class's summary.
 
 use avalio_lite::gradebook::compute::{
     Tone, bonus_weight_total, depends_on_weights, evaluate_row, format_number, grade_summary, parse_number, round_to,

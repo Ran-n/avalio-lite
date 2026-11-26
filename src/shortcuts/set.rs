@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:30.882311
-//+ Revised: 	2026/11/03 11:13:30.882311
+//+ Revised: 	2026/11/23 11:49:20.733643
 // -----------------------------------------------------------------------------
 
 //! The shortcuts in use: the defaults, the changes read from `config.toml`, and the entries that
@@ -58,42 +58,39 @@ impl Shortcuts {
         let mut problems = Vec::new();
         let mut entries: BTreeMap<usize, String> = BTreeMap::new();
         for (name, keys) in overrides {
-            let entry = format!("{name} = {keys:?}");
-            let Some(action) = Action::from_config_name(name) else {
-                problems.push(ShortcutProblem { entry, kind: ProblemKind::UnknownAction });
-                continue;
-            };
-            match keys.parse::<KeyCombo>() {
-                Ok(combo) => {
+            match parse_entry(name, keys) {
+                Ok((action, combo)) => {
                     shortcuts.combos[action.index()] = combo;
-                    entries.insert(action.index(), entry);
+                    entries.insert(action.index(), entry_text(name, keys));
                 }
-                Err(error) => problems.push(ShortcutProblem { entry, kind: ProblemKind::BadKeys(error) }),
+                Err(problem) => problems.push(problem),
             }
         }
+        problems.extend(shortcuts.reset_clashes(&mut entries));
+        (shortcuts, problems)
+    }
+
+    /// Sends every changed action that shares its keys with another back to its default, until none
+    /// does, and returns a problem for each entry that was undone. `entries` holds the changed
+    /// actions' entries by index; the ones undone leave it.
+    fn reset_clashes(&mut self, entries: &mut BTreeMap<usize, String>) -> Vec<ShortcutProblem> {
+        let mut problems = Vec::new();
         loop {
-            let clashing: Vec<usize> = entries
-                .keys()
-                .copied()
-                .filter(|&index| {
-                    shortcuts
-                        .combos
-                        .iter()
-                        .enumerate()
-                        .any(|(other, combo)| other != index && *combo == shortcuts.combos[index])
-                })
-                .collect();
+            let clashing: Vec<usize> = entries.keys().copied().filter(|&index| self.clashes(index)).collect();
             if clashing.is_empty() {
-                break;
+                return problems;
             }
             for index in clashing {
-                shortcuts.combos[index] = Action::ALL[index].default_combo();
-                if let Some(entry) = entries.remove(&index) {
-                    problems.push(ShortcutProblem { entry, kind: ProblemKind::Clash });
-                }
+                self.combos[index] = Action::ALL[index].default_combo();
+                problems
+                    .extend(entries.remove(&index).map(|entry| ShortcutProblem { entry, kind: ProblemKind::Clash }));
             }
         }
-        (shortcuts, problems)
+    }
+
+    /// Whether another action has the same keys as the action at `index`.
+    fn clashes(&self, index: usize) -> bool {
+        self.combos.iter().enumerate().any(|(other, combo)| other != index && *combo == self.combos[index])
     }
 
     pub fn combo(&self, action: Action) -> KeyCombo {
@@ -126,4 +123,20 @@ impl Shortcuts {
             .map(|action| (action.config_name().to_owned(), self.combo(action).to_string()))
             .collect()
     }
+}
+
+/// One `[shortcuts]` entry as the action it changes and its keys, or the problem that makes it
+/// ignored: a name that is no action, or keys that don't parse.
+fn parse_entry(name: &str, keys: &str) -> Result<(Action, KeyCombo), ShortcutProblem> {
+    let Some(action) = Action::from_config_name(name) else {
+        return Err(ShortcutProblem { entry: entry_text(name, keys), kind: ProblemKind::UnknownAction });
+    };
+    keys.parse::<KeyCombo>()
+        .map(|combo| (action, combo))
+        .map_err(|error| ShortcutProblem { entry: entry_text(name, keys), kind: ProblemKind::BadKeys(error) })
+}
+
+/// An entry as it is written in `config.toml`, for the problems that name it: `lock = "Ctrl+"`.
+fn entry_text(name: &str, keys: &str) -> String {
+    format!("{name} = {keys:?}")
 }

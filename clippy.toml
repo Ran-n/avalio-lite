@@ -1,0 +1,20 @@
+# ------------------------------------------------------------------------------
+#+ Authors: 	Ran# <ran.hash@proton.me>
+#+ Created: 	2026/11/22 21:06:23.855849
+#+ Revised: 	2026/11/23 00:02:35.274980
+# ------------------------------------------------------------------------------
+
+# The clean-code limits, as Clippy checks them (the author's reference_lint_configs.md). The lints
+# that use these numbers are switched on in Cargo.toml, [lints.clippy]; CI runs
+# cargo clippy --all-targets -- -D warnings. An exception is written beside the code as
+# #[expect(clippy::<lint>, reason = "...")].
+
+# a function over 40 lines is split
+too-many-lines-threshold = 40
+# more than 4 parameters become a parameter object
+too-many-arguments-threshold = 4
+# counts the impl and fn blocks too, so 4 is about 3 levels inside a body
+excessive-nesting-threshold = 4
+# no yes/no flag parameters: an enum or two functions say what the flag meant
+max-fn-params-bools = 0
+max-struct-bools = 3

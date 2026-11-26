@@ -1,5 +1,6 @@
 import { ListView } from "std-widgets.slint";
 import { ColumnType, DuplicateContents, Gradebook } from "../gradebook.slint";
+import { PupilView } from "../pupil-view.slint";
 import { IconButton } from "../components/buttons.slint";
 import { Menu, MenuSurface } from "../components/menu.slint";
 import { NavItem } from "../components/navigation.slint";
@@ -39,6 +40,7 @@ export component MoreMenuContent inherits MenuSurface {
         // matched in `chosen` below.
         entries: Gradebook.addable-pupils.length > 0 ? [
             { id: 0, title: @tr("Add from another class…") },
+            { id: 8, title: @tr("Show a pupil their grades…") },
             { id: 5, title: @tr("Duplicate class"), hint: @tr("Same columns and settings, no pupils") },
             { id: 6, title: @tr("Duplicate with pupils"), hint: @tr("Same columns and pupils, empty marks") },
             { id: 7, title: @tr("Duplicate with pupils and marks"), hint: @tr("An exact copy") },
@@ -47,6 +49,7 @@ export component MoreMenuContent inherits MenuSurface {
             { id: 3, title: @tr("Import from Excel…") },
             { id: 4, title: @tr("Delete class"), destructive: true },
         ] : [
+            { id: 8, title: @tr("Show a pupil their grades…") },
             { id: 5, title: @tr("Duplicate class"), hint: @tr("Same columns and settings, no pupils") },
             { id: 6, title: @tr("Duplicate with pupils"), hint: @tr("Same columns and pupils, empty marks") },
             { id: 7, title: @tr("Duplicate with pupils and marks"), hint: @tr("An exact copy") },
@@ -66,6 +69,8 @@ export component MoreMenuContent inherits MenuSurface {
                 Gradebook.export-sheet();
             } else if (id == 3) {
                 Gradebook.import-sheet();
+            } else if (id == 8) {
+                PupilView.open();
             } else if (id == 5) {
                 Gradebook.duplicate-class(DuplicateContents.columns);
             } else if (id == 6) {

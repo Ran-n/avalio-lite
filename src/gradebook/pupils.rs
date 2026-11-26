@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.468773
-//+ Revised: 	2026/11/12 14:39:52.341790
+//+ Revised: 	2026/11/25 11:43:03.457747
 // -----------------------------------------------------------------------------
+
+//! Pupils and which class they are in: listing, adding, renaming, moving out of a class and deleting. How
+//! a name is cleaned, matched and sorted is in `model::names`.
 
 use std::collections::HashMap;
 
@@ -20,6 +23,13 @@ pub fn list_class_pupils(connection: &Connection, class_id: i64) -> Result<Vec<P
          WHERE cp.class_id = ?1 ORDER BY cp.position",
         [class_id],
     )
+}
+
+/// Pupils of a class by surname: their number in the class is their place in this list, from 1.
+pub fn class_list(connection: &Connection, class_id: i64) -> Result<Vec<Pupil>> {
+    let mut pupils = list_class_pupils(connection, class_id)?;
+    pupils.sort_by_cached_key(|pupil| name_sort_key(&pupil.listed_name()));
+    Ok(pupils)
 }
 
 /// Pupils that exist (in other classes, or in none) but aren't in this class yet.

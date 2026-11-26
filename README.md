@@ -1,15 +1,20 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.260648 )
-[//]: # (+ Revised: 	2026/11/15 03:14:42.877563 )
+[//]: # (+ Revised: 	2026/11/26 05:25:10.996603 )
 [//]: # ( ---------------------------------------------------------------------- )
 
-<p align="center"><img src="assets/logo.svg" alt="" width="96"></p>
+<div align="center">
 
-<h1 align="center">avalio lite</h1>
+<img src="assets/logo.svg" alt="avalio lite logo" width="160">
 
-<p align="center"><b>Your class marks in one simple, private app.</b><br>
-A gradebook for teachers that works like a spreadsheet, does the maths for you, and keeps everything on your own computer.</p>
+# avalio lite
+
+### Your class marks in one simple, private app.
+
+A gradebook for teachers that works like a spreadsheet, does the maths for you, and keeps everything on your own computer.
+
+</div>
 
 <p align="center">
   <a href="https://github.com/Ran-n/avalio-lite/releases/latest"><img src="https://img.shields.io/badge/Download_for_Windows-free-2f54d6?style=for-the-badge" alt="Download for Windows" height="40"></a>
@@ -28,10 +33,9 @@ A gradebook for teachers that works like a spreadsheet, does the maths for you, 
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-PBL_v2.0-555" alt="License: PayBack License v2.0"></a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/sheet-dark-1280x800@100.png">
-  <img src="tests/desktop/baselines/sheet-light-1280x800@100.png" alt="A class sheet: pupils as rows, with first-name and surname columns, test and final-grade columns; passing and failing marks in green and rose">
-</picture>
+<p align="center">
+  <img src="assets/screenshots/sheet.svg" alt="A class sheet: pupils as rows, with first-name and surname columns, test and final-grade columns; passing and failing marks in green and rose" width="900">
+</p>
 
 <p align="center">
   <a href="#why-avalio-lite">Why</a> ·
@@ -41,102 +45,69 @@ A gradebook for teachers that works like a spreadsheet, does the maths for you, 
   <a href="#how-grades-are-worked-out">Grades</a> ·
   <a href="#your-data-stays-with-you">Privacy</a> ·
   <a href="#questions">Questions</a> ·
-  <a href="#install--run-from-source">From source</a> ·
+  <a href="#run-from-source">From source</a> ·
   <a href="#technical-details">Docs</a>
 </p>
+
+---
 
 ## Why avalio lite?
 
 - **As easy as a spreadsheet.** Each class is one sheet: pupils down the side, your tests and notes across the top. Type a mark and you're done. There's no Save button, because everything saves as you type, and the sheet tells you so.
 - **The maths is done for you.** Give each test a weight and a maximum, and the app works out final grades, averages and roundings straight away. Extra-credit tests are supported, and passing and failing marks are colour-coded.
 - **Private by design.** No cloud, no tracking. Your marks live in one file in a folder you choose; add a PIN and the file is encrypted. The app goes online only to check its licence and to look for a new version.
+- **Show a pupil their grades.** Let a pupil come to the computer: the whole window shows only their own grades, and your PIN guards everyone else's.
+- **Pupils' pictures.** Give each pupil a picture, kept with your data and encrypted with your PIN.
 - **Works with Excel.** Export a class to Excel, or bring pupils and marks in from a spreadsheet.
 - **Easy to back up.** Save everything to a single file, then restore it later or on another computer.
 - **Feels at home.** Available in Galician and English, with light and dark themes and keyboard shortcuts.
+
+---
 
 ## A closer look
 
 <table>
   <tr>
     <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/column-panel-dark-1280x800@100.png">
-        <img src="tests/desktop/baselines/column-panel-light-1280x800@100.png" alt="The settings panel for a test column: title, weight, maximum and bonus switch">
-      </picture>
+      <img src="assets/screenshots/column-panel.svg" alt="The settings panel for a test column: title, weight, maximum and bonus switch">
       <p align="center"><b>Set up each test</b><br>Weight, maximum mark, extra credit</p>
     </td>
     <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/sheet-menu-dark-1280x800@100.png">
-        <img src="tests/desktop/baselines/sheet-menu-light-1280x800@100.png" alt="The class menu: hide weights and scales, export to Excel, import from Excel, delete class">
-      </picture>
+      <img src="assets/screenshots/sheet-menu.svg" alt="The class menu: hide weights and scales, export to Excel, import from Excel, delete class">
       <p align="center"><b>Excel in and out</b><br>Export a class, or import pupils and marks</p>
     </td>
   </tr>
   <tr>
     <td>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/lock-dark-1280x800@100.png">
-        <img src="tests/desktop/baselines/lock-light-1280x800@100.png" alt="The lock screen with a PIN field and on-screen number keys">
-      </picture>
+      <img src="assets/screenshots/lock.svg" alt="The lock screen with a PIN field and on-screen number keys">
       <p align="center"><b>Lock it with a PIN</b><br>Your file is encrypted with it</p>
     </td>
     <td>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/setup-dark-1280x800@100.png">
-        <img src="tests/desktop/baselines/setup-light-1280x800@100.png" alt="First launch: choose the folder for your marks">
-      </picture>
+      <img src="assets/screenshots/setup.svg" alt="First launch: choose the folder for your marks">
       <p align="center"><b>Your folder, your data</b><br>You choose where your marks are kept</p>
     </td>
   </tr>
   <tr>
     <td>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/settings-backup-dark-1280x800@100.png">
-        <img src="tests/desktop/baselines/settings-backup-light-1280x800@100.png" alt="Settings: database location, backup and logs">
-      </picture>
+      <img src="assets/screenshots/settings-backup.svg" alt="Settings: database location, backup and logs">
       <p align="center"><b>One-click backups</b><br>Export everything, restore, or merge in classes</p>
     </td>
     <td>
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="tests/desktop/baselines/settings-dark-1280x800@100.png">
-        <img src="tests/desktop/baselines/settings-light-1280x800@100.png" alt="Settings: appearance, language and keyboard shortcuts">
-      </picture>
+      <img src="assets/screenshots/settings.svg" alt="Settings: appearance, language and keyboard shortcuts">
       <p align="center"><b>Make it yours</b><br>Light or dark theme, language, shortcuts</p>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <p align="center"><img src="tests/desktop/baselines/sheet-gl-1000x600@100.png" alt="The class sheet in Galician" width="70%"></p>
+      <p align="center">
+        <img src="assets/screenshots/sheet-gl.svg" alt="The class sheet in Galician" width="70%">
+      </p>
       <p align="center"><b>En galego tamén</b> · Also in Galician, with decimal commas</p>
     </td>
   </tr>
 </table>
 
-## Download and install
-
-avalio lite is a **Windows** app. Download the latest release from [GitHub](https://github.com/Ran-n/avalio-lite/releases), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/releases) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/releases); all three have the same files. Pick one:
-
-| File | Choose it if… |
-|---|---|
-| `avalio-lite-<version>-setup.exe` | You want a normal install, with a Start-menu entry, an optional desktop icon and an uninstaller. It doesn't need administrator rights. |
-| `avalio-lite-<version>-portable.exe` | You want one file you can run from anywhere, even a USB stick, without installing anything. |
-
-Each file comes with a `.sig` file. The app uses it to check its own updates; you don't need to download it.
-
-> [!NOTE]
-> The app is free, but it isn't in an app store, and its files aren't signed with a Windows certificate. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. Alternatively, right-click the file → **Properties** → tick **Unblock**.
-
-## Getting started
-
-1. **Choose a folder** for your marks when the app first opens (`Documents\avalio-lite` is suggested).
-2. **Enter your licence key**, the `BRN-…` key you received by email, and press **Activate**.
-3. **Add a class:** type its name in **+ New class** and press Enter.
-4. **Add pupils:** in the last row, type the first name, press Enter, type the surname and press Enter again.
-5. **Add columns** with **+ Add column**, for example two tests and a final grade. Click a column's header to set its weight and maximum mark.
-6. **Type marks.** The final grade, the class average and the pass/fail count update straight away.
-
-The **[user guide](docs/user-guide.md)** explains every feature in detail: column types and how grades are calculated, Excel import, keyboard shortcuts, backups and PINs.
+---
 
 ## How grades are worked out
 
@@ -154,15 +125,68 @@ Each test counts for the share of the final grade you give it. Here is Ana's row
 - A test with no mark yet counts as 0.
 - You can also add an **average** column, or a **rounded** column for report cards (9.4 → 9).
 
+---
+
+## Download and install
+
+avalio lite is a **Windows** app (64-bit). Download the latest release from [GitHub](https://github.com/Ran-n/avalio-lite/releases), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/releases) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/releases); all three have the same files. Pick one:
+
+| File | Choose it if… |
+|---|---|
+| `avalio-lite-<version>-windows-x86_64-setup.exe` | You want a normal install, with a Start-menu entry, an optional desktop icon and an uninstaller. It doesn't need administrator rights. |
+| `avalio-lite-<version>-windows-x86_64-portable.exe` | You want one file you can run from anywhere, even a USB stick, without installing anything. |
+
+Each file comes with a `.b3` checksum and a `.minisig` signature. The app uses them to check its own updates; you don't need to download either.
+
+<details>
+<summary>Check that a download is genuine</summary>
+
+Put the `.b3` and `.minisig` next to the file, then run any of these:
+
+```sh
+b3sum --check avalio-lite-<version>-windows-x86_64-setup.exe.b3
+gh attestation verify avalio-lite-<version>-windows-x86_64-setup.exe --repo Ran-n/avalio-lite
+minisign -Vm avalio-lite-<version>-windows-x86_64-setup.exe -P RWTgZZhUtvqZL/G/J/VKoP+fkXhy1G6eccny+h8HVYGDV4iUHT9FHsea
+```
+
+`b3sum` checks the file arrived whole, `gh attestation verify` that GitHub's release workflow built it, and `minisign` that it was signed with the release key. The release keys are:
+
+- signing key: `RWTgZZhUtvqZL/G/J/VKoP+fkXhy1G6eccny+h8HVYGDV4iUHT9FHsea` <!-- public key, published on purpose; gitleaks:allow -->
+- backup key, used only if the signing key is ever lost: `RWQJcw/FBR95FRwpZVK+JzG7k5BMSrRbSIFe4kkK7Wb/8emw1uELWU0e` <!-- public key, published on purpose; gitleaks:allow -->
+
+The two older-named copies (`avalio-lite-<version>-setup.exe` and `-portable.exe`) carry a `.sig` instead, for copies of 0.10.0 and earlier.
+
+</details>
+
+> [!NOTE]
+> The app is free, but it isn't in an app store, and its files aren't code-signed for Windows (each carries a `.minisig` signature that the app checks itself). If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. Alternatively, right-click the file → **Properties** → tick **Unblock**.
+
+---
+
+## Getting started
+
+1. **Choose a folder** for your marks when the app first opens (`Documents\avalio-lite` is suggested).
+2. **Enter your licence key**, the `BRN-…` key you received by email, and press **Activate**.
+3. **Add a class:** type its name in **+ New class** and press Enter.
+4. **Add pupils:** in the last row, type the first name, press Enter, type the surname and press Enter again.
+5. **Add columns** with **+ Add column**, for example two tests and a final grade. Click a column's header to set its weight and maximum mark.
+6. **Type marks.** The final grade, the class average and the pass/fail count update straight away.
+
+The **[user guide](docs/user-guide.md)** explains every feature in detail: column types and how grades are calculated, Excel import, keyboard shortcuts, backups and PINs.
+
+---
+
 ## Your data stays with you
 
 - Everything is kept in **one file, in a folder you choose**. You can move it later from Settings.
-- The app connects to the internet **only to check its licence** (with Clavren, Breren's licence server) **and to look for a new version on GitHub**, which you can turn off. Your marks never leave your computer, and there is no tracking.
+- The app connects to the internet **only to check its licence** (with Clavren, Breren's licence server) **and to look for a new version on GitHub and GitLab**, which you can turn off. Your marks never leave your computer, and there is no tracking.
 - With a **PIN**, the file is encrypted with AES-256 (via [SQLCipher](https://www.zetetic.net/sqlcipher/)). Without the PIN, nobody can read it.
 - **Uninstalling never deletes your marks.**
 
 > [!WARNING]
 > **If you forget your PIN, your marks can't be recovered, by anyone, including the developer.** Keep the PIN somewhere safe, and make a backup now and then (**Settings → Backup → Export everything…**).
+
+---
 
 ## Questions
 
@@ -181,7 +205,7 @@ Yes. The app asks for a licence key (it looks like `BRN-XXXX-XXXX-XXXX-XXXX`) th
 <details>
 <summary><b>How do I update?</b></summary>
 
-The app looks for a new version once a day and shows a bar across the top of the window when one is out. Press **Update now**: it downloads the new version, checks that it really comes from avalio lite, installs it and opens again. Your marks and settings stay as they were. **Settings → Updates** turns the daily check off, or looks straight away.
+The app looks for a new version once a day and shows a bar across the top of the window when one is out. Press **Update and restart**: it downloads the new version, checks that it really comes from avalio lite, puts it in place and opens again. **Skip this version** waits for the next one. Your marks and settings stay as they were. **Settings → Updates** turns the daily check off, or looks straight away.
 </details>
 
 <details>
@@ -209,12 +233,20 @@ Yes. **⋯ → Import from Excel…** reads pupils from an .xlsx, .xls or .ods f
 </details>
 
 <details>
+<summary><b>Windows says it protected my PC when I open the app. Is that normal?</b></summary>
+
+Yes, the first time you run a downloaded copy. The files aren't code-signed for Windows, so Windows warns. Click **More info → Run anyway**. The [user guide's Troubleshooting](docs/user-guide.md#troubleshooting) lists this and the other problems you might meet at first.
+</details>
+
+<details>
 <summary><b>I found a bug or have an idea.</b></summary>
 
 Open an issue on [GitHub](https://github.com/Ran-n/avalio-lite/issues), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/issues) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/issues). [CONTRIBUTING.md](CONTRIBUTING.md) says what to include.
 </details>
 
-## Install / run from source
+---
+
+## Run from source
 
 You need Windows with the MSVC C++ build tools, [Rust](https://rustup.rs/) and [Strawberry Perl](https://strawberryperl.com/), plus [Inno Setup 6](https://jrsoftware.org/isinfo.php) if you also want the installer. Clone into a short path (OpenSSL's build fails on long ones), then, in PowerShell:
 
@@ -230,7 +262,13 @@ cd C:\src\avalio-lite
 cargo run --release        # builds (the first time compiles OpenSSL and takes a while), then opens the app
 ```
 
-**Install it:** build it once, then use the result like the portable release.
+**Test it** with the default suite (the desktop tests are separate, see the development guide):
+
+```powershell
+cargo test                 # logic, database, files and the headless UI
+```
+
+**Build it** once, then use the result like the portable release:
 
 ```powershell
 cargo build --release      # writes target\release\avalio-lite.exe
@@ -238,9 +276,15 @@ cargo build --release      # writes target\release\avalio-lite.exe
 
 `target\release\avalio-lite.exe` is the whole app in one file: run it from there or copy it anywhere. To get an installer instead, see [Building from source](docs/development.md#building-from-source), which also has the exact install commands for each tool.
 
-## Technical details
+---
 
-The app uses [Slint](https://slint.dev/) 1.18 for its desktop UI and [Rust](https://www.rust-lang.org/) for the application logic. Data is stored locally in [SQLite](https://sqlite.org/), accessed through `rusqlite`, with [SQLCipher](https://www.zetetic.net/sqlcipher/) encryption when a PIN is set. Dependency versions are defined in [Cargo.toml](Cargo.toml).
+## Contributing
+
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report a bug, suggest a feature or submit a change. Contributors are recorded in [CONTRIBUTORS](CONTRIBUTORS), which is also the license's revenue-share record.
+
+---
+
+## Technical details
 
 The full technical documentation lives in separate files:
 
@@ -248,10 +292,28 @@ The full technical documentation lives in separate files:
 |---|---|
 | [User guide](docs/user-guide.md) | Every feature in detail: column types and the grade formulas, accepted marks and limits, Excel import/export, keyboard shortcuts and `config.toml`, data and log locations, backups, PIN encryption (SQLCipher, AES-256) and how strong a PIN to choose, the licence and updates |
 | [Development](docs/development.md) | Building from source (Rust, Strawberry Perl, Inno Setup), the test suites (headless UI, desktop pixel tests, golden files, coverage and mutation testing), the source layout, translations, schema migrations and releasing |
-| [Design decisions](docs/design-decisions.md) | Why the code is laid out as it is: feature folders, the dependency rules, file sizes |
+| [Design decisions](docs/design-decisions.md) | Why the code is laid out as it is: feature folders, the dependency rules, file sizes, the schema's normal form |
 | [Contributing](CONTRIBUTING.md) | Reporting bugs, suggesting features, submitting changes and the commit style |
+| [Contributors](CONTRIBUTORS) | Who has contributed, and the revenue shares the license records |
 | [Changelog](CHANGELOG.md) | What changed in each version |
+| [Backlog](TODO.md) | What is planned next |
+
+**Built with:** [Rust](https://www.rust-lang.org/), [Slint](https://slint.dev/) 1.18 for the desktop UI, and [SQLite](https://sqlite.org/) through `rusqlite`, encrypted with [SQLCipher](https://www.zetetic.net/sqlcipher/) when a PIN is set. Dependency versions are defined in [Cargo.toml](Cargo.toml).
+
+**Credits:** Slint is used under its Royalty-free Desktop, Mobile, and Web Applications License 2.0 (see Settings › About in the app); the icons are drawn for the app; the licence of every crate it is built with is listed in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+
+---
 
 ## License
 
-avalio lite is released under the [PayBack License (PBL) v2.0](LICENSE): free for personal and non-commercial use.
+[PayBack License (PBL) v2.0](LICENSE): free for personal and non-commercial use.
+
+---
+
+<div align="center">
+
+<a href="https://breren.com"><img src="assets/breren-logo.svg" alt="Breren logo" width="56"></a>
+
+Made by **[Breren](https://breren.com)**
+
+</div>

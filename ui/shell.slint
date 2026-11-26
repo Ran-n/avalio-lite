@@ -5,7 +5,7 @@ import { SheetPage } from "sheet/sheet-page.slint";
 import { SettingsPage } from "settings/settings-page.slint";
 import { Section, Sidebar } from "sidebar.slint";
 import { UpdateBar } from "update-bar.slint";
-import { Update } from "update.slint";
+import { Update, UpdateBanner } from "update.slint";
 
 export { Section } from "sidebar.slint";
 
@@ -38,7 +38,7 @@ export component Shell inherits Rectangle {
     VerticalLayout {
         // a new version: shown across the top of the window whichever page is open, so a check from
         // Settings shows it at once
-        if Update.notice != "": UpdateBar { }
+        if Update.banner != UpdateBanner.hidden: UpdateBar { }
         HorizontalLayout {
             vertical-stretch: 1;
             Sidebar {

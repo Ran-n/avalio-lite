@@ -1,18 +1,45 @@
-// New versions: the bar on the sheet and the Updates card in Settings. A global, like Backup, so
-// both reach the Rust side without passing each callback through AppWindow and Shell.
+// New versions: the banner across the top of the window and Settings › Updates. A global, like
+// Backup, so both reach the Rust side without passing each callback through AppWindow and Shell.
+// Every sentence here is worded by the Rust side (src/update/ui.rs), in the current language.
+
+export enum UpdateBanner {
+    hidden,
+    // a newer version is out: Update and restart, Skip this version, ×
+    offer,
+    // it is downloading: Cancel
+    downloading,
+}
 
 export global Update {
-    // what the bar says ("avalio-lite 0.6.0 is available."); empty hides the bar
-    in property <string> notice;
-    // Settings → Updates → "Check for updates automatically"
+    // Settings › Updates
+    // a build from source: no update controls at all, only the version and what to do instead
+    in property <bool> source-build;
+    // "Version 0.11.0 · release build for windows-x86_64"
+    in property <string> version-line;
+    // what the last check found, or why it failed
+    in property <string> status-line;
     in property <bool> automatic: true;
-    // a check (or, later, an update) is under way
-    in property <bool> busy;
+    // a check is under way: Check now waits
+    in property <bool> checking;
+    // the version being skipped; Settings offers "Stop skipping" while it isn't empty
+    in property <string> skipped;
+    // a newer version can be installed: Settings shows Update and restart too
+    in property <bool> available;
+    in property <bool> downloading;
+
+    // the banner
+    in property <UpdateBanner> banner;
+    in property <string> banner-text;
+
     callback check-now();
     callback set-automatic(bool);
-    // the release page, with its notes and files
-    callback whats-new();
-    callback update-now();
-    // × on the bar: hides it for this version
-    callback hide();
+    callback stop-skipping();
+    // Update and restart, from the banner or Settings
+    callback install();
+    // stops the download and deletes what came
+    callback cancel();
+    // Skip this version: quiet until a newer one
+    callback skip();
+    // ×: hidden until the next start or another version
+    callback dismiss();
 }

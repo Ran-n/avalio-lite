@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/14 22:47:09.678780
-//+ Revised: 	2026/11/15 03:14:39.275214
+//+ Revised: 	2026/11/25 11:43:04.901566
 // -----------------------------------------------------------------------------
 
 //! The acknowledgement on the sheet's summary line that changes are saved: the app has no Save
@@ -40,7 +40,7 @@ pub fn forget_saved(window: &AppWindow) {
 }
 
 /// Whether a failed action may have left something typed on screen that the database doesn't
-/// hold. Not so for a file that couldn't be read or written (an import, an export) or with no
+/// hold. Not so for a file that couldn't be read or written (an import, an export, a picture) or with no
 /// database open, where nothing typed is at stake. Every error is named, so a new one has to be
 /// put on one side or the other.
 pub fn leaves_typed_data_unsaved(error: &AppError) -> bool {
@@ -48,6 +48,7 @@ pub fn leaves_typed_data_unsaved(error: &AppError) -> bool {
         AppError::NoDatabaseOpen
         | AppError::SpreadsheetRead { .. }
         | AppError::SpreadsheetWrite { .. }
+        | AppError::PictureRead { .. }
         | AppError::NoPupilsInFile(_)
         | AppError::DuplicatePupilInFile(_) => false,
         AppError::Io { .. }
@@ -90,6 +91,7 @@ mod tests {
             AppError::NoDatabaseOpen,
             AppError::SpreadsheetRead { path: file(), reason: String::new() },
             AppError::SpreadsheetWrite { path: file(), reason: String::new() },
+            AppError::PictureRead { path: file(), reason: String::new() },
             AppError::NoPupilsInFile(file()),
             AppError::DuplicatePupilInFile("Ana".into()),
         ] {

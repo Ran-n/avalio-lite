@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.654243
-//+ Revised: 	2026/11/12 14:39:51.842607
+//+ Revised: 	2026/11/23 16:34:33.815130
 // -----------------------------------------------------------------------------
+
+//! The marks typed in a sheet: storing one, and copying a pupil's. Reading a whole sheet is in `sheet`;
+//! what the marks add up to is in `compute`.
 
 use std::collections::HashMap;
 
@@ -18,8 +21,7 @@ use crate::error::{AppError, Result};
 /// `columns::copy_columns` returns). Computed and name columns hold no cells, so they are skipped.
 pub fn copy_row_marks(
     connection: &Connection,
-    columns: &[Column],
-    values: &[String],
+    (columns, values): (&[Column], &[String]),
     copied: &HashMap<i64, i64>,
     pupil_id: i64,
 ) -> Result<()> {

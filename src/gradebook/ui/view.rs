@@ -1,22 +1,29 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.393948
-//+ Revised: 	2026/11/15 03:14:38.914504
+//+ Revised: 	2026/11/25 11:43:05.209785
 // -----------------------------------------------------------------------------
+
+//! Draws the open class: the class list, the sheet's rows and what an action must redraw (`Refresh`). The
+//! column headers are in `headers`, the weight total in `totals`; converting to the window's types is in
+//! `items`.
+
+mod headers;
+mod totals;
 
 use rusqlite::Connection;
 use slint::{ComponentHandle, Model, SharedString};
 
-use super::items::{cell_items, column_item, number, round_sources, row_item, short_class_name};
-use super::{panel, saved};
+use super::avatars::{Size, class_avatars, initials};
+use super::items::{cell_items, column_item, round_sources, row_item, short_class_name};
+use super::{panel, pupil_panel, saved};
 use crate::error::Result;
-use crate::gradebook::compute::{
-    DISPLAY_DECIMALS, bonus_weight_total, grade_summary, grades_are_provisional, round_to, weight_total,
-};
-use crate::gradebook::model::{ClassSummary, Column, Sheet};
-use crate::gradebook::{classes, columns, pupils, sheet};
+use crate::gradebook::model::{ClassSummary, Column};
+use crate::gradebook::{classes, pupils, sheet};
 use crate::ui::{AddablePupil, AppWindow, ClassItem, Gradebook, RowItem};
 use crate::window::view::model;
+use headers::{refresh_headers, refresh_widths};
+use totals::{show_summary, show_weight_total};
 
 const NO_CLASS: i32 = -1;
 
@@ -57,8 +64,9 @@ pub fn apply(window: &AppWindow, connection: &Connection, refresh: Refresh) -> R
 /// gone or there is none.
 pub fn show_new_database(window: &AppWindow, connection: &Connection, remembered: Option<i64>) -> Result<()> {
     saved::forget_saved(window);
-    // the panel belongs to a column of the previous database; the same row id there is another column
+    // the panels belong to a column or pupil of the previous database; the same row id there is another
     panel::close(window);
+    pupil_panel::close(window);
     window.global::<Gradebook>().set_current_class_id(NO_CLASS);
     show_all(window, connection, remembered)
 }
@@ -80,6 +88,7 @@ fn show_all(window: &AppWindow, connection: &Connection, select: Option<i64>) ->
         Some(class_id) => show_sheet(window, connection, class_id),
         None => {
             panel::close(window);
+            pupil_panel::close(window);
             window.global::<Gradebook>().set_current_class_id(NO_CLASS);
             Ok(())
         }
@@ -112,13 +121,18 @@ fn show_sheet(window: &AppWindow, connection: &Connection, class_id: i64) -> Res
     gradebook.set_current_class_id(ui_id(class_id));
     gradebook.set_class_name(classes::class_name(connection, class_id)?.into());
     gradebook.set_columns(model(loaded.columns.iter().map(|column| column_item(column, &loaded.columns)).collect()));
-    gradebook.set_rows(model(loaded.rows.iter().map(|row| row_item(row, &loaded.columns)).collect()));
+    let mut avatars = class_avatars(connection, class_id, Size::Row)?;
+    let rows = loaded.rows.iter().map(|row| {
+        let avatar = avatars.remove(&row.pupil.id).unwrap_or_default();
+        row_item(row, &loaded.columns, avatar)
+    });
+    gradebook.set_rows(model(rows.collect()));
     gradebook.set_addable_pupils(model(addable));
     show_round_sources(window, &loaded.columns);
     show_weight_total(window, &loaded.columns);
     show_summary(window, &loaded);
     panel::keep_in_sync(window, &loaded.columns);
-    Ok(())
+    pupil_panel::keep_in_sync(window, connection)
 }
 
 /// The typed-in name field already shows the new name; this updates what the rest of the window
@@ -141,13 +155,14 @@ fn show_pupil_name(window: &AppWindow, connection: &Connection, pupil_id: i64) -
             first_name: pupil.first_name.as_str().into(),
             surname: pupil.surname.as_str().into(),
             full_name: pupil.full_name().into(),
+            initials: initials(&pupil).into(),
             ..row.clone()
         };
         if named != row {
             rows.set_row_data(index, named);
         }
     }
-    Ok(())
+    pupil_panel::keep_in_sync(window, connection)
 }
 
 fn show_round_sources(window: &AppWindow, columns: &[Column]) {
@@ -185,47 +200,4 @@ fn refresh_columns(window: &AppWindow, connection: &Connection) -> Result<()> {
     let Some(columns) = refresh_headers(window, connection)? else { return Ok(()) };
     show_round_sources(window, &columns);
     refresh_rows(window, connection, None)
-}
-
-/// Updates the headers' widths in place; the rows aren't rebuilt.
-fn refresh_widths(window: &AppWindow, connection: &Connection) -> Result<()> {
-    refresh_headers(window, connection).map(|_| ())
-}
-
-/// Puts each column's current item in the header model, changing only the items that differ. The
-/// columns, or `None` when their number changed and the whole sheet was reloaded instead.
-fn refresh_headers(window: &AppWindow, connection: &Connection) -> Result<Option<Vec<Column>>> {
-    let columns = columns::list_columns(connection, current_class_id(window))?;
-    let items = window.global::<Gradebook>().get_columns();
-    if items.row_count() != columns.len() {
-        show_sheet(window, connection, current_class_id(window))?;
-        return Ok(None);
-    }
-    for (index, column) in columns.iter().enumerate() {
-        let item = column_item(column, &columns);
-        if items.row_data(index).as_ref() != Some(&item) {
-            items.set_row_data(index, item);
-        }
-    }
-    Ok(Some(columns))
-}
-
-/// The class average and pass / fail counts under the class name.
-fn show_summary(window: &AppWindow, loaded: &Sheet) {
-    let values: Vec<Vec<String>> = loaded.rows.iter().map(|row| row.values.clone()).collect();
-    let summary = grade_summary(&loaded.columns, &values);
-    let gradebook = window.global::<Gradebook>();
-    gradebook.set_has_summary(summary.is_some());
-    if let Some(summary) = summary {
-        gradebook.set_class_average(number(round_to(summary.average, DISPLAY_DECIMALS)).into());
-        gradebook.set_passing(i32::try_from(summary.passing).unwrap_or(i32::MAX));
-        gradebook.set_failing(i32::try_from(summary.failing).unwrap_or(i32::MAX));
-    }
-}
-
-fn show_weight_total(window: &AppWindow, columns: &[Column]) {
-    let gradebook = window.global::<Gradebook>();
-    gradebook.set_weight_total(number(weight_total(columns)).into());
-    gradebook.set_bonus_total(number(bonus_weight_total(columns)).into());
-    gradebook.set_weights_complete(!grades_are_provisional(columns));
 }

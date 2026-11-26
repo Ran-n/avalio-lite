@@ -1,5 +1,5 @@
 # Galician translation of the avalio-lite interface.
-# Every @tr() string in ui/*.slint must have an entry here (checked by tests/i18n.rs).
+# Every @tr() string in ui/*.slint must have an entry here (checked by tests/i18n/).
 msgid ""
 msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -466,8 +466,8 @@ msgstr "Facer copia dos meus datos"
 msgid "Licence"
 msgstr "Licenza"
 
-msgid "avalio-lite checks its licence once a day when this computer is online."
-msgstr "avalio-lite comproba a súa licenza unha vez ao día cando este ordenador ten conexión."
+msgid "avalio lite checks its licence once a day when this computer is online."
+msgstr "avalio lite comproba a súa licenza unha vez ao día cando este ordenador ten conexión."
 
 msgid "Licensed"
 msgstr "Con licenza"
@@ -478,26 +478,14 @@ msgstr "Comprobando…"
 msgid "Check now"
 msgstr "Comprobar agora"
 
-msgid "What's new"
-msgstr "Novidades"
-
-msgid "Update now"
-msgstr "Actualizar agora"
-
 msgid "Hide"
 msgstr "Agochar"
 
 msgid "Updates"
 msgstr "Actualizacións"
 
-msgid "avalio-lite looks for new versions on GitHub once a day and tells you when one is out."
-msgstr "avalio-lite busca novas versións en GitHub unha vez ao día e avísache cando sae unha."
-
 msgid "Check for updates automatically"
 msgstr "Buscar actualizacións automaticamente"
-
-msgid "Downloading the update…"
-msgstr "Descargando a actualización…"
 
 msgid "Check for updates now"
 msgstr "Buscar actualizacións agora"
@@ -510,3 +498,120 @@ msgstr "Nome: o mesmo en todas as clases do alumno"
 
 msgid "Surname: the same in every class the pupil is in"
 msgstr "Apelidos: o mesmo en todas as clases do alumno"
+
+msgid "Update and restart"
+msgstr "Actualizar e reiniciar"
+
+msgid "Skip this version"
+msgstr "Saltar esta versión"
+
+msgid "Cancel the update"
+msgstr "Cancelar a actualización"
+
+msgid "Stop skipping {}"
+msgstr "Deixar de saltar a versión {}"
+
+msgid "avalio lite looks for new versions on GitHub and GitLab once a day and tells you when one is out. It sends nothing about you."
+msgstr "avalio lite busca novas versións en GitHub e GitLab unha vez ao día e avísache cando sae unha. Non envía nada sobre ti."
+
+msgid "About"
+msgstr "Acerca de"
+
+msgid "Marks, weights and final grades for teachers, kept on this computer."
+msgstr "Notas, pesos e cualificacións finais para docentes, gardados neste ordenador."
+
+msgid "By {}"
+msgstr "Por {}"
+
+msgid "Made by Breren"
+msgstr "Feito por Breren"
+
+msgid "Open the Breren website"
+msgstr "Abrir o sitio web de Breren"
+
+msgid "avalio lite is under the PayBack License (PBL) 2.0: free for people, not for profit. It is built with open-source code under its own licences."
+msgstr "avalio lite está baixo a PayBack License (PBL) 2.0: libre para as persoas, non para o lucro. Está feito con código aberto baixo as súas propias licenzas."
+
+msgid "Read the licence"
+msgstr "Ler a licenza"
+
+msgid "Third-party licences"
+msgstr "Licenzas de terceiros"
+
+msgid "Source code"
+msgstr "Código fonte"
+
+msgid "All versions"
+msgstr "Todas as versións"
+
+msgid "What's new"
+msgstr "Novidades"
+
+msgid "Found a problem or have a question? Report it, or write to support.avalio.lite@breren.com."
+msgstr "Atopaches un problema ou tes unha pregunta? Infórmao ou escribe a support.avalio.lite@breren.com."
+
+msgid "Report a problem"
+msgstr "Informar dun problema"
+
+msgid "Write to support"
+msgstr "Escribir ao soporte"
+
+msgid "Show a pupil their grades…"
+msgstr "Amosar as notas a un alumno…"
+
+msgid "Choose a pupil"
+msgstr "Escolle un alumno"
+
+msgid "Back to the sheet"
+msgstr "Volver á folla"
+
+msgid "This class has no pupils yet."
+msgstr "Esta clase aínda non ten alumnos."
+
+msgid "There are no grades in this class yet."
+msgstr "Aínda non hai notas nesta clase."
+
+msgid "no mark yet"
+msgstr "aínda sen nota"
+
+msgid "Grades marked with ! are provisional: they can still change."
+msgstr "As notas marcadas con ! son provisionais: aínda poden cambiar."
+
+msgid "Back to the list"
+msgstr "Volver á lista"
+
+msgid "Next pupil"
+msgstr "Seguinte alumno"
+
+msgid "Number {}"
+msgstr "Número {}"
+
+msgid "Your PIN, to go back to the sheet"
+msgstr "O teu PIN, para volver á folla"
+
+msgid "Your PIN, to show the grades of {}"
+msgstr "O teu PIN, para amosar as notas de {}"
+
+msgid "Each pupil sees only their own grades. Showing a pupil and going back to the sheet ask for your PIN."
+msgstr "Cada alumno só ve as súas notas. Amosar un alumno e volver á folla piden o teu PIN."
+
+msgid "Each pupil sees only their own grades. With no PIN set, anyone at the computer can open the others; set a PIN in Settings to prevent it."
+msgstr "Cada alumno só ve as súas notas. Sen PIN, calquera que estea no ordenador pode abrir as dos demais; pon un PIN en Axustes para evitalo."
+
+msgid "Picture of {}"
+msgstr "Foto de {}"
+
+msgid "Number {} in this class, by surname"
+msgstr "Número {} nesta clase, por apelidos"
+
+msgid "Choose a picture…"
+msgstr "Escoller unha foto…"
+
+msgid "Change the picture…"
+msgstr "Cambiar a foto…"
+
+msgid "Remove the picture"
+msgstr "Quitar a foto"
+
+msgid "The picture is kept in your database, encrypted with your PIN if you have one, and shows in every class the pupil is in."
+msgstr "A foto gárdase na túa base de datos, cifrada co teu PIN se o tes, e aparece en todas as clases do alumno."

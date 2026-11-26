@@ -1,8 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:42.488112
-//+ Revised: 	2026/11/03 08:27:16.874140
+//+ Revised: 	2026/11/23 16:34:35.212397
 // -----------------------------------------------------------------------------
+
+//! The light or dark look: the saved choice, or the one Windows uses. The colours are in `ui/theme.slint`.
 
 use crate::platform::config::{Preferences, ThemeChoice};
 use crate::ui::AppWindow;
@@ -17,11 +19,19 @@ pub fn apply_preference(window: &AppWindow, preferences: &Preferences) {
     apply(window, dark);
 }
 
+#[expect(
+    clippy::fn_params_excessive_bools,
+    reason = "the yes/no value being saved or shown, not a switch between two behaviours"
+)]
 pub fn apply(window: &AppWindow, dark: bool) {
     window.invoke_apply_theme(dark);
     log::info!("theme: {}", if dark { "dark" } else { "light" });
 }
 
+#[expect(
+    clippy::fn_params_excessive_bools,
+    reason = "the yes/no value being saved or shown, not a switch between two behaviours"
+)]
 pub fn choice(dark: bool) -> ThemeChoice {
     if dark { ThemeChoice::Dark } else { ThemeChoice::Light }
 }

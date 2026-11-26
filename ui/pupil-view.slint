@@ -1,0 +1,70 @@
+// The pupil view: the teacher picks a pupil from a menu, and the whole window shows that pupil's own
+// grades. A global, like Update, so the sheet's menu and the view's pages reach the Rust side
+// (src/pupil_view/ui.rs), which alone changes the stage.
+
+import { Tone } from "gradebook.slint";
+
+export enum PupilViewStage {
+    off,
+    // the list to pick the next pupil from
+    menu,
+    // one pupil's grades
+    grades,
+    // the PIN is asked for: to show a pupil, or to leave for the sheet. No grades are on screen.
+    pin,
+}
+
+// A pupil of the open class, as the menu lists them and their page heads it
+export struct PupilCard {
+    id: int,
+    // their place in the class by surname, from 1
+    number: int,
+    // "Pérez López, Ana", or "Ana" without a surname
+    listed-name: string,
+    full-name: string,
+    initials: string,
+    avatar: image,
+}
+
+// One mark or grade of the pupil
+export struct GradeItem {
+    title: string,
+    // empty: no mark yet
+    text: string,
+    // what the mark is out of; empty when that isn't known
+    max-score: string,
+    // a test's share of the final grade, in %; empty for a calculated grade
+    weight: string,
+    bonus: bool,
+    tone: Tone,
+    // a final grade while the test weights don't add up to 100 %
+    provisional: bool,
+}
+
+export global PupilView {
+    in property <PupilViewStage> stage: PupilViewStage.off;
+    // by surname; empty while a pupil looks at their grades
+    in property <[PupilCard]> pupils;
+    // the pupil whose grades show; blank, like their grades, while there is none
+    in property <PupilCard> pupil;
+    in property <bool> has-next;
+    in property <[GradeItem]> grades;
+    in property <bool> any-provisional;
+
+    // what the PIN is asked for: this pupil's grades, or leaving when it is -1
+    in property <int> wanted-pupil: -1;
+    in property <string> wanted-name;
+    in-out property <string> pin;
+    in property <string> pin-error;
+
+    callback open();
+    // pupil id; the PIN first, when there is one
+    callback show-pupil(int);
+    // the pupil after the one who looks, by number; the PIN first, when there is one
+    callback next();
+    // from the grades or the PIN, always free
+    callback back-to-list();
+    callback unlock(string);
+    // from the menu to the sheet; the PIN first, when there is one
+    callback leave();
+}

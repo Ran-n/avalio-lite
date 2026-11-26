@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 10:48:30.870291
-//+ Revised: 	2026/11/12 14:39:54.531610
+//+ Revised: 	2026/11/23 00:26:15.862804
 // -----------------------------------------------------------------------------
 
 //! The sheet's Excel menu entries: export the open class to a workbook, and import pupils and
@@ -15,7 +15,7 @@ use slint::ComponentHandle;
 
 use crate::gradebook::ui::run;
 use crate::gradebook::ui::view::{Refresh, current_class_id};
-use crate::i18n::{self, Language, Message};
+use crate::i18n::{self, Language, Message, SheetMessage, SpreadsheetMessage};
 use crate::spreadsheet::export;
 use crate::spreadsheet::import::{self, ImportSummary, LeftOut};
 use crate::ui::{AppWindow, Gradebook};
@@ -45,7 +45,13 @@ fn wire_export(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs)
         if exported {
             *last_folder.borrow_mut() = path.parent().map(Path::to_path_buf);
             let shown = path.display().to_string();
-            show_status(window, i18n::text(i18n::current(), &Message::SheetExported { class: &class, path: &shown }));
+            show_status(
+                window,
+                i18n::text(
+                    i18n::current(),
+                    &Message::Spreadsheet(SpreadsheetMessage::SheetExported { class: &class, path: &shown }),
+                ),
+            );
         }
     }));
 }
@@ -69,7 +75,10 @@ fn wire_import(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs)
         let Some(plan) = plan else { return };
         let language = i18n::current();
         if plan.overwrites > 0 {
-            let question = Message::ConfirmImportOverwrite { count: plan.overwrites, class: &class };
+            let question = Message::Spreadsheet(SpreadsheetMessage::ConfirmImportOverwrite {
+                count: plan.overwrites,
+                class: &class,
+            });
             if !dialogs.confirm(&i18n::text(language, &question)) {
                 log::info!("import into class {class_id} cancelled before replacing {} values", plan.overwrites);
                 return;
@@ -88,19 +97,32 @@ fn wire_import(window: &AppWindow, state: &SharedState, dialogs: &SharedDialogs)
 
 /// What the import did, then what it left out, each sentence only when it has something to say.
 fn import_report(language: Language, class: &str, summary: &ImportSummary) -> String {
-    let done =
-        Message::ImportDone { pupils: summary.pupils, new_pupils: summary.new_pupils, marks: summary.marks, class };
+    let done = Message::Spreadsheet(SpreadsheetMessage::ImportDone {
+        pupils: summary.pupils,
+        new_pupils: summary.new_pupils,
+        marks: summary.marks,
+        class,
+    });
     let mut report = vec![i18n::text(language, &done)];
     if !summary.left_out.is_empty() {
         let headers: Vec<String> = summary.left_out.iter().map(|left_out| left_out_name(language, left_out)).collect();
-        let left_out = Message::ImportLeftOut { headers: &headers.join(", "), count: headers.len() };
+        let left_out = Message::Spreadsheet(SpreadsheetMessage::ImportLeftOut {
+            headers: &headers.join(", "),
+            count: headers.len(),
+        });
         report.push(i18n::text(language, &left_out));
     }
     if summary.error_cells > 0 {
-        report.push(i18n::text(language, &Message::ImportErrorCells { count: summary.error_cells }));
+        report.push(i18n::text(
+            language,
+            &Message::Spreadsheet(SpreadsheetMessage::ImportErrorCells { count: summary.error_cells }),
+        ));
     }
     if summary.unnamed_rows > 0 {
-        report.push(i18n::text(language, &Message::ImportUnnamedRows { count: summary.unnamed_rows }));
+        report.push(i18n::text(
+            language,
+            &Message::Spreadsheet(SpreadsheetMessage::ImportUnnamedRows { count: summary.unnamed_rows }),
+        ));
     }
     report.join(" ")
 }
@@ -108,6 +130,6 @@ fn import_report(language: Language, class: &str, summary: &ImportSummary) -> St
 fn left_out_name(language: Language, left_out: &LeftOut) -> String {
     match left_out {
         LeftOut::Header(header) => header.clone(),
-        LeftOut::Untitled(letter) => i18n::text(language, &Message::UntitledColumn { letter }),
+        LeftOut::Untitled(letter) => i18n::text(language, &Message::Sheet(SheetMessage::UntitledColumn { letter })),
     }
 }

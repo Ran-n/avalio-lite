@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.516106
-//+ Revised: 	2026/11/03 08:27:17.029395
+//+ Revised: 	2026/11/23 16:34:35.281854
 // -----------------------------------------------------------------------------
+
+//! The parts of the window every feature shows: the setup screen, the folders in Settings, and the error and
+//! status lines. The sheet itself is in `gradebook::ui::view`.
 
 use std::path::Path;
 use std::rc::Rc;

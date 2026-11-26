@@ -1,12 +1,19 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.660497
-//+ Revised: 	2026/11/14 17:16:19.635709
+//+ Revised: 	2026/11/25 11:43:08.786398
 // -----------------------------------------------------------------------------
 
-use rusqlite::{Connection, OptionalExtension};
+//! Brings a database up to the current schema, one numbered file of `migrations/` at a time, each in its own
+//! transaction. Opening and closing the database is in the parent module.
+
+use rusqlite::{Connection, OptionalExtension, Transaction};
 
 use crate::error::{AppError, Result};
+
+/// Where a migration writes what it had to change and the teacher should know about, one message a
+/// row; the runner logs them once the migration is committed. Made fresh for each migration.
+const NOTES_TABLE_SQL: &str = "CREATE TEMP TABLE migration_notes (message TEXT NOT NULL)";
 
 /// Schema migrations, applied in order. The database's `user_version` pragma
 /// records how many have run. Never edit a shipped migration; add a new one.
@@ -21,6 +28,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../../../migrations/008_split_comma_names.sql"),
     include_str!("../../../migrations/009_column_limits.sql"),
     include_str!("../../../migrations/010_names_required.sql"),
+    include_str!("../../../migrations/011_round_sources.sql"),
+    include_str!("../../../migrations/012_pupil_pictures.sql"),
 ];
 
 pub fn latest_version() -> usize {
@@ -51,7 +60,7 @@ pub fn migrate_to(connection: &mut Connection, target: usize) -> Result<()> {
 /// it; for the tests of the migration runner itself.
 #[doc(hidden)]
 pub fn apply_unrecorded(connection: &mut Connection, version: usize, sql: &str) -> Result<()> {
-    with_foreign_keys_off(connection, |connection| apply_one(connection, version, sql, false))
+    with_foreign_keys_off(connection, |connection| apply_one(connection, version, sql, Record::Nothing))
 }
 
 fn apply(connection: &mut Connection, pending: &[(usize, &str)]) -> Result<()> {
@@ -59,7 +68,7 @@ fn apply(connection: &mut Connection, pending: &[(usize, &str)]) -> Result<()> {
         return Ok(());
     }
     with_foreign_keys_off(connection, |connection| {
-        pending.iter().try_for_each(|(version, sql)| apply_one(connection, *version, sql, true))
+        pending.iter().try_for_each(|(version, sql)| apply_one(connection, *version, sql, Record::Version))
     })
 }
 
@@ -78,13 +87,23 @@ fn with_foreign_keys_off(connection: &mut Connection, task: impl FnOnce(&mut Con
     Ok(())
 }
 
+/// Whether applying a migration also sets `user_version` to it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Record {
+    Version,
+    Nothing,
+}
+
 /// One migration in its own transaction, committed only when `foreign_key_check` finds no
-/// dangling reference (foreign keys being off meanwhile, nothing else would catch one).
-fn apply_one(connection: &mut Connection, version: usize, sql: &str, record: bool) -> Result<()> {
+/// dangling reference (foreign keys being off meanwhile, nothing else would catch one). Its notes
+/// are logged as warnings only once it is committed, since a rolled-back migration changed nothing.
+fn apply_one(connection: &mut Connection, version: usize, sql: &str, record: Record) -> Result<()> {
     let transaction = connection.transaction()?;
     let before = transaction.total_changes();
+    transaction.execute_batch(NOTES_TABLE_SQL)?;
     transaction.execute_batch(sql)?;
     let changed = transaction.total_changes() - before;
+    let notes = take_notes(&transaction)?;
     let broken: Option<String> = transaction
         .query_row("SELECT \"table\" FROM pragma_foreign_key_check LIMIT 1", [], |row| row.get(0))
         .optional()?;
@@ -95,10 +114,23 @@ fn apply_one(connection: &mut Connection, version: usize, sql: &str, record: boo
         let message = format!("schema migration {version} left a dangling reference in table {table}");
         return Err(AppError::Database(rusqlite::Error::SqliteFailure(code, Some(message))));
     }
-    if record {
+    if record == Record::Version {
         transaction.pragma_update(None, "user_version", version as i64)?;
     }
     transaction.commit()?;
     log::info!("applied schema migration {version} ({changed} rows changed)");
+    for note in notes {
+        log::warn!("schema migration {version}: {note}");
+    }
     Ok(())
+}
+
+/// The notes a migration left in `temp.migration_notes`, which are then dropped.
+fn take_notes(transaction: &Transaction) -> Result<Vec<String>> {
+    let notes = {
+        let mut statement = transaction.prepare("SELECT message FROM temp.migration_notes ORDER BY rowid")?;
+        statement.query_map([], |row| row.get(0))?.collect::<rusqlite::Result<Vec<String>>>()?
+    };
+    transaction.execute_batch("DROP TABLE temp.migration_notes")?;
+    Ok(notes)
 }

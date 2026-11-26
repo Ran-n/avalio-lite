@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.523539
-//+ Revised: 	2026/11/12 14:39:53.842921
+//+ Revised: 	2026/11/23 16:34:34.913860
 // -----------------------------------------------------------------------------
+
+//! The app's log: a file in the folder the user chose, the older one set aside once it grows too big, and
+//! the level from `LOG_LEVEL`. Where the folder is comes from `platform::config`.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;

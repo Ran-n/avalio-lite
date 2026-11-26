@@ -1,8 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:16.441672
-//+ Revised: 	2026/10/28 10:52:42.135924
+//+ Revised: 	2026/11/23 16:34:35.131025
 // -----------------------------------------------------------------------------
+
+//! Switches the whole window to a language. The texts are in `i18n` and `lang/`.
 
 use crate::i18n::{self, Language};
 use crate::ui::AppWindow;

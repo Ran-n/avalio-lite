@@ -3,14 +3,18 @@ import { SetupNotice, SetupPage } from "setup-page.slint";
 import { Section, Shell } from "shell.slint";
 import { LockPage } from "lock/lock-page.slint";
 import { Licence, LicencePage } from "licence/licence-page.slint";
-import { AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, ColumnWidths, DuplicateContents, Gradebook, RowItem, Tone } from "gradebook.slint";
+import { AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, ColumnWidths, DuplicateContents, Gradebook, PupilPanelItem, RowItem, Tone } from "gradebook.slint";
 import { Theme } from "theme.slint";
 import { ShortcutAction, ShortcutItem, Shortcuts } from "shortcuts.slint";
 import { Backup } from "backup.slint";
-import { Update } from "update.slint";
+import { Update, UpdateBanner } from "update.slint";
+import { About, AboutLink } from "about.slint";
+import { GradeItem, PupilCard, PupilView, PupilViewStage } from "pupil-view.slint";
+import { PupilGradesPage } from "pupil-view/grades-page.slint";
+import { PupilMenuPage } from "pupil-view/menu-page.slint";
 
 export { SetupNotice, Section, AddablePupil, CellItem, ClassItem, ColumnItem, ColumnType, ColumnWidths, DuplicateContents, Gradebook, RowItem, Tone, Theme }
-export { ShortcutAction, ShortcutItem, Shortcuts, Backup, Licence, Update }
+export { ShortcutAction, ShortcutItem, Shortcuts, Backup, Licence, Update, UpdateBanner, About, AboutLink, GradeItem, PupilCard, PupilPanelItem, PupilView, PupilViewStage }
 
 export component AppWindow inherits Window {
     in property <bool> setup-required: true;
@@ -63,7 +67,7 @@ export component AppWindow inherits Window {
         Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
     }
 
-    title: "avalio-lite";
+    title: "avalio lite";
     // Windows draws the title bar and taskbar itself, so they always get the light variant
     icon: @image-url("../assets/logo.svg");
     background: Theme.canvas;
@@ -94,7 +98,7 @@ export component AppWindow inherits Window {
     // the licence screen's key field keeps the focus it takes when the screen appears
     property <bool> licensed: Licence.licensed;
     changed licensed => {
-        if (root.licensed && !root.setup-required && !root.locked) {
+        if (root.licensed && !root.setup-required && !root.locked && root.stage != PupilViewStage.pin) {
             shortcuts.focus();
         }
     }
@@ -119,9 +123,28 @@ export component AppWindow inherits Window {
         }
     }
 
+    // the pupil view covers everything else of the main screen; its PIN field keeps the focus
+    // it takes when it appears
+    property <PupilViewStage> stage: PupilView.stage;
+    changed stage => {
+        if (root.stage != PupilViewStage.pin && !root.setup-required && !root.locked && Licence.licensed) {
+            shortcuts.focus();
+        }
+    }
+
     shortcuts := FocusScope {
         capture-key-pressed(event) => {
             if (root.setup-required || root.locked) {
+                return reject;
+            }
+            // while a pupil is at the computer only locking works, and nothing while the PIN is typed:
+            // the other shortcuts act on the sheet behind the pupil view
+            if (root.stage != PupilViewStage.off) {
+                if (root.stage != PupilViewStage.pin && root.pin-set
+                        && Shortcuts.find(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt) == ShortcutAction.lock) {
+                    root.lock-now();
+                    return accept;
+                }
                 return reject;
             }
             // recording a new shortcut in Settings: every key goes to the recorder, none to a field
@@ -184,7 +207,21 @@ export component AppWindow inherits Window {
             open-existing-database => { root.open-existing-database(); }
             back-to-lock => { root.back-to-lock(); }
         }
-        if !root.setup-required && !root.locked && Licence.licensed: Shell {
+        if !root.setup-required && !root.locked && Licence.licensed && root.stage == PupilViewStage.menu: PupilMenuPage {
+            error-message: root.error-message;
+            pin-set: root.pin-set;
+        }
+        if !root.setup-required && !root.locked && Licence.licensed && root.stage == PupilViewStage.grades: PupilGradesPage { }
+        if !root.setup-required && !root.locked && Licence.licensed && root.stage == PupilViewStage.pin: LockPage {
+            title: PupilView.wanted-pupil < 0 ? @tr("Your PIN, to go back to the sheet") : @tr("Your PIN, to show the grades of {}", PupilView.wanted-name);
+            way-back: @tr("Back to the list");
+            back => { PupilView.back-to-list(); }
+            pin <=> PupilView.pin;
+            error-message: PupilView.pin-error;
+            unlock(pin) => { PupilView.unlock(pin); }
+            erase => { PupilView.pin = PupilView.pin == "" ? "" : root.erase-last(PupilView.pin); }
+        }
+        if !root.setup-required && !root.locked && Licence.licensed && root.stage == PupilViewStage.off: Shell {
             section <=> root.section;
             database-path: root.database-path;
             log-folder: root.log-folder;

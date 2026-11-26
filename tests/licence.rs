@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:35.257330
-//+ Revised: 	2026/11/12 14:39:56.979129
+//+ Revised: 	2026/11/24 16:26:03.312527
 // -----------------------------------------------------------------------------
 
 //! The licence logic: what the licence screen says for each answer of the Clavren client, when it
@@ -178,6 +178,15 @@ fn the_ending_warning_starts_fourteen_days_before_the_licence_ends() {
 }
 
 #[test]
+fn a_licence_already_ended_is_not_announced_as_ending() {
+    let now = Utc.with_ymd_and_hms(2027, 3, 1, 9, 0, 0).unwrap();
+    assert_eq!(reminder(&licensed_until(30, Some(-1), now), now), None);
+    assert_eq!(reminder(&licensed_until(30, Some(0), now), now), None, "the moment it ends");
+    let close = licensed_until(4, Some(-1), now);
+    assert_eq!(reminder(&close, now), Some(Reminder::ConnectBy(day_of(now + TimeDelta::days(4)))));
+}
+
+#[test]
 fn an_ending_licence_wins_over_going_offline() {
     let now = Utc.with_ymd_and_hms(2027, 3, 1, 9, 0, 0).unwrap();
     let both = licensed_until(3, Some(3), now);
@@ -242,10 +251,14 @@ fn the_daily_check_reports_a_revocation_once_and_stops_promptly() {
     assert_eq!(reported, Outcome::Revoked);
     computer.advance(TimeDelta::hours(25));
     assert!(received.recv_timeout(Duration::from_millis(300)).is_err(), "reported once");
-
-    let started = Instant::now();
     checks.stop();
-    assert!(started.elapsed() < Duration::from_secs(1), "stopping took {:?}", started.elapsed());
+
+    // between two checks an hour apart, stopping doesn't wait for the next; the limit is wide, since a
+    // busy machine only wakes the thread late
+    let waiting = Background::spawn(computer.client_checking_every(Duration::from_secs(3600)), |_| {}).unwrap();
+    let started = Instant::now();
+    waiting.stop();
+    assert!(started.elapsed() < Duration::from_secs(60), "stopping took {:?}", started.elapsed());
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -1,0 +1,136 @@
+import { AboutSlint } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { BrandMark } from "../components/icons.slint";
+import { Card } from "../components/surfaces.slint";
+import { About, AboutLink } from "../about.slint";
+import { Update } from "../update.slint";
+
+// A link in the card: a ghost button, so it reads as one and takes the keyboard like the others.
+component AboutLinkButton inherits ActionButton {
+    in property <AboutLink> link;
+    kind: ButtonKind.ghost;
+    clicked => { About.open(root.link); }
+}
+
+// Who makes avalio lite, which version this is, its licence, and where to read more.
+export component AboutCard inherits Card {
+    title: @tr("About");
+    HorizontalLayout {
+        spacing: 12px;
+        alignment: start;
+        BrandMark {
+            width: 40px;
+            height: 40px;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: "avalio lite";
+                font-size: Theme.text-l;
+                font-weight: 600;
+                color: Theme.text;
+            }
+            Text {
+                text: @tr("Marks, weights and final grades for teachers, kept on this computer.");
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+        }
+    }
+    // the same line as Settings › Updates: the version, and a release build's target or a build from source
+    Text {
+        text: Update.version-line;
+        color: Theme.text;
+        wrap: word-wrap;
+    }
+    Text {
+        text: @tr("By {}", "Ran# · ran.hash@proton.me");
+        color: Theme.text;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        // the original logo, full size enough to read its rings (never the simplified mark)
+        Image {
+            width: 48px;
+            height: 48px;
+            source: Theme.dark ? @image-url("../../assets/breren-logo-dark.svg") : @image-url("../../assets/breren-logo.svg");
+            accessible-role: image;
+            accessible-label: "Breren";
+        }
+        Text {
+            text: @tr("Made by Breren");
+            vertical-alignment: center;
+            color: Theme.text;
+        }
+        // a button's height is fixed, so a taller row would leave it at the top: centred, it is level with the words
+        VerticalLayout {
+            alignment: center;
+            AboutLinkButton {
+                text: "breren.com";
+                spoken-label: @tr("Open the Breren website");
+                link: AboutLink.website;
+            }
+        }
+    }
+    Text {
+        text: @tr("avalio lite is under the PayBack License (PBL) 2.0: free for people, not for profit. It is built with open-source code under its own licences.");
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: 4px;
+        alignment: start;
+        AboutLinkButton {
+            text: @tr("Read the licence");
+            link: AboutLink.licence;
+        }
+        AboutLinkButton {
+            text: @tr("Third-party licences");
+            link: AboutLink.third-party;
+        }
+    }
+    HorizontalLayout {
+        spacing: 4px;
+        alignment: start;
+        AboutLinkButton {
+            text: @tr("Source code");
+            link: AboutLink.source;
+        }
+        AboutLinkButton {
+            text: @tr("All versions");
+            link: AboutLink.releases;
+        }
+        AboutLinkButton {
+            text: @tr("What's new");
+            link: AboutLink.changelog;
+        }
+    }
+    Text {
+        text: @tr("Found a problem or have a question? Report it, or write to support.avalio.lite@breren.com.");
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        spacing: 4px;
+        alignment: start;
+        AboutLinkButton {
+            text: @tr("Report a problem");
+            link: AboutLink.issues;
+        }
+        AboutLinkButton {
+            text: @tr("Write to support");
+            link: AboutLink.support;
+        }
+    }
+    // Slint's royalty-free licence asks for this in an About screen
+    HorizontalLayout {
+        alignment: start;
+        AboutSlint {
+            max-width: 240px;
+        }
+    }
+}

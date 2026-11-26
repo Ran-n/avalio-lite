@@ -1,11 +1,14 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:31.148480
-//+ Revised: 	2026/11/11 17:10:59.465131
+//+ Revised: 	2026/11/25 11:43:04.038410
 // -----------------------------------------------------------------------------
 
 //! Turns the gradebook's values into the structs the Slint sheet shows, and the sheet's choices back.
 
+use slint::Image;
+
+use super::avatars::initials;
 use super::view::{ui_id, ui_width};
 use crate::gradebook::compute::{Tone, depends_on_weights, evaluate_row, format_number, weights_add_up};
 use crate::gradebook::model::{Column, ColumnKind, ColumnType, DuplicateContents, SheetRow};
@@ -53,12 +56,15 @@ pub fn column_title(column: &Column) -> String {
         .map_or_else(|| column.title.clone(), str::to_owned)
 }
 
-pub fn row_item(row: &SheetRow, columns: &[Column]) -> RowItem {
+/// `avatar` is an empty image when the pupil has no picture.
+pub fn row_item(row: &SheetRow, columns: &[Column], avatar: Image) -> RowItem {
     RowItem {
         pupil_id: ui_id(row.pupil.id),
         first_name: row.pupil.first_name.as_str().into(),
         surname: row.pupil.surname.as_str().into(),
         full_name: row.pupil.full_name().into(),
+        initials: initials(&row.pupil).into(),
+        avatar,
         cells: model(cell_items(row, columns)),
     }
 }

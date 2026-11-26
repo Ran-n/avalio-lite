@@ -1,13 +1,16 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:31.081050
-//+ Revised: 	2026/11/15 12:17:27.370320
+//+ Revised: 	2026/11/25 11:43:10.223951
 // -----------------------------------------------------------------------------
+
+//! The questions and file pickers Windows shows, and opening a link, behind the `Dialogs` trait, so tests
+//! answer in their place. What each question says is in `i18n`.
 
 use std::path::{Path, PathBuf};
 
 use crate::backup;
-use crate::i18n::{self, Language, Message};
+use crate::i18n::{self, DataMessage, Language, Message, SheetMessage, SpreadsheetMessage};
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 
 /// The kinds of file the app opens and saves, each with its own filter in the file dialogs.
@@ -16,6 +19,7 @@ pub enum FileKind {
     Database,
     Spreadsheet,
     Backup,
+    Picture,
 }
 
 impl FileKind {
@@ -26,6 +30,7 @@ impl FileKind {
             Self::Spreadsheet => &["xlsx", "xls", "ods"],
             Self::Database => self.save_extensions(),
             Self::Backup => &[backup::EXTENSION, "db"],
+            Self::Picture => &["jpg", "jpeg", "png", "webp"],
         }
     }
 
@@ -35,15 +40,18 @@ impl FileKind {
             Self::Database => &["db"],
             Self::Spreadsheet => &["xlsx"],
             Self::Backup => &[backup::EXTENSION],
+            // pictures are only opened
+            Self::Picture => &[],
         }
     }
 
     /// The filter's name in the file dialogs, such as "Excel workbook".
     pub fn filter_name(self, language: Language) -> String {
         let message = match self {
-            Self::Database => Message::DatabaseFileType,
-            Self::Spreadsheet => Message::SpreadsheetFileType,
-            Self::Backup => Message::BackupFileType,
+            Self::Database => Message::Data(DataMessage::DatabaseFileType),
+            Self::Spreadsheet => Message::Spreadsheet(SpreadsheetMessage::SpreadsheetFileType),
+            Self::Backup => Message::Data(DataMessage::BackupFileType),
+            Self::Picture => Message::Sheet(SheetMessage::PictureFileType),
         };
         i18n::text(language, &message)
     }
@@ -102,7 +110,11 @@ impl Dialogs for NativeDialogs {
 
 /// One of the app's message boxes, not yet shown.
 fn message_box(level: MessageLevel, text: &str, buttons: MessageButtons) -> MessageDialog {
-    MessageDialog::new().set_level(level).set_title("avalio-lite").set_description(text).set_buttons(buttons)
+    MessageDialog::new()
+        .set_level(level)
+        .set_title(crate::about::DISPLAY_NAME)
+        .set_description(text)
+        .set_buttons(buttons)
 }
 
 /// Asks Windows to open `target` with its default program; returns ShellExecuteW's own answer.
@@ -154,11 +166,11 @@ mod tests {
     #[test]
     fn the_message_boxes_carry_the_apps_name_the_text_and_their_buttons() {
         let question = format!("{:?}", message_box(MessageLevel::Warning, "Delete 1A?", MessageButtons::YesNo));
-        for part in ["avalio-lite", "Delete 1A?", "Warning", "YesNo"] {
+        for part in ["avalio lite", "Delete 1A?", "Warning", "YesNo"] {
             assert!(question.contains(part), "{part} in {question}");
         }
         let fatal = format!("{:?}", message_box(MessageLevel::Error, "It broke", MessageButtons::Ok));
-        for part in ["avalio-lite", "It broke", "Error", "Ok"] {
+        for part in ["avalio lite", "It broke", "Error", "Ok"] {
             assert!(fatal.contains(part), "{part} in {fatal}");
         }
     }

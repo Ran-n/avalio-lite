@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:53.782114
-//+ Revised: 	2026/11/14 17:16:17.953777
+//+ Revised: 	2026/11/23 16:34:33.886856
 // -----------------------------------------------------------------------------
+
+//! Classes: listing, adding, renaming, duplicating and deleting them. A class's columns are in `columns`,
+//! its pupils in `pupils`.
 
 use rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE;
 use rusqlite::{Connection, params};
@@ -81,7 +84,7 @@ pub fn duplicate_class(connection: &Connection, class_id: i64, contents: Duplica
     }
     if contents == DuplicateContents::Everything {
         for row in &original.rows {
-            cells::copy_row_marks(&transaction, &original.columns, &row.values, &column_ids, row.pupil.id)?;
+            cells::copy_row_marks(&transaction, (&original.columns, &row.values), &column_ids, row.pupil.id)?;
         }
     }
     transaction.commit()?;

@@ -1,0 +1,112 @@
+import { Theme } from "../theme.slint";
+import { Gradebook, PupilPanelItem } from "../gradebook.slint";
+import { ActionButton, ButtonKind, IconButton } from "../components/buttons.slint";
+import { Avatar } from "../components/avatar.slint";
+import { FocusRing, KeyboardPress } from "../components/focus.slint";
+
+// The start of a pupil's row: their avatar, which opens the pupil panel.
+export component PupilButton inherits Rectangle {
+    in property <image> picture;
+    in property <string> initials;
+    in property <string> full-name;
+    callback clicked();
+
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    accessible-role: button;
+    accessible-label: @tr("Picture of {}", root.full-name);
+    Avatar {
+        width: 28px;
+        picture: root.picture;
+        initials: root.initials;
+        opacity: touch.has-hover ? 0.75 : 1;
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// A pupil's picture, name and number, over the sheet's right side like a column's settings.
+export component PupilPanel inherits Rectangle {
+    in property <PupilPanelItem> pupil;
+
+    width: Theme.panel-width;
+    background: Theme.surface;
+    drop-shadow-blur: 40px;
+    drop-shadow-offset-x: -12px;
+    drop-shadow-color: Theme.shadow;
+    init => { choose.focus-button(); }
+    Rectangle {
+        x: 0px;
+        width: 1px;
+        background: Theme.line;
+    }
+    scope := FocusScope {
+        capture-key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                Gradebook.close-pupil-panel();
+                return accept;
+            }
+            return reject;
+        }
+        // swallows clicks so they don't reach the sheet underneath, and keeps the keys in the panel
+        TouchArea {
+            clicked => { scope.focus(); }
+        }
+        VerticalLayout {
+            padding: 24px;
+            spacing: 18px;
+            alignment: start;
+            HorizontalLayout {
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.pupil.full-name;
+                    wrap: word-wrap;
+                    font-size: Theme.text-l;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+                IconButton {
+                    glyph: "×";
+                    tooltip: @tr("Close");
+                    clicked => { Gradebook.close-pupil-panel(); }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                Avatar {
+                    width: 128px;
+                    picture: root.pupil.avatar;
+                    initials: root.pupil.initials;
+                }
+            }
+            Text {
+                text: @tr("Number {} in this class, by surname", root.pupil.number);
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                color: Theme.muted;
+            }
+            choose := ActionButton {
+                text: root.pupil.avatar.width > 0 ? @tr("Change the picture…") : @tr("Choose a picture…");
+                kind: ButtonKind.primary;
+                clicked => { Gradebook.choose-picture(root.pupil.id); }
+            }
+            if root.pupil.avatar.width > 0: ActionButton {
+                text: @tr("Remove the picture");
+                kind: ButtonKind.danger;
+                clicked => { Gradebook.remove-picture(root.pupil.id); }
+            }
+            Text {
+                text: @tr("The picture is kept in your database, encrypted with your PIN if you have one, and shows in every class the pupil is in.");
+                wrap: word-wrap;
+                font-size: Theme.text-s;
+                color: Theme.muted;
+            }
+        }
+    }
+}

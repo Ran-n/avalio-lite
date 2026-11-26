@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 12:31:54.388040
-//+ Revised: 	2026/11/03 12:31:54.388040
+//+ Revised: 	2026/11/24 17:54:06.721157
 // -----------------------------------------------------------------------------
 
 //! The module dependency rules of decision D4 (docs/design-decisions.md): logic never depends on
@@ -12,7 +12,7 @@ mod architecture_support;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use architecture_support::{SourceFile, node_of, paths_in, sources};
+use architecture_support::{SourceFile, node_of, paths_in, rust_files, sources};
 
 /// Every `path:line: text` breaking a rule; `breaks` gets each file and one of its crate paths.
 fn violations(files: &[SourceFile], breaks: impl Fn(&SourceFile, &[String]) -> bool) -> Vec<String> {
@@ -84,7 +84,7 @@ fn logic_does_not_depend_on_the_ui() {
 #[test]
 fn only_main_uses_the_composition_root() {
     let found = violations(&sources(), |file, path| {
-        path.first().is_some_and(|m| m == "app") && file.path != "src/main.rs" && !file.path.starts_with("src/app/")
+        path.first().is_some_and(|m| m == "app") && file.path != "src/main.rs" && !file.is_in("app")
     });
     assert!(found.is_empty(), "the composition root sits on top; nothing else uses it:\n{}", found.join("\n"));
 }
@@ -92,10 +92,10 @@ fn only_main_uses_the_composition_root() {
 #[test]
 fn core_logic_does_not_use_i18n() {
     let core = |file: &SourceFile| {
-        (file.path.starts_with("src/gradebook/") && !file.path.starts_with("src/gradebook/ui/"))
-            || file.path.starts_with("src/platform/db/")
+        (file.is_in("gradebook") && !file.is_ui())
+            || file.module.starts_with(&["platform".to_owned(), "db".to_owned()])
             || file.path == "src/platform/storage.rs"
-            || file.path == "src/lock/mod.rs"
+            || file.path == "src/lock.rs"
     };
     let found = violations(&sources(), |file, path| core(file) && path.first().is_some_and(|m| m == "i18n"));
     assert!(
@@ -103,6 +103,26 @@ fn core_logic_does_not_use_i18n() {
         "core logic doesn't know the interface language; it takes ports such as ColumnTitles:\n{}",
         found.join("\n")
     );
+}
+
+#[test]
+fn every_source_file_says_what_it_is_for() {
+    let without: Vec<String> = rust_files(&["src", "tests", "examples", "build.rs"])
+        .into_iter()
+        .filter(|(_, text)| !text.lines().any(|line| line.starts_with("//! ")))
+        .map(|(path, _)| path)
+        .collect();
+    assert!(without.is_empty(), "a //! summary comes after the file header, in:\n{}", without.join("\n"));
+}
+
+#[test]
+fn every_source_file_has_one_header() {
+    let wrong: Vec<String> = rust_files(&["src", "tests", "examples", "build.rs"])
+        .into_iter()
+        .filter(|(_, text)| text.lines().filter(|line| line.starts_with("//+ Authors:")).count() != 1)
+        .map(|(path, _)| path)
+        .collect();
+    assert!(wrong.is_empty(), "one `metadata` header, no more and no fewer, in:\n{}", wrong.join("\n"));
 }
 
 #[test]

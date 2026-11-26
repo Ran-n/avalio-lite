@@ -1,8 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:32.250028
-//+ Revised: 	2026/11/12 14:39:57.071778
+//+ Revised: 	2026/11/23 16:34:35.547145
 // -----------------------------------------------------------------------------
+
+//! The log file: levels, format, a new folder, a full or unusable one, and setting an old one aside.
 
 use std::fs;
 

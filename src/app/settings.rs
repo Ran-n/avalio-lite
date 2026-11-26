@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 22:53:31.368093
-//+ Revised: 	2026/11/12 14:39:51.581038
+//+ Revised: 	2026/11/23 00:26:14.773740
 // -----------------------------------------------------------------------------
 
 //! The Settings screen: language, theme, moving the data, switching database.
@@ -12,7 +12,7 @@ use std::rc::Rc;
 use slint::SharedString;
 
 use crate::error::Result;
-use crate::i18n::{self, Language, Message};
+use crate::i18n::{self, DataMessage, Language, Message};
 use crate::state::Opened;
 use crate::ui::AppWindow;
 use crate::window::dialogs::FileKind;
@@ -38,15 +38,7 @@ fn wire_settings(window: &AppWindow, state: &SharedState, dialogs: &SharedDialog
         let moved = result.as_ref().ok().cloned();
         after_data_change(window, &shared, "move database", result.map(|_| ()));
         if let Some(moved) = moved {
-            let path = moved.path.display().to_string();
-            match moved.left_behind {
-                None => view::show_status(window, i18n::text(i18n::current(), &Message::DatabaseMoved { path: &path })),
-                Some(old) => {
-                    let old = old.display().to_string();
-                    let text = i18n::text(i18n::current(), &Message::DatabaseMovedOldKept { path: &path, old: &old });
-                    view::show_error_text(window, text);
-                }
-            }
+            show_database_moved(window, &moved.path, moved.left_behind.as_deref());
         }
     }));
     let (shared, picker) = (state.clone(), dialogs.clone());
@@ -57,7 +49,10 @@ fn wire_settings(window: &AppWindow, state: &SharedState, dialogs: &SharedDialog
         after_data_change(window, &shared, "move logs", result);
         if succeeded {
             let path = folder.display().to_string();
-            view::show_status(window, i18n::text(i18n::current(), &Message::LogsMoved { path: &path }));
+            view::show_status(
+                window,
+                i18n::text(i18n::current(), &Message::Data(DataMessage::LogsMoved { path: &path })),
+            );
         }
     }));
     let (shared, dialogs) = (state.clone(), dialogs.clone());
@@ -67,6 +62,22 @@ fn wire_settings(window: &AppWindow, state: &SharedState, dialogs: &SharedDialog
         let result = shared.borrow_mut().open_existing(&database_path, &log_dir);
         after_database_opened(window, &shared, "open database", result);
     }));
+}
+
+/// Where the database went: a status line, or an error when its old copy at `left_behind` was kept.
+fn show_database_moved(window: &AppWindow, path: &Path, left_behind: Option<&Path>) {
+    let path = path.display().to_string();
+    match left_behind {
+        None => {
+            let message = DataMessage::DatabaseMoved { path: &path };
+            view::show_status(window, i18n::text(i18n::current(), &Message::Data(message)));
+        }
+        Some(old) => {
+            let old = old.display().to_string();
+            let message = DataMessage::DatabaseMovedOldKept { path: &path, old: &old };
+            view::show_error_text(window, i18n::text(i18n::current(), &Message::Data(message)));
+        }
+    }
 }
 
 fn wire_language(window: &AppWindow, state: &SharedState, reword: Reword) {

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.973308
-//+ Revised: 	2026/11/08 04:36:59.096624
+//+ Revised: 	2026/11/23 00:26:16.095274
 // -----------------------------------------------------------------------------
 
 //! `app::run_with` when the window can't run: Slint's headless backend without an event loop
@@ -13,7 +13,7 @@ use std::process::ExitCode;
 use std::rc::Rc;
 
 use avalio_lite::app;
-use avalio_lite::i18n::{self, Message};
+use avalio_lite::i18n::{self, AppMessage, Message};
 use avalio_lite::platform::config::CONFIG_DIR_ENV;
 use common::{FakeDialogs, Fixture};
 
@@ -32,7 +32,7 @@ fn a_window_that_cannot_run_shows_the_fatal_error_and_fails() {
     assert_eq!(exit, ExitCode::FAILURE);
     let fatal = dialogs.fatal.borrow();
     assert_eq!(fatal.len(), 1);
-    let prefix = i18n::text(i18n::current(), &Message::WindowFailed);
+    let prefix = i18n::text(i18n::current(), &Message::App(AppMessage::WindowFailed));
     // a fixed sentence: the window system's own error text is only in the log
     assert_eq!(fatal[0], prefix);
     // even a failed run shuts down: the database can be deleted

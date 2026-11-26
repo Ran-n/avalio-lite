@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 22:32:30.190729
-//+ Revised: 	2026/11/14 17:16:17.491226
+//+ Revised: 	2026/11/25 11:43:02.504235
 // -----------------------------------------------------------------------------
+
+//! The app's one error type, `AppError`: what failed, with the details a person needs. How an error reads
+//! in each language is in `i18n/errors.rs`.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -118,6 +121,11 @@ pub enum AppError {
 
     #[error("could not read {path}: {reason}")]
     SpreadsheetRead { path: PathBuf, reason: String },
+
+    /// the path is for the user's message only: a photo's file is often named after the pupil, and
+    /// this text goes to the log
+    #[error("could not read a picture: {reason}")]
+    PictureRead { path: PathBuf, reason: String },
 
     #[error("{0} has no pupils under a first-name header or in its first column")]
     NoPupilsInFile(PathBuf),

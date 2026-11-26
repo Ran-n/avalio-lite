@@ -1,0 +1,54 @@
+# ------------------------------------------------------------------------------
+#+ Authors: 	Ran# <ran.hash@proton.me>
+#+ Created: 	2026/11/22 21:06:24.382430
+#+ Revised: 	2026/11/23 00:02:35.426305
+# ------------------------------------------------------------------------------
+
+# Checks every push and pull request to main: Clippy with the clean-code limits (clippy.toml) and
+# warnings as errors, the formatting, and the default test suite. The desktop tests open real
+# windows and run on the maintainer's machine before a release (scripts/release-check.ps1).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: clippy, format and tests
+    runs-on: windows-latest
+    env:
+      # A short target folder: the OpenSSL build inside SQLCipher nests too deep for the 260-character
+      # path limit when it sits under the checkout.
+      CARGO_TARGET_DIR: ${{ runner.temp }}\target
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Clippy, warnings as errors
+        shell: pwsh
+        run: |
+          # Strawberry Perl is on the runner; the toolchain comes from rust-toolchain.toml
+          . .\scripts\use-perl.ps1
+          cargo clippy --all-targets --locked -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw "clippy failed with exit code $LASTEXITCODE" }
+
+      - name: Formatting
+        shell: pwsh
+        run: |
+          cargo fmt --check
+          if ($LASTEXITCODE -ne 0) { throw "cargo fmt --check found unformatted code; run cargo fmt" }
+
+      - name: Default test suite
+        shell: pwsh
+        run: |
+          . .\scripts\use-perl.ps1
+          cargo test --locked
+          if ($LASTEXITCODE -ne 0) { throw "cargo test failed with exit code $LASTEXITCODE" }

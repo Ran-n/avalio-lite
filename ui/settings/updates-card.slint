@@ -1,13 +1,26 @@
 import { Theme } from "../theme.slint";
-import { ActionButton, Toggle } from "../components/buttons.slint";
+import { ActionButton, ButtonKind, Toggle } from "../components/buttons.slint";
 import { Card } from "../components/surfaces.slint";
 import { Update } from "../update.slint";
 
-// Looking for new versions by itself, or now.
+// The running version, what the last check found, checking by itself or now, and installing.
+// A build from source shows only its version and how to update it.
 export component UpdatesCard inherits Card {
     title: @tr("Updates");
-    description: @tr("avalio-lite looks for new versions on GitHub once a day and tells you when one is out.");
-    HorizontalLayout {
+    description: Update.source-build
+        ? ""
+        : @tr("avalio lite looks for new versions on GitHub and GitLab once a day and tells you when one is out. It sends nothing about you.");
+    Text {
+        text: Update.version-line;
+        color: Theme.text;
+        wrap: word-wrap;
+    }
+    Text {
+        text: Update.status-line;
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+    if !Update.source-build: HorizontalLayout {
         spacing: 10px;
         alignment: start;
         Toggle {
@@ -23,14 +36,30 @@ export component UpdatesCard inherits Card {
             accessible-role: none;
         }
     }
-    HorizontalLayout {
+    if !Update.source-build: HorizontalLayout {
         alignment: start;
+        spacing: 8px;
         ActionButton {
-            text: Update.busy ? @tr("Checking…") : @tr("Check now");
+            text: Update.checking ? @tr("Checking…") : @tr("Check now");
             // the Licence card has a Check now too
-            spoken-label: @tr("Check for updates now");
-            enabled: !Update.busy;
+            spoken-label: Update.checking ? @tr("Checking…") : @tr("Check for updates now");
+            enabled: !Update.checking && !Update.downloading;
             clicked => { Update.check-now(); }
+        }
+        if Update.available && !Update.downloading: ActionButton {
+            text: @tr("Update and restart");
+            kind: ButtonKind.primary;
+            clicked => { Update.install(); }
+        }
+        if Update.downloading: ActionButton {
+            text: @tr("Cancel");
+            spoken-label: @tr("Cancel the update");
+            clicked => { Update.cancel(); }
+        }
+        if Update.skipped != "": ActionButton {
+            text: @tr("Stop skipping {}", Update.skipped);
+            kind: ButtonKind.ghost;
+            clicked => { Update.stop-skipping(); }
         }
     }
 }

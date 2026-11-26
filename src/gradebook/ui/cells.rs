@@ -1,8 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:52.749638
-//+ Revised: 	2026/11/12 14:39:52.422681
+//+ Revised: 	2026/11/23 16:34:34.228377
 // -----------------------------------------------------------------------------
+
+//! Typing a mark in the sheet. Storing it is in `gradebook::cells`.
 
 use slint::{ComponentHandle, Model, SharedString};
 

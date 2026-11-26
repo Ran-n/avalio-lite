@@ -6,10 +6,27 @@ description = "Lightweight, local edition of Avalio — a teacher-focused studen
 authors = ["Ran# <ran.hash@proton.me>"]
 license-file = "LICENSE"
 publish = false
+# src/bin/ holds the release tools (avalio-lite-sign, avalio-lite-asset-name); `cargo run` runs the app
+default-run = "avalio-lite"
+
+# The clean-code limits as lints (the numbers are in clippy.toml); CI fails on any warning. An
+# exception is #[expect(clippy::<lint>, reason = "...")] beside the code; a bare #[allow] fails.
+[lints.clippy]
+too_many_lines = "warn"
+too_many_arguments = "warn"
+excessive_nesting = "warn"
+fn_params_excessive_bools = "warn"
+struct_excessive_bools = "warn"
+mod_module_files = "warn"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
 
 [dependencies]
-# release signatures (src/update/signature.rs): base64url text, BLAKE3 file hashes, Ed25519 keys
+# release signatures (src/update/signature/): BLAKE3 file hashes and key IDs, BLAKE2b-512 (what
+# minisign's prehashed mode signs, signature/hashes.rs), Ed25519 keys; base64 for minisign's lines
+# (signature/minisign.rs), base64url only for the bridge format 0.6.0 to 0.10.0 read (signature/bridge.rs)
 base64 = "0.23"
+blake2 = "0.11"
 blake3 = "1.8"
 # reads the workbooks the sheet imports (.xlsx, .xls, .ods); pure Rust
 calamine = "0.38.0"
@@ -18,31 +35,43 @@ chrono = { version = "0.4", features = ["serde"] }
 clavren-client = { git = "https://github.com/Ran-n/clavren", tag = "v0.2.0" }
 dirs = "7"
 ed25519-dalek = "3.0.0"
+# random bytes for a throwaway test key (avalio-lite-sign keygen)
+getrandom = "0.4"
+# pupils' pictures: opens a photo, shrinks it and writes a small JPEG (src/gradebook/pictures.rs); the version
+# Slint already uses
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 log = { version = "0.4", features = ["std"] }
 rfd = "0.17"
+# the hidden prompt avalio-lite-sign reads a pasted release key at
+rpassword = "7.5"
 # SQLCipher: SQLite with page-level encryption. Building it compiles OpenSSL, which needs a full Perl
 # (Strawberry Perl on Windows) at build time only; nothing of Perl or the build ends up in the exe.
 rusqlite = { version = "0.42", features = ["bundled-sqlcipher-vendored-openssl"] }
 # writes the .xlsx export; pure Rust
 rust_xlsxwriter = "0.102.0"
+# puts a downloaded update in place of the running exe (src/update/install.rs)
+self-replace = "1.5"
 # reads the version of the latest release (src/update/)
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 slint = "1.18"
 sys-locale = "0.3"
+# the temporary file an update downloads into, deleted unless it verifies (src/update/download.rs)
+tempfile = "3"
 thiserror = "2"
 toml = "1"
-# asks GitHub for the latest release and downloads updates; already used by clavren-client
+# asks GitHub and GitLab for the latest release and downloads updates; already used by clavren-client
 ureq = "3"
 zeroize = "1"
 
 # where the window opens: the work area and scale of the screen the app starts on (src/app/placement.rs);
-# opening a release page in the browser (src/window/dialogs.rs); where the installer put the app
-# (src/update/windows.rs)
+# opening a page in the browser (src/window/dialogs.rs); the installer's uninstall entry
+# (src/update/windows.rs); the terminal `--version` writes to (src/app/mod.rs)
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_System_Console",
     "Win32_Graphics_Gdi",
     "Win32_System_Registry",
     "Win32_UI_HiDpi",
@@ -59,24 +88,28 @@ winresource = "0.1"
 # signs licence tokens for the fake Clavren server the tests run against (tests/common/licence.rs),
 # with ed25519-dalek from the dependencies
 clavren-protocol = { git = "https://github.com/Ran-n/clavren", tag = "v0.2.0" }
-# random bytes for a new release key (examples/release_sign.rs)
-getrandom = "0.4"
 uuid = { version = "1", features = ["v4"] }
 # Slint's headless backend for the UI tests; pinned to the exact Slint version it belongs to.
 i-slint-backend-testing = "=1.18.1"
-# the desktop test driver reads where an open popup menu sits; internal API, so pinned the same way
+# the desktop test driver reads where an open popup menu sits, and tests/ui/update_schedule.rs moves the
+# mock clock on; internal API, so pinned the same way
 i-slint-core = "=1.18.1"
 # renders assets/logo.svg into the .ico and the PNG (examples/render_logo.rs) and checks them (tests/logo.rs)
 ico = "0.6"
 png = "0.18"
+# an independent minisign implementation: the contract test checks what avalio-lite-sign writes with it
+# (tests/update/)
+minisign-verify = "0.3"
 proptest = "1"
 # the same version Slint renders SVGs with, so it isn't compiled twice
 resvg = "0.48"
-tempfile = "3"
-# Win32 calls the desktop tests use to find, capture and click the real window
+# Win32 calls the desktop tests use to find, capture and click the real window, and to keep it
+# off the screen (cloaked) while they run
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
+    "Win32_System_Threading",
     "Win32_Storage_Xps",
     "Win32_UI_HiDpi",
     "Win32_UI_WindowsAndMessaging",

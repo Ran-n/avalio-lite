@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/07 20:25:34.463651
-//+ Revised: 	2026/11/15 12:17:25.671032
+//+ Revised: 	2026/11/23 00:26:15.488199
 // -----------------------------------------------------------------------------
 
 //! The licence screen's wiring: what it shows for each answer of the licence client, activating a
@@ -14,10 +14,10 @@ use chrono::Utc;
 use clavren_client::{Background, Client, Outcome};
 use slint::{ComponentHandle, SharedString};
 
-use crate::i18n::{self, Message};
+use crate::i18n::{self, AppMessage, LicenceMessage, Message};
 use crate::licence::{Notice, asks_for_key, notice_for, notice_for_failure, reminder, standing};
 use crate::ui::{AppWindow, Licence};
-use crate::window::worker::{self, SharedWorker};
+use crate::window::worker::{self, Ending, SharedWorker};
 use crate::window::{view, with_window, with_window1};
 
 /// What an activation or check came back with: the client's answer, or why there was none.
@@ -106,7 +106,7 @@ fn checked_now(window: &AppWindow, client: &Client, answer: &Answer) {
         Ok(_) => {
             show(window, client, answer);
             if window.global::<Licence>().get_licensed() {
-                view::show_status(window, i18n::text(i18n::current(), &Message::LicenceConfirmed));
+                view::show_status(window, i18n::text(i18n::current(), &Message::Licence(LicenceMessage::Confirmed)));
             }
         }
         Err(notice) => {
@@ -122,12 +122,16 @@ fn show_standing(window: &AppWindow, outcome: &Outcome) {
     let language = i18n::current();
     if let Some(standing) = standing(outcome) {
         let term = match standing.ends_on {
-            Some(day) => i18n::text(language, &Message::LicenceUntil { date: &i18n::licence_day(day) }),
-            None => i18n::text(language, &Message::LicencePermanent),
+            Some(day) => {
+                i18n::text(language, &Message::Licence(LicenceMessage::Until { date: &i18n::licence_day(day) }))
+            }
+            None => i18n::text(language, &Message::Licence(LicenceMessage::Permanent)),
         };
         licence.set_term(term.into());
         let offline = i18n::licence_day(standing.offline_until);
-        licence.set_offline_until(i18n::text(language, &Message::LicenceOfflineUntil { date: &offline }).into());
+        licence.set_offline_until(
+            i18n::text(language, &Message::Licence(LicenceMessage::OfflineUntil { date: &offline })).into(),
+        );
     }
     if let Some(reminder) = reminder(outcome, Utc::now()) {
         view::show_status(window, i18n::licence_reminder(language, reminder));
@@ -151,11 +155,11 @@ fn start(
     let licence = window.global::<Licence>();
     licence.set_busy(true);
     view::clear_messages(window);
-    worker::run_or(worker.as_ref(), window, "the licence check", job, done, failed);
+    worker::run_or(worker.as_ref(), window, ("the licence check", job), Ending { done, failed });
 }
 
 /// The check couldn't run (it couldn't start, or it broke off): the screen stops waiting and says so.
 fn failed(window: &AppWindow) {
     window.global::<Licence>().set_busy(false);
-    view::show_error_text(window, i18n::text(i18n::current(), &Message::BackgroundFailed));
+    view::show_error_text(window, i18n::text(i18n::current(), &Message::App(AppMessage::BackgroundFailed)));
 }

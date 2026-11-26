@@ -1,0 +1,112 @@
+// -----------------------------------------------------------------------------
+//+ Authors: 	Ran# <ran.hash@proton.me>
+//+ Created: 	2026/10/28 09:31:17.826999
+//+ Revised: 	2026/11/23 00:26:14.298144
+// -----------------------------------------------------------------------------
+
+//! Interface language. Slint strings are translated from `lang/<code>/LC_MESSAGES/avalio-lite.po`;
+//! text produced in Rust (errors, questions, default titles) is translated here, one `match`
+//! arm per language so a missing translation is a compile error.
+
+mod english;
+mod errors;
+mod galician;
+mod labels;
+mod messages;
+pub mod shortcuts;
+
+use std::sync::atomic::{AtomicU8, Ordering};
+
+use serde::{Deserialize, Serialize};
+
+pub use errors::error_message;
+pub use labels::{
+    ExportLabels, column_type_name, default_column_title, export_labels, first_name_headers, name_column_title,
+    surname_headers,
+};
+pub use messages::{
+    AppMessage, DataMessage, LicenceMessage, Message, SheetMessage, ShortcutsMessage, SpreadsheetMessage,
+    UpdateMessage, licence_day, licence_notice, licence_reminder, text,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Language {
+    #[default]
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "gl")]
+    Galician,
+}
+
+pub const LANGUAGES: [Language; 2] = [Language::English, Language::Galician];
+
+static CURRENT: AtomicU8 = AtomicU8::new(0);
+
+impl Language {
+    /// The locale code, which is also the folder name under `lang/`.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::English => "en",
+            Self::Galician => "gl",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        LANGUAGES.into_iter().find(|language| language.code() == code)
+    }
+
+    /// The language's own name, as shown in the language picker.
+    pub fn native_name(self) -> &'static str {
+        match self {
+            Self::English => "English",
+            Self::Galician => "Galego",
+        }
+    }
+
+    /// Galician when Windows is set to Galician (`gl`, `gl-ES`), English otherwise.
+    pub fn from_locale(locale: Option<&str>) -> Self {
+        match locale {
+            Some(locale) if locale.to_ascii_lowercase().starts_with("gl") => Self::Galician,
+            _ => Self::English,
+        }
+    }
+
+    pub fn from_system() -> Self {
+        Self::from_locale(sys_locale::get_locale().as_deref())
+    }
+
+    pub fn decimal_separator(self) -> char {
+        match self {
+            Self::English => '.',
+            Self::Galician => ',',
+        }
+    }
+
+    fn index(self) -> u8 {
+        match self {
+            Self::English => 0,
+            Self::Galician => 1,
+        }
+    }
+}
+
+/// The language the interface is currently shown in. A process-wide setting, like the logger.
+pub fn current() -> Language {
+    let index = CURRENT.load(Ordering::Relaxed);
+    LANGUAGES.into_iter().find(|language| language.index() == index).unwrap_or_default()
+}
+
+pub fn set_current(language: Language) {
+    CURRENT.store(language.index(), Ordering::Relaxed);
+}
+
+/// A byte count as mebibytes with one decimal, written with `separator`: 3.1 or 3,1.
+fn mebibytes(bytes: u64, separator: char) -> String {
+    let tenths = bytes * 10 / (1024 * 1024);
+    format!("{}{separator}{}", tenths / 10, tenths % 10)
+}
+
+/// Swaps the decimal point of a number formatted by `compute` for the language's separator.
+pub fn localize_number(language: Language, number: &str) -> String {
+    number.replace('.', &language.decimal_separator().to_string())
+}

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:47.030126
-//+ Revised: 	2026/11/15 12:17:32.494800
+//+ Revised: 	2026/11/24 17:54:11.296872
 // -----------------------------------------------------------------------------
 
 //! The shortcut rules, their text form in config.toml, and how config entries are applied.
@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use avalio_lite::shortcuts::ui::key_events;
-use avalio_lite::shortcuts::{Action, Key, KeyCombo, ProblemKind, ShortcutError, Shortcuts};
+use avalio_lite::shortcuts::{Action, Key, KeyCombo, Modifiers, ProblemKind, ShortcutError, Shortcuts};
 use slint::platform::Key as SlintKey;
 
 fn combo(text: &str) -> KeyCombo {
@@ -141,7 +141,7 @@ fn reverting_a_clash_can_revert_another_override() {
 #[test]
 fn key_presses_map_to_actions() {
     let defaults = Shortcuts::defaults();
-    let pressed = |text: &str, ctrl, shift, alt| key_events::combo(text, ctrl, shift, alt);
+    let pressed = |text: &str, ctrl, shift, alt| key_events::combo(text, Modifiers { ctrl, shift, alt });
     assert_eq!(pressed("l", true, false, false), Some(combo("Ctrl+L")));
     assert_eq!(pressed("L", true, true, false), Some(combo("Ctrl+Shift+L")));
     assert_eq!(pressed("D", true, true, false).and_then(|keys| defaults.action_for(&keys)), Some(Action::ToggleTheme));
@@ -199,11 +199,23 @@ fn reset_restores_the_default() {
 
 #[test]
 fn recorded_presses_say_why_they_are_refused() {
-    assert_eq!(key_events::checked_combo("k", false, false, false), Err(ShortcutError::NeedsCtrlOrAlt));
-    assert_eq!(key_events::checked_combo("2", true, false, true), Err(ShortcutError::CtrlAlt));
-    assert_eq!(key_events::checked_combo("c", true, false, false), Err(ShortcutError::EditingKey('C')));
-    assert_eq!(key_events::checked_combo(" ", true, false, false), Err(ShortcutError::UnknownKey));
-    assert_eq!(key_events::checked_combo("k", true, false, false), Ok(combo("Ctrl+K")));
+    assert_eq!(
+        key_events::checked_combo("k", Modifiers { ctrl: false, shift: false, alt: false }),
+        Err(ShortcutError::NeedsCtrlOrAlt)
+    );
+    assert_eq!(
+        key_events::checked_combo("2", Modifiers { ctrl: true, shift: false, alt: true }),
+        Err(ShortcutError::CtrlAlt)
+    );
+    assert_eq!(
+        key_events::checked_combo("c", Modifiers { ctrl: true, shift: false, alt: false }),
+        Err(ShortcutError::EditingKey('C'))
+    );
+    assert_eq!(
+        key_events::checked_combo(" ", Modifiers { ctrl: true, shift: false, alt: false }),
+        Err(ShortcutError::UnknownKey)
+    );
+    assert_eq!(key_events::checked_combo("k", Modifiers { ctrl: true, shift: false, alt: false }), Ok(combo("Ctrl+K")));
 }
 
 /// The English texts the log gets for refused shortcuts and ignored config entries.
@@ -237,7 +249,9 @@ fn refusals_and_ignored_entries_read_well_in_the_log() {
 fn any_combo() -> impl proptest::strategy::Strategy<Value = KeyCombo> {
     use proptest::prelude::*;
     (proptest::sample::select(Key::all()), any::<bool>(), any::<bool>(), any::<bool>())
-        .prop_filter_map("not an allowed shortcut", |(key, ctrl, shift, alt)| KeyCombo::new(ctrl, shift, alt, key).ok())
+        .prop_filter_map("not an allowed shortcut", |(key, ctrl, shift, alt)| {
+            KeyCombo::new(Modifiers { ctrl, shift, alt }, key).ok()
+        })
 }
 
 proptest::proptest! {

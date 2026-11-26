@@ -1,0 +1,161 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Gradebook, Tone } from "../gradebook.slint";
+import { GradeItem, PupilView } from "../pupil-view.slint";
+import { ActionButton, ButtonKind } from "../components/buttons.slint";
+import { Avatar } from "../components/avatar.slint";
+import { Tag } from "../components/surfaces.slint";
+
+// One mark: its title and weight on the left, the mark out of its maximum on the right.
+component GradeRow inherits Rectangle {
+    in property <GradeItem> grade;
+    in property <bool> first;
+    property <string> mark: root.grade.text == "" ? "–"
+        : root.grade.max-score == "" ? root.grade.text : root.grade.text + " / " + root.grade.max-score;
+
+    min-height: 56px;
+    // one readable item for the whole row; the texts below are drawn only
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.grade.title + ": " + (root.grade.text == "" ? @tr("no mark yet") : root.mark)
+        + (root.grade.provisional && root.grade.text != "" ? " (" + @tr("provisional") + ")" : "");
+    if !root.first: Rectangle {
+        y: 0px;
+        height: 1px;
+        background: Theme.line;
+    }
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 12px;
+        Text {
+            text: root.grade.title;
+            accessible-role: AccessibleRole.none;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            font-weight: root.grade.weight == "" ? 600 : 400;
+            color: Theme.text;
+        }
+        // the weights show here when the sheet shows them (⋯ → Show weights & scales)
+        if Gradebook.show-column-settings && root.grade.weight != "": VerticalLayout {
+            alignment: center;
+            Tag {
+                text: root.grade.bonus ? @tr("+{}% bonus", root.grade.weight) : @tr("{}%", root.grade.weight);
+                highlighted: root.grade.bonus;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 30px;
+                width: max(96px, pill.preferred-width + 26px);
+                border-radius: 15px;
+                border-width: root.grade.provisional && root.grade.text != "" ? 1px : 0px;
+                border-color: Theme.warn.with-alpha(0.5);
+                background: root.grade.text == "" || root.grade.provisional || root.grade.tone == Tone.neutral ? Theme.raised
+                    : root.grade.tone == Tone.pass ? Theme.pass-soft
+                    : Theme.fail-soft;
+                pill := Text {
+                    text: (root.grade.provisional && root.grade.text != "" ? "! " : "") + root.mark;
+                    accessible-role: AccessibleRole.none;
+                    width: parent.width;
+                    height: parent.height;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: root.grade.text == "" || root.grade.provisional ? Theme.muted
+                        : root.grade.tone == Tone.pass ? Theme.pass
+                        : root.grade.tone == Tone.fail ? Theme.fail
+                        : Theme.text;
+                }
+            }
+        }
+    }
+}
+
+// One pupil's own grades over the whole window: no other pupil, no class figures and no notes.
+export component PupilGradesPage inherits Rectangle {
+    background: Theme.canvas;
+    VerticalLayout {
+        padding: 32px;
+        padding-top: 26px;
+        spacing: 20px;
+        HorizontalLayout {
+            spacing: 16px;
+            VerticalLayout {
+                alignment: center;
+                Avatar {
+                    width: 64px;
+                    picture: PupilView.pupil.avatar;
+                    initials: PupilView.pupil.initials;
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 4px;
+                Text {
+                    text: PupilView.pupil.full-name;
+                    wrap: word-wrap;
+                    font-size: Theme.text-xl;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+                Text {
+                    text: @tr("Number {}", PupilView.pupil.number) + " · " + Gradebook.class-name;
+                    overflow: elide;
+                    color: Theme.muted;
+                }
+            }
+            VerticalLayout {
+                alignment: start;
+                HorizontalLayout {
+                    spacing: 8px;
+                    ActionButton {
+                        text: @tr("Back to the list");
+                        clicked => { PupilView.back-to-list(); }
+                    }
+                    if PupilView.has-next: ActionButton {
+                        text: @tr("Next pupil");
+                        kind: ButtonKind.primary;
+                        clicked => { PupilView.next(); }
+                    }
+                }
+            }
+        }
+        scroll := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            content-height: content.preferred-height;
+            content := VerticalLayout {
+                width: scroll.visible-width;
+                alignment: start;
+                spacing: 14px;
+                if PupilView.grades.length == 0: Text {
+                    text: @tr("There are no grades in this class yet.");
+                    color: Theme.muted;
+                }
+                if PupilView.grades.length > 0: Rectangle {
+                    background: Theme.surface;
+                    border-radius: Theme.radius-m;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    VerticalLayout {
+                        for grade[index] in PupilView.grades: GradeRow {
+                            grade: grade;
+                            first: index == 0;
+                        }
+                    }
+                }
+                if PupilView.any-provisional: Text {
+                    text: @tr("Grades marked with ! are provisional: they can still change.");
+                    wrap: word-wrap;
+                    color: Theme.warn;
+                }
+            }
+        }
+    }
+}

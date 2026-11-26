@@ -1,6 +1,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "../theme.slint";
 import { MessageBanner } from "../components/surfaces.slint";
+import { AboutCard } from "about-card.slint";
 import { AppearanceCard } from "appearance-card.slint";
 import { BackupCard } from "backup-card.slint";
 import { DatabaseCard } from "database-card.slint";
@@ -99,6 +100,8 @@ export component SettingsPage inherits Rectangle {
                             log-folder: root.log-folder;
                             move-logs => { root.move-logs(); }
                         }
+                        // last: who makes the app, its licence, and where to read more
+                        AboutCard { }
                     }
                 }
             }

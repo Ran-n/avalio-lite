@@ -1,20 +1,37 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/09 10:42:02.250808
-//+ Revised: 	2026/11/09 10:42:02.250808
+//+ Revised: 	2026/11/23 14:42:38.749619
 // -----------------------------------------------------------------------------
 
 //! The app's real window through Win32, for both sides of the desktop tests: the tests find it by
-//! its process (`tests/desktop_support/window.rs`), and the test driver (`examples/app_driver.rs`)
+//! its process (`tests/desktop_support/window.rs`), and the test driver (`examples/app_driver/`)
 //! finds its own window to type into.
 
-use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Graphics::Dwm::{DWMWA_CLOAK, DWMWA_CLOAKED, DwmGetWindowAttribute, DwmSetWindowAttribute};
+use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CHAR, WM_KEYDOWN, WM_KEYUP,
+    CWPSTRUCT, CallNextHookEx, EnumWindows, GWL_STYLE, GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindowVisible, PostMessageW, SetWindowsHookExW, WH_CALLWNDPROC, WM_CHAR, WM_CREATE, WM_KEYDOWN, WM_KEYUP,
+    WM_SHOWWINDOW, WS_CHILD,
 };
 
+/// Set to `1` to see the app's window while the desktop tests run; without it the window is hidden.
+pub const SHOW_WINDOW_ENV: &str = "AVALIO_LITE_SHOW_TEST_WINDOW";
+
+/// Whether this run shows the app's window (see [`SHOW_WINDOW_ENV`]).
+pub fn window_shown() -> bool {
+    shows_window(std::env::var_os(SHOW_WINDOW_ENV).as_deref())
+}
+
+/// Whether a value of [`SHOW_WINDOW_ENV`] shows the window: only `1`.
+pub fn shows_window(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|value| value == "1")
+}
+
 /// The main window's title (`ui/app-window.slint`); the process has helper windows too.
-const APP_TITLE: &str = "avalio-lite";
+const APP_TITLE: &str = "avalio lite";
 /// The `lParam` of a key going down, and of one going up (previous state down, transition up).
 pub const KEY_DOWN: LPARAM = 1;
 pub const KEY_UP: LPARAM = 1 | (0b11 << 30);
@@ -80,4 +97,59 @@ pub fn post_text(hwnd: HWND, text: &str) -> Result<(), String> {
         post(hwnd, WM_KEYUP, VK_PACKET, KEY_UP)?;
     }
     Ok(())
+}
+
+/// Cloaks a top-level window as it is created or shown; child windows are left alone.
+fn cloak_on_create_or_show(message: &CWPSTRUCT) {
+    let showing = message.message == WM_SHOWWINDOW && message.wParam != 0;
+    if message.message != WM_CREATE && !showing {
+        return;
+    }
+    // SAFETY: a window handle Windows is delivering a message to.
+    let style = unsafe { GetWindowLongPtrW(message.hwnd, GWL_STYLE) } as u32;
+    if style & WS_CHILD == 0
+        && let Err(error) = cloak(message.hwnd)
+    {
+        // inside a window hook there is no caller to hand the error to
+        eprintln!("{error}");
+    }
+}
+
+/// Keeps every top-level window this thread creates off the screen: each is cloaked (DWM still
+/// composes and paints it, so `PrintWindow` captures and posted messages work as before) as it is
+/// created and again as it is shown, before its first frame reaches the screen. A cloaked window is
+/// left out of the taskbar and Alt+Tab, and it never takes the foreground from the user.
+pub fn hide_windows_of_this_thread() -> Result<(), String> {
+    unsafe extern "system" fn watch(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        // a non-negative code carries a message about to reach a window procedure
+        if code >= 0 {
+            // SAFETY: for WH_CALLWNDPROC, `lparam` points to the CWPSTRUCT of the message.
+            let message = unsafe { &*(lparam as *const CWPSTRUCT) };
+            cloak_on_create_or_show(message);
+        }
+        // SAFETY: passes the message on, as every hook must.
+        unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+    }
+    // SAFETY: a hook procedure in this module, on this thread only; it stays for the process' life.
+    let hook = unsafe { SetWindowsHookExW(WH_CALLWNDPROC, Some(watch), std::ptr::null_mut(), GetCurrentThreadId()) };
+    if hook.is_null() { Err(format!("SetWindowsHookEx failed: {}", std::io::Error::last_os_error())) } else { Ok(()) }
+}
+
+/// Cloaks `hwnd`, a window of this process.
+fn cloak(hwnd: HWND) -> Result<(), String> {
+    let on: i32 = 1;
+    // SAFETY: a window handle and a BOOL of the size given.
+    let result =
+        unsafe { DwmSetWindowAttribute(hwnd, DWMWA_CLOAK as u32, (&raw const on).cast(), size_of::<i32>() as u32) };
+    if result < 0 { Err(format!("DwmSetWindowAttribute(DWMWA_CLOAK) failed: {result:#x}")) } else { Ok(()) }
+}
+
+/// Whether `hwnd` (any process' window) is cloaked, so it isn't on the screen.
+pub fn is_cloaked(hwnd: HWND) -> Result<bool, String> {
+    let mut cloaked: u32 = 0;
+    // SAFETY: a window handle and a u32 of the size given to fill.
+    let result = unsafe {
+        DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED as u32, (&raw mut cloaked).cast(), size_of::<u32>() as u32)
+    };
+    if result < 0 { Err(format!("DwmGetWindowAttribute(DWMWA_CLOAKED) failed: {result:#x}")) } else { Ok(cloaked != 0) }
 }

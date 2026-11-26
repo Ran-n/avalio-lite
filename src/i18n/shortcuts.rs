@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/29 02:54:46.754890
-//+ Revised: 	2026/11/02 21:48:10.557063
+//+ Revised: 	2026/11/23 16:34:34.712924
 // -----------------------------------------------------------------------------
+
+//! The name of each shortcut's action and of its keys, in the interface language. What a shortcut does is
+//! in `crate::shortcuts`.
 
 use super::Language;
 use crate::shortcuts::{Action, KeyCombo};

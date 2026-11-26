@@ -4,7 +4,7 @@
 profile = "mutants"
 
 # The UI wiring (src/app/, the src/window/ kit and each feature's ui module) is checked by
-# tests/ui.rs and the desktop tests, not by mutation testing. The app state in src/state/ is
+# tests/ui/ and the desktop tests, not by mutation testing. The app state in src/state/ is
 # logic, and is mutation-tested.
 exclude_globs = ["src/app/**", "src/window/**", "src/*/ui.rs", "src/*/ui/**", "src/main.rs"]
 

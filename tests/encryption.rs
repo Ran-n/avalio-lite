@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.184372
-//+ Revised: 	2026/11/15 12:17:28.808245
+//+ Revised: 	2026/11/25 11:43:13.066347
 // -----------------------------------------------------------------------------
 
 //! The PIN encrypts the database file (SQLCipher). These tests look at the real file on disk.
@@ -381,6 +381,19 @@ fn an_encrypted_copy_kept_before_an_update_stays_when_the_database_is_unlocked()
     assert_eq!(state.start(), Startup::Locked);
     state.unlock("246810").unwrap();
     assert!(copy.exists());
+}
+
+#[test]
+fn the_open_databases_pin_can_be_checked() {
+    let fixture = Fixture::new();
+    let mut state = set_up(&fixture);
+    assert!(matches!(state.check_current_pin("246810"), Err(AppError::NotEditable)), "there is no PIN");
+    state.set_pin("246810", "246810").unwrap();
+    assert!(state.check_current_pin("246810").is_ok());
+    for wrong in ["246811", "24681", "", "2468100"] {
+        assert!(matches!(state.check_current_pin(wrong), Err(AppError::WrongPin)), "{wrong:?}");
+    }
+    assert!(state.connection().is_some(), "checking closes nothing");
 }
 
 #[test]

@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.853714
-//+ Revised: 	2026/11/12 14:39:51.667239
+//+ Revised: 	2026/11/25 11:43:02.216749
 // -----------------------------------------------------------------------------
 
 //! Adding a backup's classes to the open database, keeping all that is there.
@@ -13,7 +13,7 @@ use rusqlite::Connection;
 use crate::error::Result;
 use crate::gradebook::columns::copy_columns;
 use crate::gradebook::model::{Pupil, Sheet, name_match_key};
-use crate::gradebook::{cells, classes, pupils, sheet};
+use crate::gradebook::{cells, classes, pictures, pupils, sheet};
 
 /// What adding a backup's classes did, for the status line.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -28,7 +28,7 @@ pub struct AddSummary {
     pub renamed: Vec<(String, String)>,
 }
 
-/// Copies every class of `source` (columns, pupils and typed marks) into `target`, keeping all
+/// Copies every class of `source` (columns, pupils with their pictures, and typed marks) into `target`, keeping all
 /// that is there. A taken class name gets the lowest free " (n)". A backup pupil joins the one
 /// pupil already here with the same full name; with none or several, a new pupil is made. A pupil the
 /// backup shares between classes stays one pupil. All or nothing: one transaction.
@@ -38,11 +38,24 @@ pub fn add_classes(target: &Connection, source: &Connection) -> Result<AddSummar
     for class in classes::list_classes(source)? {
         adding.add_class(&transaction, &class.name, &sheet::load_sheet(source, class.id)?)?;
     }
+    copy_pictures(&transaction, source, &adding.pupils)?;
     transaction.commit()?;
     let summary = adding.summary;
     let (classes, pupils, existing) = (summary.class_ids.len(), summary.pupils, summary.existing_pupils);
     log::info!("added {classes} classes and {pupils} pupils ({existing} already here) from a backup");
     Ok(summary)
+}
+
+/// Brings the added pupils' pictures. A pupil who was already here keeps the picture they have.
+fn copy_pictures(target: &Connection, source: &Connection, pupils: &HashMap<i64, i64>) -> Result<()> {
+    for (&there, &here) in pupils {
+        if pictures::picture(target, here)?.is_none()
+            && let Some(picture) = pictures::picture(source, there)?
+        {
+            pictures::set_picture(target, here, &picture)?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -69,7 +82,7 @@ impl Adding {
         let columns = copy_columns(connection, class_id, &sheet.columns)?;
         for row in &sheet.rows {
             let pupil_id = self.pupil(connection, class_id, &row.pupil)?;
-            cells::copy_row_marks(connection, &sheet.columns, &row.values, &columns, pupil_id)?;
+            cells::copy_row_marks(connection, (&sheet.columns, &row.values), &columns, pupil_id)?;
         }
         Ok(class_id)
     }

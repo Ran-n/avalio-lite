@@ -1,7 +1,7 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/10/27 19:34:10.315159 )
-[//]: # (+ Revised: 	2026/11/15 13:36:35.267126 )
+[//]: # (+ Revised: 	2026/11/26 12:32:03.540045 )
 [//]: # ( ---------------------------------------------------------------------- )
 
 # Changelog
@@ -11,6 +11,44 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- **⋯ → Show a pupil their grades…**: pick a pupil from a list that shows each one's picture, number and name, and the whole window shows only that pupil's own marks and grades in the class. **Next pupil** goes on by number and **Back to the list** lets you pick anyone. With a PIN, it is asked before each pupil's grades and before going back to the sheet, and never to go back to the list
+- Pupils can have a picture: the round button at the start of each row opens a panel to choose, change or remove it. Pictures are kept in the database (encrypted with the PIN, and in backups), as a small square without the photo's location or camera details
+- Added a Troubleshooting section to the user guide
+- The app asks GitHub and GitLab for new versions at the same time, so one of them being down or slow no longer stops updates
+- **Settings → Updates** shows the running version and what the last check found, with the time; **Stop skipping** offers a skipped version again
+- While an update downloads, the bar shows how far it has come, and **Cancel** stops it
+- `avalio-lite --version` prints the version
+- **Settings → About**: the version, who makes the app (Breren), its licence, the licences of the code it is built with, and links to the source, all versions, what's new and support
+- The window opens where it was when the app last closed, at the same size, maximised if it was; a place no longer on any screen falls back to the centre of the screen
+- Releases are built by CI from the tag, with build provenance, and each file has a `.b3` checksum next to it
+
+### Changed
+
+- The update bar's buttons are **Update and restart**, **Skip this version** and × (hidden until the next start); **What's new** is gone, and the release page is named in any error instead
+- Installed and portable copies update the same way: the new program takes the running one's place and opens again, and an installed copy keeps its entry in Windows' installed apps at the new version
+- Release files are named `avalio-lite-<version>-windows-x86_64-portable.exe` and `-setup.exe`; the old names are still published until 2027-05-15, so copies from 0.6.0 to 0.10.0 can update themselves to this version
+- The settings file lives in `%APPDATA%\Breren\avalio-lite`, beside the licence; the first start moves it there from `%APPDATA%\avalio-lite`, and keeps using the old folder if the move fails
+- The installer and Windows' installed apps name Breren as the publisher
+- The installer installs for the current user only, never asks for administrator rights, and leaves the desktop shortcut unticked
+- The name shown in Windows' installed apps, the Start menu, the title bar, messages, `--version` and release titles is **avalio lite**; program and file names stay `avalio-lite`, and an upgrade removes the old hyphen-named shortcuts
+- Release signatures are in minisign's format (`.minisig`), so a download can be checked with `minisign -Vm`; the README lists the two release keys. The older-named copies keep their `.sig` for 0.6.0 to 0.10.0
+- The column a rounded column takes its number from is kept in a table of its own; the first start after this update keeps a copy of the database as it was, and a rounding linked to a column it may not round shows no value until it is linked again
+- The first automatic check is a minute after the app opens; after a failed one the next is an hour later, not a day
+- Every README screenshot follows the reader's light or dark mode, the Galician one too, on GitHub, GitLab and Codeberg alike
+- The desktop tests keep the app's window hidden, off the screen, the taskbar and Alt+Tab, unless `AVALIO_LITE_SHOW_TEST_WINDOW=1` asks to see it
+
+### Fixed
+
+- A debug build no longer prints hundreds of linker warnings about OpenSSL's missing debug file (LNK4099)
+
+### Security
+
+- An update's checksum and signature are checked before the update itself is downloaded, and the signature now covers the version too, so an older genuine release can't be passed off as a newer one
+- A second, backup release key is built in, so a lost or stolen key can be replaced by an update
+- Removed a leaked licence key from the repository history (test screenshots); the key is revoked
 
 ## [0.10.0] - 2026-11-15
 

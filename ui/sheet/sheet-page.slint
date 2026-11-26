@@ -3,6 +3,7 @@ import { Gradebook } from "../gradebook.slint";
 import { MessageBanner } from "../components/surfaces.slint";
 import { ColumnPanel } from "../column-panel/column-panel.slint";
 import { ColumnMenuContent, MoreMenuContent, PupilMenuContent } from "menus.slint";
+import { PupilPanel } from "pupil-panel.slint";
 import { SheetGrid } from "sheet-grid.slint";
 import { SheetTitle } from "sheet-header.slint";
 
@@ -61,6 +62,13 @@ export component SheetPage inherits Rectangle {
         height: root.height;
         column: column;
         index: Gradebook.panel-index;
+    }
+
+    for pupil in Gradebook.panel-pupil: PupilPanel {
+        x: root.width - self.width;
+        y: 0px;
+        height: root.height;
+        pupil: pupil;
     }
 
     column-menu := PopupWindow {

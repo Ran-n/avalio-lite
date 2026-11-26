@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:43.679671
-//+ Revised: 	2026/11/15 03:14:39.614204
+//+ Revised: 	2026/11/25 11:43:04.319529
 // -----------------------------------------------------------------------------
+
+//! The column panel: opening it on a column, and keeping it showing that column as the sheet changes. What
+//! its fields do is in `column_settings`.
 
 use slint::{ComponentHandle, Model};
 
@@ -25,6 +28,7 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         run(window, &shared, "open column settings", |connection| {
             let columns = list_columns(connection, class_id)?;
             if let Some(column) = usize::try_from(index).ok().and_then(|index| columns.get(index)) {
+                super::pupil_panel::close(window);
                 show(window, column, &columns, index);
             }
             Ok(Refresh::Nothing)

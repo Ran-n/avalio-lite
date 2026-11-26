@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/27 23:00:54.606846
-//+ Revised: 	2026/11/11 17:10:58.621523
+//+ Revised: 	2026/11/23 16:34:34.092545
 // -----------------------------------------------------------------------------
+
+//! Reads a class's whole sheet from the database: its columns, its pupils and their cells. Writing a cell
+//! is in `cells`; calculating the grades in `compute`.
 
 use std::collections::HashMap;
 

@@ -1,0 +1,140 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { Gradebook } from "../gradebook.slint";
+import { PupilCard, PupilView } from "../pupil-view.slint";
+import { ActionButton } from "../components/buttons.slint";
+import { Avatar } from "../components/avatar.slint";
+import { FocusRing, KeyboardPress } from "../components/focus.slint";
+import { MessageBanner } from "../components/surfaces.slint";
+
+component PupilCardButton inherits Rectangle {
+    in property <PupilCard> pupil;
+    out property <bool> has-focus: keys.has-focus;
+    callback clicked();
+
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.accent : Theme.line;
+    background: touch.has-hover ? Theme.raised : Theme.surface;
+    accessible-role: button;
+    accessible-label: root.pupil.listed-name;
+    accessible-description: @tr("Number {}", root.pupil.number);
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 14px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                width: 52px;
+                picture: root.pupil.avatar;
+                initials: root.pupil.initials;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.pupil.listed-name;
+                accessible-role: none;
+                overflow: elide;
+                font-weight: 600;
+                color: Theme.text;
+            }
+            Text {
+                text: root.pupil.number;
+                accessible-role: none;
+                font-size: Theme.text-s;
+                color: Theme.muted;
+            }
+        }
+    }
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => { root.clicked(); }
+    }
+    accessible-action-default => { root.clicked(); }
+    keys := KeyboardPress { pressed => { root.clicked(); } }
+    if keys.has-focus: FocusRing { border-radius: root.border-radius; }
+}
+
+// The class's pupils by picture, number and name, with no grades, to pick in whatever order they come.
+export component PupilMenuPage inherits Rectangle {
+    in property <string> error-message;
+    in property <bool> pin-set;
+
+    property <length> gap: 10px;
+    property <length> row-height: 76px;
+    property <int> columns: max(1, floor((scroll.visible-width + root.gap) / (240px + root.gap)));
+    property <length> button-width: (scroll.visible-width - (root.columns - 1) * root.gap) / root.columns;
+
+    background: Theme.canvas;
+    VerticalLayout {
+        padding: 32px;
+        padding-top: 26px;
+        spacing: 16px;
+        HorizontalLayout {
+            spacing: 16px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                Text {
+                    text: @tr("Choose a pupil");
+                    font-size: Theme.text-xl;
+                    font-weight: 600;
+                    color: Theme.text;
+                }
+                Text {
+                    text: Gradebook.class-name;
+                    overflow: elide;
+                    color: Theme.muted;
+                }
+            }
+            VerticalLayout {
+                alignment: start;
+                ActionButton {
+                    text: @tr("Back to the sheet");
+                    clicked => { PupilView.leave(); }
+                }
+            }
+        }
+        if root.error-message != "": MessageBanner {
+            message: root.error-message;
+            is-error: true;
+        }
+        Text {
+            text: root.pin-set ? @tr("Each pupil sees only their own grades. Showing a pupil and going back to the sheet ask for your PIN.")
+                : @tr("Each pupil sees only their own grades. With no PIN set, anyone at the computer can open the others; set a PIN in Settings to prevent it.");
+            wrap: word-wrap;
+            color: root.pin-set ? Theme.muted : Theme.warn;
+        }
+        if PupilView.pupils.length == 0 && root.error-message == "": Text {
+            text: @tr("This class has no pupils yet.");
+            color: Theme.muted;
+        }
+        scroll := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            content-height: ceil(PupilView.pupils.length / root.columns) * (root.row-height + root.gap);
+            for pupil[index] in PupilView.pupils: PupilCardButton {
+                x: Math.mod(index, root.columns) * (root.button-width + root.gap);
+                y: floor(index / root.columns) * (root.row-height + root.gap);
+                width: root.button-width;
+                height: root.row-height;
+                pupil: pupil;
+                clicked => { PupilView.show-pupil(pupil.id); }
+                // Tab scrolls the button it reaches into view
+                changed has-focus => {
+                    if (self.has-focus) {
+                        if (self.y + scroll.content-y < 0px) {
+                            scroll.content-y = -self.y;
+                        } else if (self.y + self.height + scroll.content-y > scroll.visible-height) {
+                            scroll.content-y = scroll.visible-height - self.y - self.height;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

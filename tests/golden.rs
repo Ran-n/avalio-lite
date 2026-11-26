@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.706242
-//+ Revised: 	2026/11/14 17:16:22.396263
+//+ Revised: 	2026/11/25 11:43:13.627546
 // -----------------------------------------------------------------------------
 
 //! Files that outlive an app version, pinned as checked-in samples in `tests/golden/`: the settings
@@ -17,9 +17,9 @@ use std::path::{Path, PathBuf};
 
 use avalio_lite::error::AppError;
 use avalio_lite::gradebook::model::{ColumnKind, ColumnType};
-use avalio_lite::gradebook::{cells, classes, columns, pupils, sheet};
+use avalio_lite::gradebook::{cells, classes, columns, pictures, pupils, sheet};
 use avalio_lite::i18n::Language;
-use avalio_lite::platform::config::{AppConfig, ConfigStore, Preferences, ThemeChoice};
+use avalio_lite::platform::config::{AppConfig, ConfigStore, Preferences, ThemeChoice, WindowPlace};
 use avalio_lite::platform::db::{self, migrations};
 use rusqlite::Connection;
 
@@ -54,11 +54,12 @@ fn current_config() -> AppConfig {
             language: Some(Language::Galician),
             theme: Some(ThemeChoice::Dark),
             sidebar_collapsed: true,
-            check_updates: false,
-            last_update_check: chrono::DateTime::from_timestamp(1_800_000_000, 0),
-            skipped_update: Some("0.6.0".to_owned()),
+            check_automatically: false,
+            last_check: Some(1_800_000_000),
+            skipped_version: Some("0.6.0".to_owned()),
             last_run_version: Some("0.5.0".to_owned()),
             update_failed: Some("the installer couldn't start".to_owned()),
+            window: Some(WindowPlace { x: -1500, y: 40, width: 1180, height: 720, maximized: true }),
         },
         shortcuts: [("lock".to_owned(), "Ctrl+K".to_owned())].into(),
         last_class: Some(3),
@@ -91,8 +92,20 @@ fn a_settings_file_from_before_updates_looks_for_them_by_itself() {
     fs::copy(golden("config-v2.toml"), dir.path().join("config.toml")).unwrap();
     let preferences = ConfigStore::in_dir(dir.path()).load().unwrap().unwrap().preferences;
     assert_eq!(preferences.language, Some(Language::Galician), "what it had is kept");
-    assert!(preferences.check_updates);
-    assert_eq!((preferences.last_update_check, preferences.skipped_update), (None, None));
+    assert!(preferences.check_automatically);
+    assert_eq!((preferences.last_check, preferences.skipped_version), (None, None));
+}
+
+/// 0.6.0 to 0.10.0 wrote the update settings under other names, the last check as a date and time.
+#[test]
+fn a_settings_file_from_before_the_update_standard_keeps_its_update_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::copy(golden("config-v3.toml"), dir.path().join("config.toml")).unwrap();
+    let config = ConfigStore::in_dir(dir.path()).load().unwrap().unwrap();
+    let mut expected = current_config();
+    // the window's place was first kept by 0.11.0
+    expected.preferences.window = None;
+    assert_eq!(config, expected, "every setting reads as the current names hold it");
 }
 
 #[test]
@@ -125,6 +138,7 @@ fn fill_current(connection: &Connection) {
     cells::set_cell(connection, exam, bea, "4").unwrap();
     cells::set_cell(connection, bonus, ana, "10").unwrap();
     cells::set_cell(connection, notes, bea, "Needs glasses").unwrap();
+    pictures::set_picture(connection, ana, PICTURE).unwrap();
     columns::set_column_width(connection, notes, Some(300)).unwrap();
     let names = columns::list_columns(connection, class).unwrap();
     columns::set_column_width(connection, names[0].id, Some(260)).unwrap();
@@ -132,6 +146,9 @@ fn fill_current(connection: &Connection) {
     // the surname after the exam, as a teacher may move it
     columns::move_column_to(connection, names[1].id, 2).unwrap();
 }
+
+/// Ana's picture in the samples; the database doesn't look inside a picture.
+const PICTURE: &[u8] = b"a picture";
 
 /// The column widths of the golden class, in sheet order (the first-name and surname columns
 /// first, from samples before they could move): `None` follows the kind's default.
@@ -195,7 +212,9 @@ fn the_current_database_sample_opens_with_its_data() {
     assert_eq!(column_order(&connection), "FmSmmm", "the surname was moved after the exam");
     assert_eq!(sheet_widths(&connection), [Some(260), None, Some(180), None, None, Some(300)]);
     let class = classes::list_classes(&connection).unwrap()[0].id;
-    assert_eq!(pupils::list_class_pupils(&connection, class).unwrap()[0].surname, "Pérez");
+    let ana = &pupils::list_class_pupils(&connection, class).unwrap()[0];
+    assert_eq!(ana.surname, "Pérez");
+    assert_eq!(pictures::picture(&connection, ana.id).unwrap().as_deref(), Some(PICTURE));
 }
 
 #[test]
@@ -349,6 +368,35 @@ fn a_version_9_database_upgrades_with_all_its_data() {
     assert_eq!(pupils::list_class_pupils(&connection, class).unwrap()[0].surname, "Pérez");
 }
 
+/// The v10 sample is the current one of the day migration 11 (rounding links in their own table)
+/// was written; it has no rounded column, so the link itself is covered by the migration tests.
+#[test]
+fn a_version_10_database_upgrades_with_all_its_data() {
+    let (_dir, path) = scratch_copy("db-v10.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 10, "the sample really is version 10");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    assert_eq!(column_order(&connection), "FmSmmm", "the surname was moved after the exam");
+    assert_eq!(sheet_widths(&connection), [Some(260), None, Some(180), None, None, Some(300)]);
+}
+
+/// The v11 sample is the current one of the day migration 12 (pupils' pictures) was written.
+#[test]
+fn a_version_11_database_upgrades_with_all_its_data() {
+    let (_dir, path) = scratch_copy("db-v11.db");
+    let old = Connection::open(&path).unwrap();
+    assert_eq!(migrations::schema_version(&old).unwrap(), 11, "the sample really is version 11");
+    drop(old);
+    let connection = db::open(&path, None).unwrap();
+    assert_eq!(migrations::schema_version(&connection).unwrap(), migrations::latest_version());
+    assert_current_sheet(&connection);
+    let class = classes::list_classes(&connection).unwrap()[0].id;
+    assert!(pictures::class_pictures(&connection, class).unwrap().is_empty(), "no pictures from before they existed");
+}
+
 #[test]
 fn a_version_4_database_upgrades_with_all_its_data() {
     let (_dir, path) = scratch_copy("db-v4.db");
@@ -426,18 +474,33 @@ fn the_schema_matches_the_golden_dump() {
 // ---------------------------------------------------------------------------------------------
 // Release signatures
 
-/// A `.sig` line made with a fixed test key: Ed25519 signatures are deterministic, so the line only
+/// A `.minisig` file made with a fixed test key: Ed25519 signatures are deterministic, so it only
 /// changes with the format. Signatures already shipped must keep verifying in every later version.
 #[test]
 fn the_release_signature_format_is_stable() {
-    use avalio_lite::update::signature;
+    use avalio_lite::update::signature::{hashes, minisign};
+    let key = ed25519_dalek::SigningKey::from_bytes(&[7; 32]);
+    let version = semver::Version::new(9, 9, 9);
+    let name = "avalio-lite-9.9.9-windows-x86_64-portable.exe";
+    let hashes = hashes::of_bytes(b"avalio-lite");
+    let text = minisign::sign(&key, &version, name, &hashes).unwrap();
+    if updating() {
+        fs::write(golden("release.minisig"), &text).unwrap();
+    }
+    let expected = fs::read_to_string(golden("release.minisig")).unwrap();
+    assert_eq!(text, expected, "the signature format changed; see the module docs");
+    assert_eq!(minisign::verify(&[key.verifying_key()], &expected, (&version, name), &hashes), Ok(()));
+}
+
+/// The format 0.6.0 to 0.10.0 check, which the release tooling still writes for the bridge files:
+/// what was shipped then must come out the same now.
+#[test]
+fn the_bridge_signature_format_is_the_one_shipped() {
+    use avalio_lite::update::signature::bridge;
     let key = ed25519_dalek::SigningKey::from_bytes(&[7; 32]);
     let (name, hash) = ("avalio-lite-9.9.9-setup.exe", blake3::hash(b"avalio-lite").to_hex().to_string());
-    let line = format!("{}\n", signature::sig_line(&signature::sign(&key, name, &hash), name));
-    if updating() {
-        fs::write(golden("release-v1.sig"), &line).unwrap();
-    }
+    let text = bridge::signature_text(&bridge::sign(&key, name, &hash), name);
     let expected = fs::read_to_string(golden("release-v1.sig")).unwrap();
-    assert_eq!(line, expected, "the signature format changed; see the module docs");
-    assert_eq!(signature::verify(&key.verifying_key(), name, &hash, &expected), Ok(()));
+    assert_eq!(text, expected, "the bridge format must not change: copies already out there read it");
+    assert_eq!(bridge::verify(&key.verifying_key(), name, &hash, &expected), Ok(()));
 }

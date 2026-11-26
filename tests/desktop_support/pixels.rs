@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.790620
-//+ Revised: 	2026/11/03 14:00:40.036558
+//+ Revised: 	2026/11/24 17:54:10.391505
 // -----------------------------------------------------------------------------
 
 //! Captured screens: finding controls by their exact theme colours, and comparing whole screens
@@ -82,43 +82,49 @@ impl Image {
         encoder.write_header().unwrap().write_image_data(&self.rgba).unwrap();
     }
 
+    /// The connected area of pixels that `matches` from `start` on (marked in `seen`): its bounding
+    /// box and how many pixels it has.
+    fn fill(&self, start: usize, seen: &mut [bool], matches: &dyn Fn(usize) -> bool) -> (Rect, u32) {
+        let (width, height) = (self.width as usize, self.height as usize);
+        let (mut left, mut top, mut right, mut bottom, mut area) = (width, height, 0, 0, 0u32);
+        let mut stack = vec![start];
+        seen[start] = true;
+        while let Some(at) = stack.pop() {
+            let (x, y) = (at % width, at / width);
+            (left, top, right, bottom) = (left.min(x), top.min(y), right.max(x), bottom.max(y));
+            area += 1;
+            let neighbours = [
+                (x > 0).then(|| at - 1),
+                (x + 1 < width).then(|| at + 1),
+                (y > 0).then(|| at - width),
+                (y + 1 < height).then(|| at + width),
+            ];
+            let fresh: Vec<usize> = neighbours
+                .into_iter()
+                .flatten()
+                .filter(|&next| matches(next) && !std::mem::replace(&mut seen[next], true))
+                .collect();
+            stack.extend(fresh);
+        }
+        let rect =
+            Rect { x: left as u32, y: top as u32, width: (right - left + 1) as u32, height: (bottom - top + 1) as u32 };
+        (rect, area)
+    }
+
     /// Connected areas of `colour` (within `tolerance` per channel) covering at least `min_area`
     /// pixels, as bounding boxes in reading order.
     pub fn blobs(&self, colour: Rgb, tolerance: u8, min_area: u32) -> Vec<Rect> {
-        let (width, height) = (self.width as usize, self.height as usize);
-        let mut seen = vec![false; width * height];
+        let width = self.width as usize;
+        let matches = |at: usize| self.pixel((at % width) as u32, (at / width) as u32).near(colour, tolerance);
+        let mut seen = vec![false; width * self.height as usize];
         let mut found = Vec::new();
-        for start in 0..width * height {
-            if seen[start] || !self.pixel((start % width) as u32, (start / width) as u32).near(colour, tolerance) {
+        for start in 0..seen.len() {
+            if seen[start] || !matches(start) {
                 continue;
             }
-            let (mut left, mut top, mut right, mut bottom, mut area) = (width, height, 0, 0, 0u32);
-            let mut stack = vec![start];
-            seen[start] = true;
-            while let Some(at) = stack.pop() {
-                let (x, y) = (at % width, at / width);
-                (left, top, right, bottom) = (left.min(x), top.min(y), right.max(x), bottom.max(y));
-                area += 1;
-                let neighbours = [
-                    (x > 0).then(|| at - 1),
-                    (x + 1 < width).then(|| at + 1),
-                    (y > 0).then(|| at - width),
-                    (y + 1 < height).then(|| at + width),
-                ];
-                for next in neighbours.into_iter().flatten() {
-                    if !seen[next] && self.pixel((next % width) as u32, (next / width) as u32).near(colour, tolerance) {
-                        seen[next] = true;
-                        stack.push(next);
-                    }
-                }
-            }
+            let (rect, area) = self.fill(start, &mut seen, &matches);
             if area >= min_area {
-                found.push(Rect {
-                    x: left as u32,
-                    y: top as u32,
-                    width: (right - left + 1) as u32,
-                    height: (bottom - top + 1) as u32,
-                });
+                found.push(rect);
             }
         }
         found.sort_by_key(|rect| (rect.y / 8, rect.x));

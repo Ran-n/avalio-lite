@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:13:30.755753
-//+ Revised: 	2026/11/03 11:13:30.755753
+//+ Revised: 	2026/11/24 17:54:05.621563
 // -----------------------------------------------------------------------------
 
 //! A shortcut's keys (modifiers and one key) and the rules they must follow.
@@ -51,9 +51,18 @@ pub struct KeyCombo {
     pub(super) key: Key,
 }
 
+/// The modifier keys held with a key.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
+}
+
 impl KeyCombo {
     /// The one place the shortcut rules live: used by parsing and by key presses alike.
-    pub fn new(ctrl: bool, shift: bool, alt: bool, key: Key) -> Result<Self, ShortcutError> {
+    pub fn new(modifiers: Modifiers, key: Key) -> Result<Self, ShortcutError> {
+        let Modifiers { ctrl, shift, alt } = modifiers;
         if ctrl && alt {
             return Err(ShortcutError::CtrlAlt);
         }
@@ -119,6 +128,6 @@ impl FromStr for KeyCombo {
             }
             *modifier = true;
         }
-        Self::new(ctrl, shift, alt, key)
+        Self::new(Modifiers { ctrl, shift, alt }, key)
     }
 }

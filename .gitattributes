@@ -5,6 +5,14 @@ migrations/*.sql text eol=lf
 tests/golden/*.sql text eol=lf
 tests/golden/*.toml text eol=lf
 tests/golden/*.tsv text eol=lf
+tests/golden/*.txt text eol=lf
+tests/golden/*.sig text eol=lf
+tests/golden/*.minisig text eol=lf
+tests/golden/*.json text eol=lf
+
+# tests/readme.rs compares these with what it would write; each is a few hundred kB of base64, so no diff
+assets/screenshots/*.svg text eol=lf -diff
+
 
 # Binary fixtures: never converted, and never shown through a text converter in git diff
 *.ods binary

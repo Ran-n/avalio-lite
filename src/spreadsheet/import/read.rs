@@ -1,16 +1,18 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/03 11:39:46.470617
-//+ Revised: 	2026/11/12 14:39:54.405468
+//+ Revised: 	2026/11/23 11:49:20.163034
 // -----------------------------------------------------------------------------
 
-//! Reading the workbook's first tab into text cells, as the sheet would show them.
+//! Reading the workbook's first tab into text cells, as the sheet would show them: the headers
+//! of its first row, the names' columns among them, and one row per pupil below.
 
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
-use calamine::{Data, Reader, open_workbook_auto};
+use calamine::{Data, Range, Reader, open_workbook_auto};
 
+use super::cell::cell_text;
 use super::{ImportRow, ImportTable, NameHeaders};
 use crate::error::{AppError, Result};
 use crate::gradebook::model::{name_match_key, split_listed_name};
@@ -33,47 +35,103 @@ fn read_first_tab(path: &Path, names: &NameHeaders) -> Result<ImportTable> {
     let range = workbook.worksheet_range(&first).map_err(|error| read_error(error.to_string()))?;
     // the range starts at the first cell holding anything, which needn't be A1: the headers are
     // its first row and the names' fallback column its first column
-    let (first_row_at, first_column_at) = range.start().ok_or_else(no_pupils)?;
+    let (first_row, first_column) = range.start().ok_or_else(no_pupils)?;
     let (last_row, last_column) = range.end().ok_or_else(no_pupils)?;
-    let mut error_cells = 0;
-    let mut text = |row: u32, column: u32| {
-        let data = range.get_value((row, column)).unwrap_or(&Data::Empty);
-        if matches!(data, Data::Error(_)) {
-            error_cells += 1;
-        }
-        cell_text(data)
-    };
-    let columns = first_column_at..=last_column;
-    let first_row: Vec<String> = columns.clone().map(|column| text(first_row_at, column).unwrap_or_default()).collect();
-    let found = NameColumns::find(&first_row, names).offset_by(first_column_at);
-    let header_columns: Vec<u32> = columns.filter(|column| !found.holds(*column)).collect();
-    let headers = header_columns.iter().map(|column| first_row[(column - first_column_at) as usize].clone()).collect();
-    let mut rows = Vec::new();
-    let mut unnamed_rows = 0;
-    for row in first_row_at + 1..=last_row {
-        let surname = found.surname.and_then(|column| text(row, column));
-        let values: Vec<Option<String>> = header_columns.iter().map(|column| text(row, *column)).collect();
-        // a row with no first name isn't a pupil, even with a surname; one with anything else in
-        // it is counted, so the report can say it was skipped
-        let Some(first_name) = text(row, found.first_name) else {
-            if surname.is_some() || values.iter().any(Option::is_some) {
-                unnamed_rows += 1;
-            }
-            continue;
-        };
-        let (first_name, surname) = match surname {
-            Some(surname) => (first_name, surname),
-            // one name column: "Pérez López, Ana" is written surname first, as school lists do
-            None if found.surname.is_none() => split_listed_name(&first_name).unwrap_or((first_name, String::new())),
-            None => (first_name, String::new()),
-        };
-        rows.push(ImportRow { first_name, surname, values });
-    }
+    let span = Span { first_row, first_column, last_row, last_column };
+    let mut grid = Grid { range: &range, error_cells: 0 };
+    let (found, header_columns, headers) = read_headers(&mut grid, span, names);
+    let (rows, unnamed_rows) = read_pupils(&mut grid, span, found, &header_columns);
     if rows.is_empty() {
         return Err(no_pupils());
     }
     let header_columns = header_columns.into_iter().map(|column| column as usize).collect();
-    Ok(ImportTable { header_columns, headers, rows, error_cells, unnamed_rows })
+    Ok(ImportTable { header_columns, headers, rows, error_cells: grid.error_cells, unnamed_rows })
+}
+
+/// The cells of the first tab, from its first row and column to its last.
+#[derive(Debug, Clone, Copy)]
+struct Span {
+    first_row: u32,
+    first_column: u32,
+    last_row: u32,
+    last_column: u32,
+}
+
+/// The tab's cells as text, counting the error cells read as empty.
+struct Grid<'a> {
+    range: &'a Range<Data>,
+    /// cells holding an Excel error (`#DIV/0!`, `#N/A`), read as empty
+    error_cells: usize,
+}
+
+impl Grid<'_> {
+    /// The cell's text, or `None` when it is empty or an error.
+    fn text(&mut self, row: u32, column: u32) -> Option<String> {
+        let data = self.range.get_value((row, column)).unwrap_or(&Data::Empty);
+        if matches!(data, Data::Error(_)) {
+            self.error_cells += 1;
+        }
+        cell_text(data)
+    }
+}
+
+/// The first row's headers: where the names are, the columns of the other headers (as columns of
+/// the sheet), and those headers' text.
+fn read_headers(grid: &mut Grid, span: Span, names: &NameHeaders) -> (NameColumns, Vec<u32>, Vec<String>) {
+    let columns = span.first_column..=span.last_column;
+    let first_row: Vec<String> =
+        columns.clone().map(|column| grid.text(span.first_row, column).unwrap_or_default()).collect();
+    let found = NameColumns::find(&first_row, names).offset_by(span.first_column);
+    let header_columns: Vec<u32> = columns.filter(|column| !found.holds(*column)).collect();
+    let headers =
+        header_columns.iter().map(|column| first_row[(column - span.first_column) as usize].clone()).collect();
+    (found, header_columns, headers)
+}
+
+/// Every row under the headers: the pupils, and how many rows were skipped as unnamed.
+fn read_pupils(grid: &mut Grid, span: Span, found: NameColumns, header_columns: &[u32]) -> (Vec<ImportRow>, usize) {
+    let mut rows = Vec::new();
+    let mut unnamed_rows = 0;
+    for row in span.first_row + 1..=span.last_row {
+        match read_row(grid, row, found, header_columns) {
+            RowRead::Pupil(pupil) => rows.push(pupil),
+            RowRead::Unnamed => unnamed_rows += 1,
+            RowRead::Blank => {}
+        }
+    }
+    (rows, unnamed_rows)
+}
+
+/// What a row under the headers holds.
+enum RowRead {
+    Pupil(ImportRow),
+    /// no first name, but something else in the row: counted, so the report can say it was skipped
+    Unnamed,
+    /// nothing in it at all
+    Blank,
+}
+
+/// One row: its pupil when it has a first name. A row with no first name isn't a pupil, even with
+/// a surname; one with anything else in it is `Unnamed`.
+fn read_row(grid: &mut Grid, row: u32, found: NameColumns, header_columns: &[u32]) -> RowRead {
+    let surname = found.surname.and_then(|column| grid.text(row, column));
+    let values: Vec<Option<String>> = header_columns.iter().map(|column| grid.text(row, *column)).collect();
+    let Some(first_name) = grid.text(row, found.first_name) else {
+        let has_content = surname.is_some() || values.iter().any(Option::is_some);
+        return if has_content { RowRead::Unnamed } else { RowRead::Blank };
+    };
+    let (first_name, surname) = split_name(first_name, surname, found);
+    RowRead::Pupil(ImportRow { first_name, surname, values })
+}
+
+/// A pupil's names. With no surname column, a name written surname first ("Pérez López, Ana") is
+/// split at its comma, as school lists write it; otherwise the first name stands alone.
+fn split_name(first_name: String, surname: Option<String>, found: NameColumns) -> (String, String) {
+    match surname {
+        Some(surname) => (first_name, surname),
+        None if found.surname.is_none() => split_listed_name(&first_name).unwrap_or((first_name, String::new())),
+        None => (first_name, String::new()),
+    }
 }
 
 /// Where a file keeps its pupils' names, from the headers of its first row (compared as names are,
@@ -107,58 +165,4 @@ impl NameColumns {
     fn holds(&self, column: u32) -> bool {
         column == self.first_name || Some(column) == self.surname
     }
-}
-
-/// A cell as the text typing it would store: numbers without a locale (`7.5`, Rust's shortest
-/// form of the number Excel shows), text trimmed, `TRUE`/`FALSE`, dates as `YYYY-MM-DD`,
-/// durations and times of day as `H:MM:SS`, the same from .xlsx, .xls and .ods. `None` for
-/// empty and error cells.
-pub fn cell_text(data: &Data) -> Option<String> {
-    let text = match data {
-        Data::Empty | Data::Error(_) => return None,
-        Data::Int(number) => number.to_string(),
-        Data::Float(number) if number.is_finite() => without_float_noise(*number).to_string(),
-        Data::Float(_) => return None,
-        Data::String(text) => text.trim().to_owned(),
-        Data::Bool(value) => (if *value { "TRUE" } else { "FALSE" }).to_owned(),
-        // a duration, or a time of day with no date (Excel counts it from day 0)
-        Data::DateTime(moment) if moment.is_duration() || moment.as_f64().abs() < 1.0 => {
-            clock((moment.as_f64() * SECONDS_PER_DAY).round())
-        }
-        Data::DateTime(moment) => {
-            let (year, month, day, ..) = moment.to_ymd_hms_milli();
-            format!("{year:04}-{month:02}-{day:02}")
-        }
-        // .ods: "2011-03-09" or "2011-03-09T08:30:00"
-        Data::DateTimeIso(text) => text.split('T').next().unwrap_or_default().to_owned(),
-        // .ods: "PT01H30M05S"; anything else is kept as written
-        Data::DurationIso(text) => iso_seconds(text).map_or_else(|| text.clone(), clock),
-    };
-    (!text.is_empty()).then_some(text)
-}
-
-const SECONDS_PER_DAY: f64 = 86_400.0;
-
-/// What Excel itself shows of a number: the digits past these are binary noise.
-const SIGNIFICANT_DIGITS: usize = 15;
-
-/// `number` to Excel's 15 significant digits, so a formula's 7.2999999999999989 is 7.3.
-pub fn without_float_noise(number: f64) -> f64 {
-    format!("{number:.*e}", SIGNIFICANT_DIGITS - 1).parse().unwrap_or(number)
-}
-
-/// `seconds` (whole) as hours, minutes and seconds: 5405 is "1:30:05", -5405 is "-1:30:05".
-pub fn clock(seconds: f64) -> String {
-    let sign = if seconds < 0.0 { "-" } else { "" };
-    let seconds = seconds.abs() as i64;
-    format!("{sign}{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
-}
-
-/// The length of a time duration as .ods files write it, `PT01H30M05S`, in whole seconds.
-pub fn iso_seconds(text: &str) -> Option<f64> {
-    let (hours, rest) = text.strip_prefix("PT")?.split_once('H')?;
-    let (minutes, rest) = rest.split_once('M')?;
-    let seconds = rest.strip_suffix('S')?;
-    let number = |text: &str| text.parse::<f64>().ok();
-    Some((number(hours)? * 3600.0 + number(minutes)? * 60.0 + number(seconds)?).round())
 }

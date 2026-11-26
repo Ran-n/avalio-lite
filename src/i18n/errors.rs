@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 09:31:17.615582
-//+ Revised: 	2026/11/03 11:13:31.347188
+//+ Revised: 	2026/11/23 16:34:34.645712
 // -----------------------------------------------------------------------------
+
+//! What an error says in the interface language, and which texts the causes of a file or database failure
+//! get. The texts are in each language's `errors.rs`.
 
 use std::io;
 

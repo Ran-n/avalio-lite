@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:07.640367
-//+ Revised: 	2026/11/11 17:11:01.551053
+//+ Revised: 	2026/11/15 18:06:49.297328
 // -----------------------------------------------------------------------------
 
 //! The app's real window, through Win32: found by its process, captured with `PrintWindow`, and
@@ -59,6 +59,12 @@ impl AppWindow {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    /// Whether the window is kept off the screen (cloaked), as the driver does unless a run asks
+    /// to see it.
+    pub fn is_hidden(&self) -> bool {
+        win32::is_cloaked(self.hwnd).unwrap_or_else(|error| panic!("{error}"))
     }
 
     /// The client area's size in physical pixels.

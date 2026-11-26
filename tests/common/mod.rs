@@ -1,16 +1,19 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 15:53:06.324440
-//+ Revised: 	2026/11/15 12:17:28.422748
+//+ Revised: 	2026/11/24 17:54:06.975149
 // -----------------------------------------------------------------------------
 
 //! Helpers shared by the integration tests. Each test binary uses only some of them.
-#![allow(dead_code)]
+#![expect(dead_code, reason = "every test binary includes this module and uses only some of its helpers")]
 
 pub mod controls;
+pub mod event_loop;
 pub mod http;
 pub mod licence;
 pub mod logo;
+pub mod releases;
+pub mod scratch;
 pub mod win32;
 
 use std::cell::RefCell;
@@ -27,14 +30,14 @@ use avalio_lite::i18n::Language;
 use avalio_lite::platform::config::{ConfigStore, DATABASE_FILE_NAME};
 use avalio_lite::platform::logging::FileLogger;
 use avalio_lite::state::AppState;
-use avalio_lite::update::install::Installation;
-use avalio_lite::update::source::FixedRelease;
-use avalio_lite::update::ui::Updates;
+use avalio_lite::update::source::{FixedRelease, SharedSource};
+use avalio_lite::update::target::Build;
 use avalio_lite::window::dialogs::{Dialogs, FileKind};
-use avalio_lite::window::worker::{Done, InlineWorker, Job, Worker};
+use avalio_lite::window::worker::{Done, InlineWorker, Job, Payload, Worker};
 use clavren_client::Client;
 use licence::FakeLicence;
 use log::LevelFilter;
+use releases::Running;
 use tempfile::TempDir;
 
 /// A scratch folder holding the settings, database and logs of one test.
@@ -44,7 +47,7 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new() -> Self {
-        Self { root: tempfile::tempdir().unwrap() }
+        Self { root: scratch::scratch_dir() }
     }
 
     pub fn path(&self, name: &str) -> PathBuf {
@@ -59,7 +62,7 @@ impl Fixture {
     /// the real GitHub, and no test touches the network.
     pub fn without_update_checks(&self) {
         let mut config = self.store().load().unwrap().unwrap();
-        config.preferences.check_updates = false;
+        config.preferences.check_automatically = false;
         self.store().save(&config).unwrap();
     }
 
@@ -213,6 +216,7 @@ impl FakeDialogs {
         self.saves.borrow_mut().push_back(file.map(Path::to_path_buf));
     }
 
+    #[expect(clippy::fn_params_excessive_bools, reason = "the scripted answer to a yes/no question")]
     pub fn answer_next(&self, yes: bool) {
         self.answers.borrow_mut().push_back(yes);
     }
@@ -257,16 +261,38 @@ thread_local! {
 }
 
 /// The tests' worker: runs each job at once, as `InlineWorker` does, until a test makes it refuse,
-/// as when Windows won't give the app another thread.
+/// as when Windows won't give the app another thread, or hold its results back, as while the job is
+/// still running on its thread.
 #[derive(Default)]
 pub struct TestWorker {
     pub refusing: std::cell::Cell<bool>,
+    pub holding: std::cell::Cell<bool>,
+    held: RefCell<Vec<(Done, Payload)>>,
+}
+
+impl TestWorker {
+    /// The results held back so far, for a test that hands them over itself.
+    pub fn take_held(&self) -> Vec<(Done, Payload)> {
+        self.held.take()
+    }
+
+    /// Hands the results held back to `window`, in order, and holds no more.
+    pub fn release(&self, window: &avalio_lite::ui::AppWindow) {
+        self.holding.set(false);
+        for (done, payload) in self.take_held() {
+            done(window, payload);
+        }
+    }
 }
 
 impl Worker for TestWorker {
     fn start(&self, window: &avalio_lite::ui::AppWindow, job: Job, done: Done) -> std::io::Result<()> {
         if self.refusing.get() {
             return Err(std::io::Error::other("no more threads"));
+        }
+        if self.holding.get() {
+            self.held.borrow_mut().push((done, job()));
+            return Ok(());
         }
         InlineWorker.start(window, job, done)
     }
@@ -282,8 +308,10 @@ pub struct Ui {
     pub dialogs: Rc<FakeDialogs>,
     /// the computer's licence and the fake Clavren behind it; activated unless the test chose
     pub licence: FakeLicence,
-    /// what "the latest release" answers; nothing until a test sets it
+    /// what GitHub's latest release answers; nothing (a failed connection) until a test sets it
     pub releases: Arc<FixedRelease>,
+    /// what GitLab's answers, the same way
+    pub gitlab: Arc<FixedRelease>,
     /// runs background work at once; a test can make it refuse to start any
     pub worker: Rc<TestWorker>,
     pub session: Session,
@@ -327,23 +355,49 @@ impl Ui {
         licence: FakeLicence,
         client: Arc<Client>,
     ) -> Self {
-        Self::open_full(fixture, system_language, licence, client, None)
+        Self::open_full(
+            fixture,
+            system_language,
+            (licence, client),
+            Running { build: Build::Release(releases::TARGET), exe: None, automatic: false },
+        )
     }
 
-    /// Opens the app as `installation` (a scratch exe, never the test's own), trusting updates
-    /// signed with `release_key()`; downloads go to the fixture's `downloads` folder.
-    pub fn open_installed(fixture: Fixture, installation: Installation) -> Self {
+    /// Opens the app as the release build at `exe` (a scratch exe, never the test's own), trusting
+    /// updates signed with `release_key()`; downloads go to the fixture's `downloads` folder.
+    pub fn open_release(fixture: Fixture, exe: PathBuf) -> Self {
         let licence = FakeLicence::activated();
         let client = licence.client();
-        Self::open_full(fixture, Language::English, licence, client, Some(installation))
+        Self::open_full(
+            fixture,
+            Language::English,
+            (licence, client),
+            Running { build: Build::Release(releases::TARGET), exe: Some(exe), automatic: false },
+        )
+    }
+
+    /// Opens the app as a release build that checks for updates by itself, on the timers `start`
+    /// sets (tests move Slint's mock clock on).
+    pub fn open_checking(fixture: Fixture) -> Self {
+        let licence = FakeLicence::activated();
+        let client = licence.client();
+        let running = Running { build: Build::Release(releases::TARGET), exe: None, automatic: true };
+        Self::open_full(fixture, Language::English, (licence, client), running)
+    }
+
+    /// Opens the app as a build from source, which never checks for updates.
+    pub fn open_from_source(fixture: Fixture) -> Self {
+        let licence = FakeLicence::activated();
+        let client = licence.client();
+        let running = Running { build: Build::Source, exe: None, automatic: true };
+        Self::open_full(fixture, Language::English, (licence, client), running)
     }
 
     fn open_full(
         fixture: Fixture,
         system_language: Language,
-        licence: FakeLicence,
-        client: Arc<Client>,
-        installation: Option<Installation>,
+        (licence, client): (FakeLicence, Arc<Client>),
+        running: Running,
     ) -> Self {
         let turn = UI_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         HEADLESS.with(|ready| {
@@ -353,19 +407,15 @@ impl Ui {
             }
         });
         let dialogs = Rc::new(FakeDialogs::default());
-        let releases = Arc::new(FixedRelease::default());
-        let updates = Updates {
-            source: releases.clone(),
-            key: release_key().verifying_key(),
-            installation,
-            downloads: fixture.path("downloads"),
-        };
+        let (releases, gitlab) = (Arc::new(FixedRelease::named("GitHub")), Arc::new(FixedRelease::named("GitLab")));
+        let sources: Vec<SharedSource> = vec![releases.clone(), gitlab.clone()];
         let worker = Rc::new(TestWorker::default());
+        let updates = releases::updates_on(sources, running, fixture.path("downloads"), worker.clone());
         let ports = Ports { dialogs: dialogs.clone(), licence: client, worker: worker.clone(), updates };
         let session = app::open(fixture.store(), leaked_logger(), ports, system_language).unwrap();
         // the size the app opens at (its preferred size); headless windows otherwise get a default
         session.window.window().set_size(slint::LogicalSize::new(1280.0, 800.0));
-        Self { fixture, dialogs, licence, releases, worker, session, _turn: turn }
+        Self { fixture, dialogs, licence, releases, gitlab, worker, session, _turn: turn }
     }
 
     /// The app after first-run setup created a database in the fixture's `data` folder.

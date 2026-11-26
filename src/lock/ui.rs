@@ -1,8 +1,11 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:42.253612
-//+ Revised: 	2026/11/03 10:00:18.098644
+//+ Revised: 	2026/11/25 11:43:08.207154
 // -----------------------------------------------------------------------------
+
+//! Wires the PIN to the window: the lock screen, forgetting the PIN, and setting, changing or removing it in
+//! Settings. The rules for a PIN are in `crate::lock`; re-encrypting the database in `state::protection`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -12,26 +15,31 @@ use slint::{ComponentHandle, SharedString};
 
 use crate::error::{AppError, Result};
 use crate::gradebook;
-use crate::i18n::{self, Message};
+use crate::i18n::{self, DataMessage, Message};
 use crate::lock::AttemptLimiter;
+use crate::pupil_view;
 use crate::state::SetupReason;
 use crate::ui::{AppWindow, Backup};
 use crate::window::report_failure;
 use crate::window::{SharedState, view, with_window, with_window1};
 
-pub fn wire(window: &AppWindow, state: &SharedState) {
-    wire_locking(window, state);
-    wire_leaving(window, state);
-    wire_pin_settings(window, state);
-    window.on_erase_last(|text| {
-        let mut text = text.to_string();
-        text.pop();
-        text.into()
-    });
+/// Wires the lock screen, the leaving of it and the PIN settings, in the order they were always wired.
+/// `limiter` counts wrong PINs, here and on the pupil view's cover.
+pub fn wire(window: &AppWindow, state: &SharedState, limiter: &Rc<RefCell<AttemptLimiter>>) {
+    wire_lock_now(window, state);
+    wire_unlock(window, state, limiter);
+    wire_forgot_pin(window, state);
+    wire_back_to_lock(window, state);
+    wire_set_pin(window, state);
+    wire_change_pin(window, state);
+    wire_remove_pin(window, state);
+    wire_erase_last(window);
 }
 
 /// Shows the lock screen; the database is already closed (or was never opened).
 pub fn show_locked(window: &AppWindow) {
+    // a pupil's grades aren't there to come back to once the app is unlocked
+    pupil_view::ui::end(window);
     // a backup waiting for its PIN is dropped, so nothing of it stays open behind the lock
     window.global::<Backup>().invoke_pin_cancelled();
     window.set_unlock_pin(SharedString::new());
@@ -47,40 +55,30 @@ pub fn show_unprotected(window: &AppWindow) {
     window.set_locked(false);
 }
 
-fn wire_locking(window: &AppWindow, state: &SharedState) {
+/// Locks the open database now. With no PIN set there is nothing to lock it with, and that is said.
+fn wire_lock_now(window: &AppWindow, state: &SharedState) {
     let shared = state.clone();
     window.on_lock_now(with_window(window, move |window| {
         if shared.borrow_mut().lock() {
             show_locked(window);
         } else {
-            view::show_error_text(window, i18n::text(i18n::current(), &Message::LockNeedsPin));
+            view::show_error_text(window, i18n::text(i18n::current(), &Message::Data(DataMessage::LockNeedsPin)));
         }
     }));
+}
 
-    let shared = state.clone();
-    let limiter = Rc::new(RefCell::new(AttemptLimiter::default()));
+/// Tries the PIN typed on the lock screen. A wrong PIN is counted by the guess limiter, which
+/// holds the next attempts back for a while.
+fn wire_unlock(window: &AppWindow, state: &SharedState, limiter: &Rc<RefCell<AttemptLimiter>>) {
+    let (shared, limiter) = (state.clone(), limiter.clone());
     window.on_unlock(with_window1(window, move |window, pin: SharedString| {
-        let now = Instant::now();
-        let waiting = limiter.borrow().wait_remaining(now);
-        let outcome = match waiting {
-            Some(wait) => Err(AppError::PinWait { seconds: wait.as_secs().max(1) }),
-            None => shared.borrow_mut().unlock(&pin),
-        };
+        let outcome = limiter.borrow_mut().attempt(Instant::now(), || shared.borrow_mut().unlock(&pin));
         window.set_unlock_pin(SharedString::new());
         match outcome {
             Ok(()) => {
-                limiter.borrow_mut().record_success();
                 window.set_unlock_error(SharedString::new());
                 window.set_locked(false);
                 gradebook::ui::show_database(window, &shared);
-            }
-            Err(AppError::WrongPin) => {
-                limiter.borrow_mut().record_failure(now);
-                let error = match limiter.borrow().wait_remaining(now) {
-                    Some(wait) => AppError::PinWait { seconds: wait.as_secs().max(1) },
-                    None => AppError::WrongPin,
-                };
-                window.set_unlock_error(i18n::error_message(i18n::current(), &error).into());
             }
             // the file went away while locked (e.g. its drive was unplugged): no PIN can open it, so
             // offer what a restart would, the setup screen saying it is missing
@@ -89,7 +87,10 @@ fn wire_locking(window: &AppWindow, state: &SharedState) {
                 view::show_setup(window, &SetupReason::DatabaseMissing(path));
             }
             Err(error) => {
-                log::error!("unlocking failed: {error}");
+                // a wrong PIN is already logged by the limiter, as a warning
+                if !matches!(error, AppError::WrongPin | AppError::PinWait { .. }) {
+                    log::error!("unlocking failed: {error}");
+                }
                 window.set_unlock_error(i18n::error_message(i18n::current(), &error).into());
             }
         }
@@ -97,9 +98,9 @@ fn wire_locking(window: &AppWindow, state: &SharedState) {
 }
 
 /// "Forgot the PIN?" leaves the lock screen for setup, where another database can be opened or a
-/// new one created; the locked file is left exactly as it is. "Back to the lock screen" returns.
-/// The guess limiter lives in the unlock callback, so leaving and coming back doesn't reset a wait.
-fn wire_leaving(window: &AppWindow, state: &SharedState) {
+/// new one created; the locked file is left exactly as it is. The guess limiter outlives
+/// both screens, so leaving and coming back doesn't reset a wait.
+fn wire_forgot_pin(window: &AppWindow, state: &SharedState) {
     let shared = state.clone();
     window.on_forgot_pin(with_window(window, move |window| {
         let Some(path) = shared.borrow().config().map(|config| config.database_path.clone()) else {
@@ -109,7 +110,10 @@ fn wire_leaving(window: &AppWindow, state: &SharedState) {
         log::info!("left the lock screen to choose another database");
         view::show_setup(window, &SetupReason::LeftLocked(path));
     }));
+}
 
+/// "Back to the lock screen" returns from setup to the lock screen, the database still locked.
+fn wire_back_to_lock(window: &AppWindow, state: &SharedState) {
     let shared = state.clone();
     window.on_back_to_lock(with_window(window, move |window| {
         if !shared.borrow().is_locked() {
@@ -122,25 +126,41 @@ fn wire_leaving(window: &AppWindow, state: &SharedState) {
     }));
 }
 
-fn wire_pin_settings(window: &AppWindow, state: &SharedState) {
+/// Turns the PIN on with the new PIN typed twice.
+fn wire_set_pin(window: &AppWindow, state: &SharedState) {
     let shared = state.clone();
     window.on_set_pin(with_window(window, move |window| {
         let result = shared.borrow_mut().set_pin(&window.get_pin_new(), &window.get_pin_repeat());
-        after_pin_change(window, &shared, result, Message::PinTurnedOn);
+        after_pin_change(window, &shared, result, Message::Data(DataMessage::PinTurnedOn));
     }));
+}
 
+/// Changes the PIN: the current one, then the new one typed twice.
+fn wire_change_pin(window: &AppWindow, state: &SharedState) {
     let shared = state.clone();
     window.on_change_pin(with_window(window, move |window| {
         let result =
             shared.borrow_mut().change_pin(&window.get_pin_current(), &window.get_pin_new(), &window.get_pin_repeat());
-        after_pin_change(window, &shared, result, Message::PinChanged);
+        after_pin_change(window, &shared, result, Message::Data(DataMessage::PinChanged));
     }));
+}
 
+/// Turns the PIN off, given the current one.
+fn wire_remove_pin(window: &AppWindow, state: &SharedState) {
     let shared = state.clone();
     window.on_remove_pin(with_window(window, move |window| {
         let result = shared.borrow_mut().remove_pin(&window.get_pin_current());
-        after_pin_change(window, &shared, result, Message::PinTurnedOff);
+        after_pin_change(window, &shared, result, Message::Data(DataMessage::PinTurnedOff));
     }));
+}
+
+/// Removes the last digit typed on the lock screen's keypad.
+fn wire_erase_last(window: &AppWindow) {
+    window.on_erase_last(|text| {
+        let mut text = text.to_string();
+        text.pop();
+        text.into()
+    });
 }
 
 fn after_pin_change(window: &AppWindow, state: &SharedState, result: Result<()>, done: Message) {

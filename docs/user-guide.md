@@ -1,14 +1,16 @@
 [//]: # ( ---------------------------------------------------------------------- )
 [//]: # (+ Authors: 	Ran# <ran.hash@proton.me> )
 [//]: # (+ Created: 	2026/11/01 21:11:24.661079 )
-[//]: # (+ Revised: 	2026/11/15 03:14:43.627237 )
+[//]: # (+ Revised: 	2026/11/25 11:43:01.059580 )
 [//]: # ( ---------------------------------------------------------------------- )
 
-# avalio-lite user guide
+# avalio lite user guide
 
-Everything the app does, screen by screen. To download and install it, see the [README](../README.md#download-and-install).
+[README](../README.md) · **User guide** · [Development guide](development.md) · [Design decisions](design-decisions.md)
 
-**Contents:** [Getting started](#getting-started) · [Using it](#using-it) · [Your data](#your-data) · [Licence](#licence) · [Updates](#updates)
+Everything the app does, screen by screen. To download and install it, see the [README](../README.md#download-and-install). There are two downloads, both for Windows 64-bit: an installer (the setup) and a portable file that runs from any folder.
+
+**Contents:** [Getting started](#getting-started) · [Using it](#using-it) · [Your data](#your-data) · [Licence](#licence) · [Updates](#updates) · [Troubleshooting](#troubleshooting) · [Help](#help)
 
 ## Getting started
 
@@ -27,7 +29,7 @@ Everything the app does, screen by screen. To download and install it, see the [
 - **Classes** are listed on the left. Type a name in **+ New class** and press Enter.
 - **Pupils** are the rows of a class's sheet. Each has a **first name** and a **surname**, in two columns of their own. To add one, type the first name in the last row (or click **+ Add pupil**), press Enter to go to the surname, and press Enter again: the pupil is added and the first-name field is ready for the next one. The surname may be left empty; the first name can't. Pupils from before surnames existed that were typed surname first, as in "Pérez López, Ana", are split into the two columns when you update (also in older backups you restore or add from); the others keep their whole name as the first name, to fix by hand. A pupil can be in several classes (**⋯ → Add from another class**, which lists pupils as "Surname, First name", sorted by surname). Renaming a pupil renames them everywhere. Removing them from one class (the × at the start of their row) deletes only their marks in that class.
 - Under the class name you see the number of pupils, the class average of the final grade, and how many pass and fail.
-- Classes and pupils are sorted alphabetically, ignoring accents and case (Álvaro goes with the A's; Ñ comes after N).
+- Classes, and lists of pupils to pick from, are sorted alphabetically, ignoring accents and case (Álvaro goes with the A's; Ñ comes after N). The rows of a sheet stay in the order the pupils were added. A pupil's **number** is their place in the class by surname, so it changes when someone before them joins or leaves.
 
 ### Columns
 
@@ -59,6 +61,25 @@ Everything saves as you type; there is no Save button. The line under the class 
 - Press Enter to go to the same column in the next pupil's row, with its mark selected so typing replaces it; after the last pupil Enter leaves the sheet.
 - Calculated marks are shown to two decimals, rounded half up. They show as green pills when the shown mark is half the maximum or more (5 out of 10), and as rose pills below that. Failing test scores are shown in rose too.
 
+### Pupils' pictures
+
+The round button at the start of each row shows the pupil's picture, or their initials. Click it to open the pupil's panel on the right: **Choose a picture…** takes a JPEG, PNG or WebP photo (up to 50 MB), **Change the picture…** replaces it and **Remove the picture** deletes it, after asking. Esc closes the panel. A pupil has one picture, the same in all their classes.
+
+The app keeps the middle square of the photo, made small, inside the database: your photo file isn't changed, and what it says about where and with what it was taken isn't kept. Pictures are part of your [data](#your-data): encrypted if you set a PIN, included in backups, and deleted with the pupil. When you add a backup's classes, a pupil who already has a picture here keeps it.
+
+### Showing a pupil their grades
+
+**⋯ → Show a pupil their grades…** covers the whole window, so you can let a pupil come to the computer and see their own grades and nobody else's.
+
+1. A list of the class's pupils opens, with each one's picture, number and name and no grades. Numbers go by surname, from 1. Pick the pupil who is coming; they can come in any order.
+2. The window shows only that pupil's picture, name, number, class, and their own tests, final grades, averages and roundings, each out of its maximum. Weights show when the sheet shows them. **Info columns are never shown**, since they hold your notes, and neither is a score that isn't a valid mark. The sidebar, the sheet and the update bar are gone, and every keyboard shortcut but Lock is off.
+3. **Next pupil** goes on to the next number, and **Back to the list** clears the grades so you can pick anyone.
+4. **Back to the sheet**, in the list, leaves the mode.
+
+With a [PIN](#pin-and-encryption), it is asked **before each pupil's grades** (picked or next) and **before going back to the sheet**. It isn't asked to open the list or to go back to it, so at most you type it once per pupil. The page that asks names the pupil it is for, and **Back to the list** gives up. Wrong PINs count together with those on the lock screen.
+
+Without a PIN nothing is asked, so a pupil could open someone else's grades (the list says so). Set one in **Settings → PIN** to prevent it. Locking ends the mode, so unlocking shows the sheet. Closing and reopening the app does too: with a PIN it opens on the lock screen, without one on the sheet. The mode doesn't start while an update is downloading, because the update restarts the app.
+
 ### Excel
 
 - **⋯ → Export to Excel…** saves the sheet as an .xlsx file in the sheet's column order, First name and Surname included, with the marks as numbers and a second tab listing each column's settings. When the two name columns come first, they stay in view as you scroll sideways.
@@ -70,13 +91,14 @@ To back up all classes at once, use a [backup](#backups) instead.
 
 - **Light and dark:** use the moon / sun button at the bottom of the sidebar, or **Settings → Appearance**. The app follows the Windows setting until you pick one.
 - **Narrow sidebar:** the arrow button at the top of the sidebar (or Ctrl+B) folds it to a strip of icons, giving the sheet more room; the same button opens it again. The app remembers which you chose.
+- **Window:** the app opens where it was when you last closed it, at the same size, and maximised if it was. If that place is no longer on any screen (a second monitor unplugged), it opens in the middle of the screen.
 - **Language:** the app comes in **Galician** and **English**. It follows the Windows language until you pick one in **Settings → Language**. In Galician, calculated marks use a decimal comma (8,5).
 
 ### Keyboard
 
 Tab moves between fields and buttons, and Enter or Space presses the focused button. Enter in a mark or note goes to the cell below; Enter in a pupil's name, the class name or a column setting ends the editing. Shift+← / Shift+→ on a focused column header narrows or widens the column.
 
-Shortcuts work anywhere on the main screen, even while you're typing in a cell, but not on the lock or first-run screens. Settings lists them:
+Shortcuts work anywhere on the main screen, even while you're typing in a cell, but not on the lock or first-run screens, and only Lock works while a pupil is shown their grades. Settings lists them:
 
 | Shortcut | Does | Name in `config.toml` |
 |---|---|---|
@@ -107,7 +129,7 @@ Both default to `Documents\avalio-lite`, and a folder must be given in full, wit
 
 The first start after an update that changes how the database is stored keeps a copy of it as it was, `avalio-lite.db.before-update`, next to it (with the same PIN, if it has one); the next such update replaces it, and setting or changing the PIN deletes it. Copies a crash could leave while a PIN was being changed or a backup restored (`.rekey`, `.previous`, `.restore`) are deleted the next time the database opens. **Open another database…** switches to an existing database file (one from another PC, say). To bring a backup's data into the app, use [Backups](#backups) instead.
 
-The only file in a fixed place is `%APPDATA%\avalio-lite\config.toml`, which holds those two locations. If that file can't be read, the app keeps it as `config.toml.bad`, asks for the locations again, and writes a new one. If a database file is empty, cut short or not an avalio-lite database, the app reports it and never sets up a new database over it. Uninstalling never deletes your database or logs.
+The only file in a fixed place is `%APPDATA%\Breren\avalio-lite\config.toml`, which holds those two locations (0.10.0 and earlier kept it in `%APPDATA%\avalio-lite`; the first start of a newer version moves it). If that file can't be read, the app keeps it as `config.toml.bad`, asks for the locations again, and writes a new one. If a database file is empty, cut short or not an avalio-lite database, the app reports it and never sets up a new database over it. Uninstalling never deletes your database or logs.
 
 ### Backups
 
@@ -138,7 +160,7 @@ While the app is open, the PIN is kept in memory only while the database is unlo
 
 ## Licence
 
-avalio-lite needs a licence key, which looks like `BRN-7KPX-4M9D-QW2R-8NFC` and comes by email. The app checks it with Clavren, Breren's licence server, at `clavren.breren.com`. Only the key and a code for this computer are sent; your marks never leave your computer.
+avalio-lite needs a licence key, which looks like `BRN-XXXX-XXXX-XXXX-XXXX` and comes by email. The app checks it with Clavren, Breren's licence server, at `clavren.breren.com`. Only the key and a code for this computer are sent; your marks never leave your computer.
 
 - **Activating:** after choosing your folders (and typing your PIN, if the database has one), the app shows **Enter your licence key**. Type the key (capitals, spaces and dashes don't matter) and press **Activate** or Enter. This needs the internet.
 - **Offline:** once activated, the app opens straight away, with or without internet, for up to 30 days after its last check.
@@ -164,14 +186,35 @@ What the licence screen can say:
 
 ## Updates
 
-- **Looking for a new version:** once a day, at start or while it runs, the app asks GitHub for the latest release. Nothing about you or your marks is sent. When a newer version is out, a bar across the top of the window says *avalio-lite X.Y.Z is available*.
-- **What's new** opens the release page, with the list of changes, in your browser. The app only ever opens an `https://` address there.
-- **Hide** (×) hides the bar for that version; it comes back for the next one.
-- **Update now** downloads the new version and checks its signature. Each release is signed by the developer, and a file that doesn't match is deleted, never run. Then:
-  - an **installed** copy closes and runs the new installer, which shows its progress and opens the app again;
-  - a **portable** copy replaces its own exe and opens again. Its folder must be writable; if it isn't (a read-only USB stick, for example), the app says so before downloading.
+- **Looking for a new version:** about a minute after the app opens, and then once a day, it asks GitHub and GitLab for the latest release. When a newer version is out, a bar across the top of the window says *avalio-lite X.Y.Z is available.*
+- **Update and restart** downloads the new version, checks that it is the developer's (each release is signed in minisign's format; the app checks the signature before it downloads anything, then the file's checksum and the signature over the file before it uses it), puts it in place of the running program and opens it again. Everything you typed is already saved. The next start says *Updated to avalio-lite X.Y.Z.* While it downloads, the bar shows how far it has come, and **Cancel** stops it.
+- **Skip this version** hides the bar until a newer version is out. **Hide** (×) hides it until you open the app again.
+- **Settings → Updates** shows the version you are running and what the last check found (*avalio-lite is up to date (checked 14:02).*). **Check for updates automatically** turns the daily check on or off (it starts on). **Check now** looks straight away. **Stop skipping X.Y.Z** offers a version you skipped again. **Update and restart** is there too.
+- **What it sends:** only the request for the latest release, with the app's name and version. Nothing about you, this computer or your marks. Turning off the automatic check stops it.
+- If the check or the download fails, the app says why in plain words (for example *Couldn't check for updates: GitHub: the request timed out; GitLab: the server answered 503.*) and stays as it was; a download that failed or didn't verify is deleted, never run. Try again later, or download the new version by hand from the release page the message names. A check that runs by itself and fails only changes the line in Settings; it tries again an hour later.
+- Installed and portable copies update the same way. A portable copy needs a folder it can write to; on a read-only USB stick, download the new version by hand.
+- A copy you built yourself from the source code doesn't update itself: Settings says so, and you update it with `git pull` and a new build.
 
-  Everything you typed is already saved. The next start says *Updated to X.Y.Z*.
-- **Settings → Updates:** **Check for updates automatically** turns the daily check on or off (it starts on). **Check now** looks straight away, even for a version you hid, and says *avalio-lite is up to date (X.Y.Z)* when there is nothing newer.
-- If the check or the download fails (no internet, GitHub asking to wait, a file missing from the release), the app says why in plain words, keeps the technical details for the log, and stays as it was; a download that failed is deleted. Try again later, or download the new version by hand from the release page. A check that runs by itself and fails says nothing; it tries again the next day.
-- Closing the app during a download stops it; nothing is changed, and the half-downloaded file is deleted at the next start.
+## About
+
+**Settings → About**, at the bottom of Settings, shows the version you are running, who makes avalio lite (Ran#, published by [Breren](https://breren.com)) and its licence, the PayBack License 2.0: free for people, not for profit. Its buttons open the licence, the licences of the open-source code the app is built with, the source code, all versions, what's new, and where to report a problem or write to support (support.avalio.lite@breren.com). If Windows can't open a link, the app shows the address to copy into a browser.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| The lock screen asks for a PIN you can't remember | Your marks can't be recovered, by anyone. Press **Forgot the PIN?** to open or create another database; the locked file stays exactly as it is. |
+| *The database isn't at … any more.* (at start-up) | The app never recreates a missing database by itself. Press **Open another database…** to point it at the file where it is now, or start a new one yourself. |
+| *Too many wrong PINs. Try again in 30 s.* | Wait the time shown, then type the PIN again. After five wrong PINs, each further try waits 30 seconds. |
+| *This key is already in use on another computer.* | A key works on one computer at a time. Write to support.avalio.lite@breren.com to move it here. |
+| *Connect to the internet so avalio lite can confirm your licence.* | The app has gone 30 days without a check, or the computer's clock was set back. Connect to the internet and press **Check again**. |
+| Windows shows *"Windows protected your PC"* | The files aren't code-signed for Windows. Click **More info**, then **Run anyway**; or right-click the file, choose **Properties** and tick **Unblock**. |
+| *The download of avalio lite … didn't match its checksum* or *isn't signed with avalio lite's release key* | The update was refused and nothing was installed. Download the new version by hand from the release page the message names. |
+| *Left out: …* or *… rows with no first name were skipped.* (Excel import) | Give each pupil a first name in the file and import again, or add them by hand. Cells with Excel errors are skipped too; type those marks again. |
+| *This backup is encrypted. Type the PIN it was made with.* | A backup of this database opens with the app's PIN. A backup made with another PIN asks for that one; if you no longer have it, the backup can't be opened. |
+| The message ends with *the log has the details* | Open **Settings → Logs** to see the log's folder, then send `avalio-lite.log` with your report. It holds file paths, so look it over first. |
+
+## Help
+
+- **Bugs and ideas:** open an issue on [GitHub](https://github.com/Ran-n/avalio-lite/issues), [GitLab](https://gitlab.com/Ran-n/avalio-lite/-/issues) or [Codeberg](https://codeberg.org/ran-n/avalio-lite/issues). [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-bugs) says what to include.
+- **Your licence, or anything the issues don't cover:** write to support.avalio.lite@breren.com.

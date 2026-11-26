@@ -1,8 +1,10 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/10/28 10:52:46.536666
-//+ Revised: 	2026/10/29 09:43:35.192835
+//+ Revised: 	2026/11/25 11:43:15.694375
 // -----------------------------------------------------------------------------
+
+//! The PIN's rules, and how guessing one is slowed down. The lock screen is tested in `tests/ui/`.
 
 use std::time::{Duration, Instant};
 
@@ -46,6 +48,36 @@ fn guessing_is_slowed_down_after_five_wrong_pins() {
     assert!(limiter.wait_remaining(start + Duration::from_secs(31)).is_some(), "each further miss waits again");
     limiter.record_success();
     assert_eq!(limiter.wait_remaining(start + Duration::from_secs(31)), None);
+}
+
+#[test]
+fn an_attempt_counts_wrong_pins_and_says_how_long_to_wait() {
+    let start = Instant::now();
+    let mut limiter = AttemptLimiter::default();
+    let wrong = || Err(AppError::WrongPin);
+    for _ in 0..4 {
+        assert!(matches!(limiter.attempt(start, wrong), Err(AppError::WrongPin)));
+    }
+    assert!(
+        matches!(limiter.attempt(start, wrong), Err(AppError::PinWait { seconds: 30 })),
+        "the fifth starts the wait"
+    );
+    let almost = start + Duration::from_millis(29_500);
+    let waiting = limiter.attempt(almost, || panic!("nothing is tried while waiting"));
+    assert!(matches!(waiting, Err(AppError::PinWait { seconds: 1 })), "never 0 seconds");
+    let after = start + Duration::from_secs(31);
+    assert!(limiter.attempt(after, || Ok(())).is_ok());
+    assert!(matches!(limiter.attempt(after, wrong), Err(AppError::WrongPin)), "the right PIN starts the count again");
+}
+
+#[test]
+fn an_attempt_that_fails_for_another_reason_is_not_a_wrong_pin() {
+    let now = Instant::now();
+    let mut limiter = AttemptLimiter::default();
+    for _ in 0..9 {
+        assert!(matches!(limiter.attempt(now, || Err(AppError::NoDatabaseOpen)), Err(AppError::NoDatabaseOpen)));
+    }
+    assert_eq!(limiter.wait_remaining(now), None);
 }
 
 proptest::proptest! {

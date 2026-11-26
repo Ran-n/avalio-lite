@@ -1,0 +1,17 @@
+database_path = 'D:\Marks\avalio-lite.db'
+log_dir = 'D:\Marks\logs'
+last_class = 3
+
+[preferences]
+show_column_settings = false
+language = "gl"
+theme = "dark"
+sidebar_collapsed = true
+check_updates = false
+last_update_check = "2027-01-15T08:00:00Z"
+skipped_update = "0.6.0"
+last_run_version = "0.5.0"
+update_failed = "the installer couldn't start"
+
+[shortcuts]
+lock = "Ctrl+K"
