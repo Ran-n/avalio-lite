@@ -3,7 +3,10 @@
 #   1 downloads the draft's files            2 checks each .b3 and that the bridge copies match
 #   3 checks each exe's build attestation    4 signs the four exes with the release key
 #   5 verifies the four signatures           6 uploads the four signature files to the draft
-#   7 creates the GitLab and Codeberg releases with all twelve files
+#   7 creates the GitLab and Codeberg releases with all twelve files; if Codeberg refuses a file for
+#     the account's quota, it deletes this repository's oldest release files, only as many as the
+#     rest needs, notes on each stripped release that GitHub has every file, and goes on
+#     (scripts/codeberg-quota.ps1)
 #   8 publishes the GitHub draft             9 checks each forge lists every file at its size
 # A file that fails a check is never signed. The signing key is GPG-encrypted in
 # ~/.release-keys/avalio-lite-release-signing.key.gpg; gpg decrypts it straight into avalio-lite-sign
@@ -31,9 +34,11 @@ $GitHubRepo = 'Ran-n/avalio-lite'
 $GitLabRepo = 'Ran-n/avalio-lite'
 $CodebergRepo = 'ran-n/avalio-lite'
 $CodebergApi = "https://codeberg.org/api/v1/repos/$CodebergRepo"
+$CodebergQuotaApi = 'https://codeberg.org/api/v1/user/quota'
 
 . "$PSScriptRoot\use-perl.ps1"
 . "$PSScriptRoot\release-common.ps1"
+. "$PSScriptRoot\codeberg-quota.ps1"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
@@ -106,6 +111,42 @@ function Invoke-Codeberg {
         throw "Codeberg answered '$status' to $Method $($Url -replace '\?.*$', ''): $body"
     }
     return $body
+}
+
+function Get-CodebergReleases {
+    # Every release of the repository, page by page.
+    param([string]$ResponseFile)
+    $all = @()
+    for ($page = 1; ; $page++) {
+        $body = Invoke-Codeberg -Method GET -Url "$CodebergApi/releases?limit=50&page=$page" -ResponseFile $ResponseFile
+        $found = @($body | ConvertFrom-Json | ForEach-Object { $_ })
+        if ($found.Count -eq 0) { return , $all }
+        $all += $found
+    }
+}
+
+function Clear-CodebergRoom {
+    # Makes room for $ToUpload bytes by the rule in codeberg-quota.ps1: deletes the files it chooses,
+    # then adds the GitHub line to each stripped release's notes.
+    param([long]$ToUpload, [string]$ResponseFile, [string]$PayloadFile)
+    $quota = Invoke-Codeberg -Method GET -Url $CodebergQuotaApi -ResponseFile $ResponseFile | ConvertFrom-Json
+    $needed = Get-CodebergShortfall -Quota $quota -ToUpload $ToUpload
+    if ($needed -le 0) { throw "Codeberg refused a file for its quota, yet its quota has room for the $ToUpload bytes left; check it by hand" }
+    $releases = Get-CodebergReleases -ResponseFile $ResponseFile
+    $files = Select-CodebergFilesToFree -Releases $releases -KeepTag $tag -Needed $needed
+    Write-Host "  Codeberg's quota is $needed bytes short: deleting $($files.Count) old release files of this repository"
+    foreach ($file in $files) {
+        Invoke-Codeberg -Method DELETE -Url "$CodebergApi/releases/$($file.ReleaseId)/assets/$($file.AssetId)" -ResponseFile $ResponseFile | Out-Null
+        Write-Host "  deleted $($file.Tag) $($file.Name) ($($file.Size) bytes) from Codeberg"
+    }
+    foreach ($releaseId in @($files | ForEach-Object { $_.ReleaseId } | Select-Object -Unique)) {
+        $release = $releases | Where-Object { $_.id -eq $releaseId } | Select-Object -First 1
+        $notes = Get-NotesWithGitHubPointer -Body $release.body -Tag $release.tag_name -GitHubRepo $GitHubRepo
+        $payload = [ordered]@{ body = $notes } | ConvertTo-Json
+        [System.IO.File]::WriteAllText($PayloadFile, $payload, (New-Object System.Text.UTF8Encoding $false))
+        Invoke-Codeberg -Method PATCH -Url "$CodebergApi/releases/$releaseId" -JsonFile $PayloadFile -ResponseFile $ResponseFile | Out-Null
+        Write-Host "  noted on Codeberg's $($release.tag_name) that GitHub has every file"
+    }
 }
 
 # --- checks before anything runs --------------------------------------------------------------
@@ -285,10 +326,21 @@ Invoke-Change -Description "POST $CodebergApi/releases, then POST .../releases/<
     $created = Invoke-Codeberg -Method POST -Url "$CodebergApi/releases" -JsonFile $codebergPayload -ResponseFile $codebergResponse
     $releaseId = ($created | ConvertFrom-Json).id
     if (-not $releaseId) { throw 'Codeberg created the release but gave no id' }
-    foreach ($path in $allPaths) {
+    $madeRoom = $false
+    for ($index = 0; $index -lt $allPaths.Count; $index++) {
+        $path = $allPaths[$index]
         $leaf = Split-Path -Leaf $path
         $url = "$CodebergApi/releases/$releaseId/assets?name=$([System.Uri]::EscapeDataString($leaf))"
-        Invoke-Codeberg -Method POST -Url $url -Upload $path -ResponseFile $codebergResponse | Out-Null
+        try {
+            Invoke-Codeberg -Method POST -Url $url -Upload $path -ResponseFile $codebergResponse | Out-Null
+        } catch {
+            # room is made once, for this file and every one after it; a second refusal stops here
+            if ($madeRoom -or "$_" -notmatch "'413'.*quota exceeded") { throw }
+            $left = ($allPaths[$index..($allPaths.Count - 1)] | ForEach-Object { (Get-Item -LiteralPath $_).Length } | Measure-Object -Sum).Sum
+            Clear-CodebergRoom -ToUpload $left -ResponseFile $codebergResponse -PayloadFile $codebergPayload
+            $madeRoom = $true
+            Invoke-Codeberg -Method POST -Url $url -Upload $path -ResponseFile $codebergResponse | Out-Null
+        }
         Write-Host "  uploaded $leaf to Codeberg"
     }
 }
