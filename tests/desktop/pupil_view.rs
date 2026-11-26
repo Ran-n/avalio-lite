@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/25 09:12:06.091147
-//+ Revised: 	2026/11/25 11:43:12.783155
+//+ Revised: 	2026/11/26 19:33:21.340717
 // -----------------------------------------------------------------------------
 
 //! The pupil view: the list of pupils, one pupil's grades and the PIN between them, in every look, and
@@ -19,6 +19,9 @@ use super::screens::{assert_on_screen, every_look, galician_look};
 const PUPILS: [&str; 5] = ["Fernández, Uxía", "Iglesias, Carla", "Otero, Brais", "Pérez, Ana", "Souto, Daniel"];
 /// The face's colour in the drawn photo, which no theme uses.
 const FACE: Rgb = Rgb(224, 160, 110);
+/// The least a face covers, in logical pixels: the smallest face (on a sheet row) covers about twice
+/// this, and the thin strokes of the warning's orange text, the nearest colour on screen, a third.
+const FACE_AREA: f64 = 40.0;
 
 /// A drawn face (no one's photo): the baselines are committed.
 fn drawn_photo(fixture: &Fixture) -> PathBuf {
@@ -74,7 +77,7 @@ fn the_pupil_panel_looks_right() {
             assert_on_screen(image, app.located(control), control);
         }
         // the face, in the panel and (smaller) on the row
-        assert_eq!(image.blobs(FACE, 24, 20).len(), 2, "the picture shows twice");
+        assert_eq!(image.blobs(FACE, 24, app.area(FACE_AREA)).len(), 2, "the picture shows twice");
     });
     app.click("Close");
     assert!(app.locate("Change the picture…").is_empty());
@@ -94,7 +97,7 @@ fn the_list_of_pupils_looks_right() {
         for control in PUPILS.into_iter().chain(["Back to the sheet"]) {
             assert_on_screen(image, app.located(control), control);
         }
-        assert_eq!(image.blobs(FACE, 24, 20).len(), 1, "Carla's picture");
+        assert_eq!(image.blobs(FACE, 24, app.area(FACE_AREA)).len(), 1, "Carla's picture");
     });
     app.click("Back to the sheet");
     assert_eq!(app.state()["pupil_view"], "off");
