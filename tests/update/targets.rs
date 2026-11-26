@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/23 13:00:34.258250
-//+ Revised: 	2026/11/24 16:26:02.839080
+//+ Revised: 	2026/11/26 13:24:01.423390
 // -----------------------------------------------------------------------------
 
 //! Asset and file names per version and target, and which builds can update themselves.
@@ -9,8 +9,8 @@
 use crate::common::releases::{TARGET, version};
 use crate::support::BUILD;
 use avalio_lite::update::target::{
-    Build, Form, RELEASE_TARGET_VARIABLE, TARGETS, asset_name, bridge_asset_name, bridge_signature_name, build_for,
-    checksum_name, current_version, signature_name,
+    Build, Form, RELEASE_TARGET_VARIABLE, TARGETS, VERSION_VARIABLE, asset_name, bridge_asset_name,
+    bridge_signature_name, build_for, checksum_name, current_version, signature_name,
 };
 use std::process::Command;
 
@@ -61,6 +61,22 @@ fn a_release_build_updates_from_its_portable_file_and_a_source_build_from_nothin
 #[test]
 fn this_build_knows_its_version() {
     assert_eq!(current_version().to_string(), env!("CARGO_PKG_VERSION"));
+}
+
+/// The desktop tests pin the version a debug build shows; a value that isn't a version is ignored.
+#[test]
+fn a_debug_build_takes_its_version_from_the_variable() {
+    let asset_with = |value: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_avalio-lite-asset-name"))
+            .args([TARGET])
+            .env(VERSION_VARIABLE, value)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    };
+    assert_eq!(asset_with("1.2.3"), asset_name(&version("1.2.3"), TARGET, Form::Portable));
+    assert_eq!(asset_with("not a version"), asset_name(&current_version(), TARGET, Form::Portable));
 }
 
 /// The release workflow asks this program for the names, so it can't spell them differently.

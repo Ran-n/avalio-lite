@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/15 17:41:59.346486
-//+ Revised: 	2026/11/22 21:06:11.974247
+//+ Revised: 	2026/11/26 12:58:03.945721
 // -----------------------------------------------------------------------------
 
 //! Which release build this is, and what its files are called. The one place asset names are made:
@@ -15,6 +15,10 @@ pub const TARGETS: &[&str] = &["windows-x86_64"];
 
 /// The build-time variable a release build is compiled with; any other build is built from source.
 pub const RELEASE_TARGET_VARIABLE: &str = "AVALIO_LITE_RELEASE_TARGET";
+/// A debug build shows and checks against this version instead of its own: the desktop tests pin
+/// it, so their screenshots of the version line don't change at every release. A release build
+/// ignores it.
+pub const VERSION_VARIABLE: &str = "AVALIO_LITE_VERSION";
 
 /// The program's lowercase name, which starts every asset name.
 pub const APP: &str = "avalio-lite";
@@ -74,10 +78,16 @@ fn extension(target: &str) -> &'static str {
     if target.starts_with("windows-") { ".exe" } else { "" }
 }
 
-/// This build's version, from `Cargo.toml`.
+/// This build's version, from `Cargo.toml`; in a debug build, `VERSION_VARIABLE` when it is set to a
+/// version (anything else is logged and ignored).
 pub fn current_version() -> semver::Version {
     // Cargo only accepts semver versions, so the package's own always parses
-    semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| semver::Version::new(0, 0, 0))
+    let built = semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+    let Some(value) = debug_override(VERSION_VARIABLE) else { return built };
+    semver::Version::parse(&value).unwrap_or_else(|_| {
+        log::warn!("{VERSION_VARIABLE}={value:?} isn't a version; using {built}");
+        built
+    })
 }
 
 /// What kind of build this is.

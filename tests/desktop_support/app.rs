@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/23 14:38:04.410584
-//+ Revised: 	2026/11/25 16:21:08.445165
+//+ Revised: 	2026/11/26 12:58:04.074090
 // -----------------------------------------------------------------------------
 
 //! The real app in its own process, with its window, and the replies its driver sends back. A test
@@ -16,11 +16,15 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use avalio_lite::platform::config::CONFIG_DIR_ENV;
+use avalio_lite::update::target::VERSION_VARIABLE;
 use serde_json::{Value, json};
 
 use super::binaries::driver_exe;
 use super::window::AppWindow;
 
+/// The version the app shows in every desktop test: the one the baselines were recorded with, so a
+/// release doesn't change the screenshots of Settings › Updates and About.
+const SHOWN_VERSION: &str = "0.10.0";
 const REPLY_TIMEOUT: Duration = Duration::from_secs(20);
 /// How long the app may take to show its window, and then to give its first answer, which waits for
 /// the event loop. A debug build that starts on a busy machine has taken over 20 s for each.
@@ -76,6 +80,7 @@ impl App {
             // whatever the app suggests or creates stays in the scratch folder, which is also where
             // the relative paths of the test settings start (so screens don't show a random path)
             .env(CONFIG_DIR_ENV, config_dir)
+            .env(VERSION_VARIABLE, SHOWN_VERSION)
             .current_dir(config_dir.parent().unwrap())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
