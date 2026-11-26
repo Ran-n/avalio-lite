@@ -1,7 +1,7 @@
 // -----------------------------------------------------------------------------
 //+ Authors: 	Ran# <ran.hash@proton.me>
 //+ Created: 	2026/11/02 21:48:11.540835
-//+ Revised: 	2026/11/24 16:26:03.444799
+//+ Revised: 	2026/11/26 14:41:30.494766
 // -----------------------------------------------------------------------------
 
 //! Where the window opens (`app::placement::place`): the size and place rules on screens of every
@@ -306,6 +306,8 @@ fn close_window(ui: &Ui) {
 #[test]
 fn closing_the_window_keeps_its_place_for_the_next_start() {
     let ui = Ui::with_database();
+    // a small screen (a CI runner's) opens the window maximised, and only a restored one takes a size
+    ui.session.window.window().set_maximized(false);
     ui.session.window.window().set_size(slint::LogicalSize::new(1111.0, 666.0));
     close_window(&ui);
     let kept = ui.session.state.borrow().preferences().window.expect("the place is kept");
